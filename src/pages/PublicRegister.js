@@ -189,7 +189,9 @@ export default function PublicRegister({ formId }) {
           </a>
         </div>
       )}
-      <div style={{ fontSize: 13, color: "#aaa" }}>You can close this page.</div>
+      <button onClick={() => window.close()} style={{ marginTop: 8, padding: "10px 28px", background: "#f5f4f0", color: "#333", fontSize: 14, fontWeight: 600, border: "1.5px solid #d0d0c8", borderRadius: 8, cursor: "pointer" }}>
+        Close this page
+      </button>
     </div></div>
   );
 

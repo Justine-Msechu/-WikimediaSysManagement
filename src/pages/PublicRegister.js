@@ -108,9 +108,13 @@ export default function PublicRegister({ formId }) {
 
   const submit = async (e) => {
     e.preventDefault();
+    // Re-sanitize at submit time to catch browser autofill bypassing onChange
+    const cleanUsername = sanitizeWikiUsername(vals.wikimediaUsername);
+    setVals(v => ({ ...v, wikimediaUsername: cleanUsername }));
+
     const newErrors = {
       name:              validateName(vals.name),
-      wikimediaUsername: validateWikiUsername(vals.wikimediaUsername),
+      wikimediaUsername: validateWikiUsername(cleanUsername),
       email:             validateEmail(vals.email),
       phone:             validatePhone(vals.phone),
       age:               validateAge(vals.age),
@@ -126,7 +130,7 @@ export default function PublicRegister({ formId }) {
     try {
       await submitRegistration(formId, {
         name:              vals.name.trim(),
-        wikimediaUsername: vals.wikimediaUsername.trim(),
+        wikimediaUsername: cleanUsername,
         email:             vals.email.trim().toLowerCase(),
         phone:             vals.phone.trim(),
         age:               vals.age ? Number(vals.age) : null,
@@ -207,10 +211,17 @@ export default function PublicRegister({ formId }) {
 
           <div style={fieldStyle}>
             <label style={labelStyle}>Wikipedia username</label>
-            <input style={{ ...inputStyle, borderColor: errors.wikimediaUsername ? "#c0392b" : undefined }} value={vals.wikimediaUsername} onChange={e => setV("wikimediaUsername", e.target.value)} placeholder="e.g. JaneDoe (or paste your profile URL)" autoComplete="username" />
+            <input
+              style={{ ...inputStyle, borderColor: errors.wikimediaUsername ? "#c0392b" : undefined }}
+              value={vals.wikimediaUsername}
+              onChange={e => setV("wikimediaUsername", e.target.value)}
+              onBlur={e => setV("wikimediaUsername", e.target.value)}
+              placeholder="e.g. Justine Msechu"
+              autoComplete="off"
+            />
             <FieldError msg={errors.wikimediaUsername} />
             <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>
-              Find your username at <strong>Special:Preferences</strong> on any Wikipedia. Leave blank if you don't have a Wikipedia account yet.
+              Enter your Wikipedia username only — without "User:" prefix. You can paste your full Wikipedia profile URL and it will be cleaned automatically. Leave blank if you don't have an account yet.
             </div>
           </div>
 

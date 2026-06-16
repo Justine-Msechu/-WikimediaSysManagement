@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { login, sendReset } from "../firebase/auth";
 import { touchLastLogin } from "../services/userService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
-import { getDocument } from "../firebase/firestore";
+import { getDocument, setDocument } from "../firebase/firestore";
 import logo from "../assets/logo.png";
 
 export default function Login() {
@@ -22,7 +22,19 @@ export default function Login() {
     try {
       const cred = await login(email.trim().toLowerCase(), password, rememberMe);
       const profile = await getDocument("users", cred.user.uid);
-      if (!profile) { setError("Account not found. Contact your administrator."); setBusy(false); return; }
+      if (!profile) {
+        // Auth account exists but no Firestore profile — register as pending activation
+        try {
+          await setDocument("pendingActivations", cred.user.uid, {
+            uid:         cred.user.uid,
+            email:       cred.user.email,
+            requestedAt: new Date().toISOString(),
+          });
+        } catch (_) { /* best-effort */ }
+        setError("Your account has not been fully set up yet. Your administrator has been notified and will activate your access shortly.");
+        setBusy(false);
+        return;
+      }
       if (profile.isActive === false) { setError("Your account is deactivated. Contact your administrator."); setBusy(false); return; }
       await touchLastLogin(cred.user.uid);
       await addAudit({ ...profile, id: cred.user.uid }, AUDIT_ACTIONS.LOGIN, "auth", { details: "Signed in" });

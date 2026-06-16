@@ -2,6 +2,10 @@ import React, { useState, useEffect } from "react";
 import { listenUsers, createUser, updateUser, activateUser, deactivateUser, ROLES, ROLE_LABELS, ROLE_COLORS } from "../services/userService";
 import { sendReset } from "../firebase/auth";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import { listenCollection, setDocument, deleteDocument } from "../firebase/firestore";
+import { serverTimestamp } from "firebase/firestore";
+import { db } from "../firebase/config";
+import { doc, setDoc } from "firebase/firestore";
 
 function RoleBadge({ role }) {
   return <span style={{ fontSize: 11, fontWeight: 600, color: ROLE_COLORS[role] || "#888", background: (ROLE_COLORS[role] || "#888") + "18", border: `1px solid ${(ROLE_COLORS[role] || "#888")}33`, borderRadius: 5, padding: "2px 8px" }}>{ROLE_LABELS[role] || role}</span>;
@@ -10,15 +14,22 @@ function RoleBadge({ role }) {
 const EMPTY_FORM = { name: "", email: "", role: "coordinator" };
 
 export default function Users({ profile }) {
-  const [users,     setUsers]     = useState([]);
-  const [showForm,  setShowForm]  = useState(false);
-  const [editId,    setEditId]    = useState(null);
-  const [form,      setForm]      = useState(EMPTY_FORM);
-  const [error,     setError]     = useState("");
-  const [toast,     setToast]     = useState("");
-  const [busy,      setBusy]      = useState(false);
+  const [users,    setUsers]    = useState([]);
+  const [pending,  setPending]  = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editId,   setEditId]   = useState(null);
+  const [form,     setForm]     = useState(EMPTY_FORM);
+  const [error,    setError]    = useState("");
+  const [toast,    setToast]    = useState("");
+  const [busy,     setBusy]     = useState(false);
+  // Per-pending-activation name+role form
+  const [pendingForms, setPendingForms] = useState({});
 
-  useEffect(() => { return listenUsers(setUsers); }, []);
+  useEffect(() => {
+    const u1 = listenUsers(setUsers);
+    const u2 = listenCollection("pendingActivations", setPending);
+    return () => { u1(); u2(); };
+  }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -63,6 +74,31 @@ export default function Users({ profile }) {
     }
   };
 
+  const setPF = (uid, k, v) => setPendingForms(f => ({ ...f, [uid]: { ...(f[uid] || { name: "", role: "coordinator" }), [k]: v } }));
+
+  const activatePending = async (p) => {
+    const pf = pendingForms[p.id] || { name: "", role: "coordinator" };
+    if (!pf.name.trim()) { alert("Enter the user's full name to activate their account."); return; }
+    setBusy(true);
+    try {
+      await setDoc(doc(db, "users", p.id), {
+        name:      pf.name.trim(),
+        role:      pf.role,
+        email:     p.email,
+        isActive:  true,
+        createdAt: serverTimestamp(),
+        lastLogin: null,
+      });
+      await deleteDocument("pendingActivations", p.id);
+      await addAudit(profile, AUDIT_ACTIONS.CREATE, "users", { targetId: p.id, recordTitle: pf.name, details: `Activated pending account: ${p.email}` });
+      showToast(`${pf.name} activated.`);
+    } catch (e) {
+      alert("Failed to activate: " + (e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const resetPwd = async (u) => {
     if (!window.confirm(`Send a password reset email to ${u.email}?`)) return;
     await sendReset(u.email);
@@ -74,6 +110,40 @@ export default function Users({ profile }) {
     <div>
       {toast && <div style={{ position: "fixed", bottom: 24, right: 24, background: "#2d7a4f", color: "#fff", padding: "10px 18px", borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 9999 }}>✓ {toast}</div>}
       <div className="page-title">User management</div>
+
+      {/* Pending activations */}
+      {pending.length > 0 && (
+        <div className="panel" style={{ border: "2px solid #d97706", marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <div className="panel-title" style={{ marginBottom: 0, color: "#d97706" }}>Pending activations</div>
+            <span style={{ background: "#d97706", color: "#fff", borderRadius: 10, padding: "1px 8px", fontSize: 11, fontWeight: 700 }}>{pending.length}</span>
+          </div>
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 14 }}>
+            These people logged in but their staff profile wasn't created yet. Enter their name and role, then click Activate.
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {pending.map(p => {
+              const pf = pendingForms[p.id] || { name: "", role: "coordinator" };
+              return (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "10px 14px", background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, minWidth: 200 }}>{p.email}</div>
+                  <input
+                    value={pf.name}
+                    onChange={e => setPF(p.id, "name", e.target.value)}
+                    placeholder="Full name"
+                    style={{ padding: "5px 10px", fontSize: 13, border: "1.5px solid #d0d0c8", borderRadius: 6, flex: 1, minWidth: 140 }}
+                  />
+                  <select value={pf.role} onChange={e => setPF(p.id, "role", e.target.value)} style={{ fontSize: 13, padding: "5px 8px", borderRadius: 6, border: "1.5px solid #d0d0c8" }}>
+                    {Object.values(ROLES).map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                  </select>
+                  <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => activatePending(p)}>Activate</button>
+                  <div style={{ fontSize: 11, color: "#aaa" }}>Requested: {p.requestedAt ? new Date(p.requestedAt).toLocaleDateString("en-GB") : "—"}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
         <button className="btn btn-primary" onClick={openCreate}>+ Add user</button>

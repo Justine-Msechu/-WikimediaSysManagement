@@ -130,5 +130,14 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if false;
     }
+
+    // ── /pendingActivations ────────────────────────────────────────────────
+    // Logged-in users without a Firestore profile write here so the admin
+    // can see them and complete their account setup without Firebase console.
+    match /pendingActivations/{uid} {
+      allow create: if isAuth() && request.auth.uid == uid;
+      allow read:   if isAuth() && (request.auth.uid == uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
   }
 }

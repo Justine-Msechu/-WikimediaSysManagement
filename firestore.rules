@@ -1,0 +1,134 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── helpers ────────────────────────────────────────────────────────────
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function myRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isAuth() && myRole() == "admin";
+    }
+
+    function isCoordinator() {
+      return isAuth() && myRole() in ["admin", "coordinator"];
+    }
+
+    function isFinance() {
+      return isAuth() && myRole() in ["admin", "finance_officer"];
+    }
+
+    function isAnyStaff() {
+      return isAuth() && myRole() in ["admin", "coordinator", "finance_officer", "viewer"];
+    }
+
+    // ── /users ─────────────────────────────────────────────────────────────
+    // Admins manage all users. Each user can read their own document (so the
+    // app can load role + profile on login). Only admins can write.
+    match /users/{uid} {
+      allow get:    if isAuth() && (request.auth.uid == uid || isAdmin());
+      allow list:   if isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── /settings ──────────────────────────────────────────────────────────
+    // Grant config, org details, report answers. All staff read; only admins write.
+    match /settings/{docId} {
+      allow read:   if isAnyStaff();
+      allow write:  if isAdmin();
+    }
+
+    // ── /metrics ───────────────────────────────────────────────────────────
+    // Target vs result tracking. Coordinators and admins may edit; all staff read.
+    match /metrics/{docId} {
+      allow read:   if isAnyStaff();
+      allow write:  if isCoordinator();
+    }
+
+    // ── /programs ──────────────────────────────────────────────────────────
+    match /programs/{docId} {
+      allow read:   if isAnyStaff();
+      allow write:  if isCoordinator();
+    }
+
+    // ── /activities ────────────────────────────────────────────────────────
+    match /activities/{docId} {
+      allow read:   if isAnyStaff();
+      allow write:  if isCoordinator();
+    }
+
+    // ── /evidence ──────────────────────────────────────────────────────────
+    // Evidence links attached to activities (no file upload — Firestore only).
+    match /evidence/{docId} {
+      allow read:   if isAnyStaff();
+      allow create: if isCoordinator();
+      allow delete: if isCoordinator();
+      allow update: if isCoordinator();
+    }
+
+    // ── /participants ───────────────────────────────────────────────────────
+    // Public registration auto-writes here (create only, no auth).
+    // Coordinators manage the full registry.
+    match /participants/{docId} {
+      allow read:   if isAnyStaff();
+      allow create: if true;   // public registration pathway
+      allow update: if isCoordinator();
+      allow delete: if isCoordinator();
+    }
+
+    // ── /registrationForms ─────────────────────────────────────────────────
+    // Coordinators create and manage forms.
+    // Public can read a specific form document (needed to render the public page).
+    match /registrationForms/{formId} {
+      allow get:    if true;          // public needs to load form definition
+      allow list:   if isAnyStaff();
+      allow create: if isCoordinator();
+      allow update: if isCoordinator();
+      allow delete: if isCoordinator();
+    }
+
+    // ── /registrations ─────────────────────────────────────────────────────
+    // Public submits registrations (no auth). Staff reads and marks attendance.
+    match /registrations/{docId} {
+      allow create: if true;          // unauthenticated public submission
+      allow read:   if isAnyStaff();
+      allow update: if isCoordinator();  // attendance marking
+      allow delete: if isAdmin();
+    }
+
+    // ── /budgetEntries ─────────────────────────────────────────────────────
+    // Finance officers and admins manage budget; coordinators read.
+    // Approval status change restricted to finance + admin (enforced by the
+    // app layer; Firestore rules grant write to isFinance).
+    match /budgetEntries/{docId} {
+      allow read:   if isAnyStaff();
+      allow create: if isFinance() || isCoordinator();
+      allow update: if isFinance() || isCoordinator();
+      allow delete: if isFinance();
+    }
+
+    // ── /risks ─────────────────────────────────────────────────────────────
+    match /risks/{docId} {
+      allow read:   if isAnyStaff();
+      allow write:  if isCoordinator();
+    }
+
+    // ── /auditLogs ─────────────────────────────────────────────────────────
+    // Any authenticated user (or the app itself) may append an audit record.
+    // Only admins may read the log. Nobody deletes audit records.
+    match /auditLogs/{docId} {
+      allow create: if isAuth();
+      allow read:   if isAdmin();
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}

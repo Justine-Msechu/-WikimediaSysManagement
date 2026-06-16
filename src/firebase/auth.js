@@ -7,10 +7,12 @@ import {
   setPersistence,
   updatePassword,
   createUserWithEmailAndPassword,
+  getAuth,
   reauthenticateWithCredential,
   EmailAuthProvider,
 } from "firebase/auth";
-import { auth } from "./config";
+import { initializeApp, getApps } from "firebase/app";
+import { auth, firebaseConfig } from "./config";
 
 export async function login(email, password, rememberMe = false) {
   const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
@@ -26,8 +28,19 @@ export async function sendReset(email) {
   return sendPasswordResetEmail(auth, email);
 }
 
+// Creates a Firebase Auth user WITHOUT signing the current admin out.
+// Uses a temporary secondary app instance so the main auth session is untouched.
 export async function createAuthUser(email, password) {
-  return createUserWithEmailAndPassword(auth, email, password);
+  const secondaryApp  = initializeApp(firebaseConfig, `reg-${Date.now()}`);
+  const secondaryAuth = getAuth(secondaryApp);
+  try {
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    await signOut(secondaryAuth);
+    return cred;
+  } catch (err) {
+    await signOut(secondaryAuth).catch(() => {});
+    throw err;
+  }
 }
 
 export async function changePassword(currentPassword, newPassword) {

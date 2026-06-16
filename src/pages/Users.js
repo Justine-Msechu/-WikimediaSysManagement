@@ -7,7 +7,7 @@ function RoleBadge({ role }) {
   return <span style={{ fontSize: 11, fontWeight: 600, color: ROLE_COLORS[role] || "#888", background: (ROLE_COLORS[role] || "#888") + "18", border: `1px solid ${(ROLE_COLORS[role] || "#888")}33`, borderRadius: 5, padding: "2px 8px" }}>{ROLE_LABELS[role] || role}</span>;
 }
 
-const EMPTY_FORM = { name: "", email: "", role: "coordinator", password: "", confirm: "" };
+const EMPTY_FORM = { name: "", email: "", role: "coordinator" };
 
 export default function Users({ profile }) {
   const [users,     setUsers]     = useState([]);
@@ -30,15 +30,13 @@ export default function Users({ profile }) {
     setError("");
     if (!form.name.trim())  { setError("Name is required.");  return; }
     if (!form.email.trim()) { setError("Email is required."); return; }
-    if (!editId && !form.password) { setError("Password is required for new users."); return; }
-    if (form.password && form.password !== form.confirm) { setError("Passwords do not match."); return; }
-    if (form.password && form.password.length < 6) { setError("Password must be at least 6 characters."); return; }
+    if (!form.email.includes("@")) { setError("Enter a valid email address."); return; }
     setBusy(true);
     try {
       if (!editId) {
-        const uid = await createUser(form.email.trim().toLowerCase(), form.password, { name: form.name.trim(), role: form.role });
+        const uid = await createUser(form.email.trim().toLowerCase(), null, { name: form.name.trim(), role: form.role });
         await addAudit(profile, AUDIT_ACTIONS.CREATE, "users", { targetId: uid, recordTitle: form.name, details: `Created user: ${form.name} (${ROLE_LABELS[form.role]})` });
-        showToast(`User ${form.name} created.`);
+        showToast(`Account created. A password-setup email has been sent to ${form.email.trim()}.`);
       } else {
         await updateUser(editId, { name: form.name.trim(), role: form.role });
         await addAudit(profile, AUDIT_ACTIONS.UPDATE, "users", { targetId: editId, recordTitle: form.name, details: `Updated user: ${form.name}` });
@@ -85,8 +83,13 @@ export default function Users({ profile }) {
         <div className="panel" style={{ border: "2px solid #4a9e6b", marginBottom: 20 }}>
           <div className="panel-title">{editId ? "Edit user" : "New user"}</div>
           {error && <div className="auth-error" style={{ marginBottom: 12 }}>{error}</div>}
+          {!editId && (
+            <div style={{ background: "#f0f7f3", border: "1px solid #b7e0c8", borderRadius: 7, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "#2d7a4f" }}>
+              The new user will receive an email with a link to set their own password. You do not need to create one for them.
+            </div>
+          )}
           <div className="form-grid">
-            <div className="field"><label>Full name <span className="req">★</span></label><input value={form.name} onChange={e => setF("name", e.target.value)} placeholder="Jane Doe" /></div>
+            <div className="field"><label>Full name <span className="req">★</span></label><input value={form.name} onChange={e => setF("name", e.target.value)} placeholder="Jane Doe" autoFocus /></div>
             <div className="field"><label>Email {!editId && <span className="req">★</span>}</label><input type="email" value={form.email} onChange={e => setF("email", e.target.value)} disabled={!!editId} placeholder="jane@example.com" /></div>
             <div className="field"><label>Role</label>
               <select value={form.role} onChange={e => setF("role", e.target.value)}>
@@ -94,12 +97,6 @@ export default function Users({ profile }) {
               </select>
             </div>
           </div>
-          {!editId && (
-            <div className="form-grid">
-              <div className="field"><label>Password <span className="req">★</span></label><input type="password" value={form.password} onChange={e => setF("password", e.target.value)} placeholder="Min. 6 characters" /></div>
-              <div className="field"><label>Confirm password</label><input type="password" value={form.confirm} onChange={e => setF("confirm", e.target.value)} placeholder="Repeat password" /></div>
-            </div>
-          )}
           <div className="btn-row">
             <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
             <button className="btn" onClick={() => setShowForm(false)}>Cancel</button>

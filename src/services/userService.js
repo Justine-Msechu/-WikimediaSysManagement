@@ -2,7 +2,7 @@ import {
   getDocument, setDocument, updateDocument,
   deleteDocument, listenCollection, getCollection,
 } from "../firebase/firestore";
-import { createAuthUser } from "../firebase/auth";
+import { createAuthUser, sendReset } from "../firebase/auth";
 import { serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { doc, setDoc } from "firebase/firestore";
@@ -40,15 +40,22 @@ export function canEdit(profile) {
   return profile?.role === "admin" || profile?.role === "coordinator";
 }
 
-export async function createUser(email, password, userData) {
-  const cred = await createAuthUser(email, password);
+function randomTempPassword() {
+  return Math.random().toString(36).slice(2, 10) + "Wk1!";
+}
+
+export async function createUser(email, _ignored, userData) {
+  const tempPwd = randomTempPassword();
+  const cred    = await createAuthUser(email, tempPwd);
   await setDoc(doc(db, "users", cred.user.uid), {
     ...userData,
     email,
-    isActive: true,
+    isActive:  true,
     createdAt: serverTimestamp(),
     lastLogin: null,
   });
+  // Send reset email so the new user sets their own password — admin never sees it
+  await sendReset(email);
   return cred.user.uid;
 }
 

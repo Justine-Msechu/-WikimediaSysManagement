@@ -3,7 +3,7 @@ import {
   listenCollection, getCollection, getDocument,
 } from "../firebase/firestore";
 import { where, orderBy } from "firebase/firestore";
-import { addParticipant, getParticipants } from "./participantService";
+import { addParticipant } from "./participantService";
 
 // ── Registration forms ─────────────────────────────────────────────────────────
 
@@ -57,22 +57,18 @@ export async function submitRegistration(formId, regData) {
     attendance: "",
   });
 
-  // Auto-add to participants (deduplicate by email)
+  // Auto-add to participants (no auth required — dedup handled by coordinators)
   if (regData.email) {
-    const existing = await getParticipants();
-    const emailSet = new Set(existing.map(p => (p.email || "").toLowerCase()));
-    if (!emailSet.has(regData.email.toLowerCase())) {
-      await addParticipant({
-        name:              regData.name,
-        wikimediaUsername: regData.wikimediaUsername || "",
-        email:             regData.email,
-        phone:             regData.phone || "",
-        gender:            regData.gender || "",
-        region:            "",
-        source:            "self-registered",
-        registeredViaForm: formId,
-      });
-    }
+    await addParticipant({
+      name:              regData.name,
+      wikimediaUsername: regData.wikimediaUsername || "",
+      email:             regData.email,
+      phone:             regData.phone || "",
+      gender:            regData.gender || "",
+      region:            "",
+      source:            "self-registered",
+      registeredViaForm: formId,
+    });
   }
 
   return regId;

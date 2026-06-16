@@ -103,7 +103,8 @@ export default function Programs({ profile }) {
   };
 
   const isAdmin = profile?.role === "admin";
-  const canEditProgram = (p) => isAdmin || (canEdit && p.status !== "approved" && p.status !== "submitted");
+  const isDraft = (p) => !p.status || p.status === "draft";
+  const canEditProgram = (p) => isAdmin || (canEdit && isDraft(p));
 
   const statsFor = (pid) => {
     const acts = activities.filter(a => a.programId === pid);
@@ -246,7 +247,9 @@ export default function Programs({ profile }) {
                       <span style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</span>
                       {(() => {
                         const s = STATUS_BADGE[p.status] || STATUS_BADGE.draft;
-                        return <span style={{ fontSize: 10, fontWeight: 700, color: s.color, background: s.bg, border: `1px solid ${s.color}33`, borderRadius: 5, padding: "2px 8px" }}>{s.label}</span>;
+                        if (p.status === "approved") return <span style={{ fontSize: 10, fontWeight: 700, color: s.color, background: s.bg, border: `1px solid ${s.color}33`, borderRadius: 5, padding: "2px 8px" }}>{s.label}</span>;
+                        if (p.status === "submitted") return <span style={{ fontSize: 10, fontWeight: 700, color: s.color, background: s.bg, border: `1px solid ${s.color}33`, borderRadius: 5, padding: "2px 8px" }}>{s.label}</span>;
+                        return null; // don't show "Draft" badge to keep cards clean
                       })()}
                     </div>
                     <div style={{ fontSize: 11, color: p.color || "#4a9e6b", fontWeight: 600, marginBottom: 4 }}>{p.category}</div>
@@ -269,12 +272,12 @@ export default function Programs({ profile }) {
                         {isExp ? "Hide budget" : "View budget"}
                       </button>
                     )}
-                    {/* Submit for approval — only draft programs with budget items */}
-                    {canEdit && p.status === "draft" && (p.budgetItems?.length > 0) && (
+                    {/* Submit for approval — draft (or no status) programs with budget items */}
+                    {canEdit && (!p.status || p.status === "draft") && (p.budgetItems?.length > 0) && (
                       <button className="btn btn-sm btn-primary" onClick={() => submit(p)}>Submit for approval</button>
                     )}
                     {canEditProgram(p) && <button className="btn btn-sm" onClick={() => openEdit(p)}>Edit</button>}
-                    {canEditProgram(p) && p.status === "draft" && <button className="btn btn-sm btn-danger" onClick={() => del(p)}>✕</button>}
+                    {canEditProgram(p) && (!p.status || p.status === "draft") && <button className="btn btn-sm btn-danger" onClick={() => del(p)}>✕</button>}
                   </div>
                 </div>
 

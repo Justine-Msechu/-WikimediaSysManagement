@@ -4,6 +4,8 @@ import {
 } from "../services/budgetService";
 import { listenPrograms, approveProgram, rejectProgram } from "../services/programService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import { notifyDecision } from "../services/notificationService";
+import { addComment, listenComments, ROLE_COLOR } from "../services/commentService";
 
 const EXPENSE_TYPE_MAP = {
   "Food and drinks":   "Food & refreshments",
@@ -77,6 +79,7 @@ export default function Review({ profile, goPage }) {
       targetId: p.id, recordTitle: p.name,
       details: `${items.length} budget line items created as approved expenses`,
     });
+    notifyDecision({ recipientRole: "coordinator", itemType: "Program", itemTitle: p.name, decision: "approved" }).catch(() => {});
     showToast(`"${p.name}" approved: ${items.length} expense ${items.length === 1 ? "entry" : "entries"} created.`);
     setProgReviewId(null); setProgReviewComment("");
   };
@@ -84,6 +87,7 @@ export default function Review({ profile, goPage }) {
   const rejectProgram_ = async (p, comment) => {
     await rejectProgram(p.id, comment);
     await addAudit(profile, AUDIT_ACTIONS.REJECT, "programs", { targetId: p.id, recordTitle: p.name, details: comment });
+    notifyDecision({ recipientRole: "coordinator", itemType: "Program", itemTitle: p.name, decision: "returned for revision", comment }).catch(() => {});
     showToast(`"${p.name}" returned for revision.`);
     setProgReviewId(null); setProgReviewComment("");
   };
@@ -99,6 +103,7 @@ export default function Review({ profile, goPage }) {
     await addAudit(profile, ok ? AUDIT_ACTIONS.APPROVE : AUDIT_ACTIONS.REJECT, "budget", {
       targetId: entry.id, recordTitle: entry.title, details: comment || status,
     });
+    notifyDecision({ recipientRole: "coordinator", itemType: "Budget entry", itemTitle: entry.title, decision: status, comment }).catch(() => {});
     showToast(ok ? "Entry approved." : "Entry rejected.");
     setReviewId(null); setReviewComment("");
   };

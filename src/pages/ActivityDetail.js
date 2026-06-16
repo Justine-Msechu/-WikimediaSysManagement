@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { getActivity } from "../services/activityService";
 import { listenEvidence } from "../services/activityService";
 import { getProgramById } from "../services/programService";
 import { addEvidenceLink, removeEvidenceLink, EVIDENCE_TYPES } from "../services/storageService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import { addComment, listenComments, ROLE_COLOR } from "../services/commentService";
+import { uploadFile, deleteFile, activityFilePath, fileIcon } from "../services/fileService";
 import logo from "../assets/logo.png";
 
 function buildReport(a, programName) {
@@ -15,13 +17,14 @@ function buildReport(a, programName) {
     `Type:        ${a.type || ""}`,
     `Program:     ${programName || ""}`,
     `Reported by: ${a.reportedBy || ""}`,
+    `Assigned to: ${a.assignedTo || ""}`,
     "",
     "PARTICIPATION",
     "-".repeat(40),
     `Total participants:  ${a.participants ?? ""}`,
     `Women:               ${a.women ?? ""}`,
     `New editors:         ${a.newEditors ?? ""}`,
-    `Youth (≤25):         ${a.youth ?? ""}`,
+    `Youth (<=25):        ${a.youth ?? ""}`,
     `Persons w/ disab.:   ${a.pwd ?? ""}`,
     "",
     "CONTENT CONTRIBUTIONS",
@@ -48,17 +51,188 @@ function buildReport(a, programName) {
   return lines.join("\n");
 }
 
-const ICON = {
-  "Photo / gallery link":     "🖼",
-  "Video link":               "🎥",
-  "Attendance sheet":         "📋",
-  "Report document":          "📄",
-  "Outreach Dashboard link":  "📊",
-  "Meta-Wiki page":           "🌐",
-  "Other":                    "🔗",
+const LINK_ICON = {
+  "Photo / gallery link":    "🖼",
+  "Video link":              "🎥",
+  "Attendance sheet":        "📋",
+  "Report document":         "📄",
+  "Outreach Dashboard link": "📊",
+  "Meta-Wiki page":          "🌐",
+  "Other":                   "🔗",
 };
 
 const EMPTY_LINK = { url: "", title: "", evidenceType: EVIDENCE_TYPES[0], description: "" };
+
+function CommentsPanel({ docType, docId, profile }) {
+  const [comments,    setComments]    = useState([]);
+  const [text,        setText]        = useState("");
+  const [busy,        setBusy]        = useState(false);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    return listenComments(docType, docId, setComments);
+  }, [docType, docId]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [comments]);
+
+  const submit = async () => {
+    if (!text.trim()) return;
+    setBusy(true);
+    try {
+      await addComment(docType, docId, { text, author: profile?.name || "Unknown", authorRole: profile?.role || "viewer" });
+      setText("");
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fmt = (iso) => {
+    if (!iso) return "";
+    try {
+      const d = iso?.toDate ? iso.toDate() : new Date(iso);
+      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) + " " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    } catch { return ""; }
+  };
+
+  return (
+    <div className="panel" style={{ marginTop: 20 }}>
+      <div className="panel-title">Comments ({comments.length})</div>
+      <div style={{ maxHeight: 320, overflowY: "auto", marginBottom: 12 }}>
+        {comments.length === 0 && (
+          <div style={{ color: "#aaa", fontSize: 13, padding: "8px 0" }}>No comments yet. Be the first to add one.</div>
+        )}
+        {comments.map(c => (
+          <div key={c.id} style={{ marginBottom: 12, display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: ROLE_COLOR[c.authorRole] || "#888", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+              {(c.author || "?")[0].toUpperCase()}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, marginBottom: 3 }}>
+                <span style={{ fontWeight: 600, color: ROLE_COLOR[c.authorRole] || "#333" }}>{c.author}</span>
+                <span style={{ color: "#aaa", marginLeft: 8 }}>{fmt(c.createdAt)}</span>
+              </div>
+              <div style={{ fontSize: 13, color: "#333", background: "#f5f4f0", borderRadius: 8, padding: "8px 12px", lineHeight: 1.5 }}>{c.text}</div>
+            </div>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
+          placeholder="Write a comment… (Enter to send, Shift+Enter for new line)"
+          rows={2}
+          style={{ flex: 1, resize: "none", fontSize: 13 }}
+        />
+        <button className="btn btn-primary btn-sm" onClick={submit} disabled={busy || !text.trim()} style={{ alignSelf: "flex-end" }}>
+          {busy ? "…" : "Send"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FileUploadPanel({ activityId, canEdit, profile }) {
+  const [uploads,   setUploads]   = useState([]);
+  const [progress,  setProgress]  = useState(null);
+  const [busy,      setBusy]      = useState(false);
+  const inputRef = useRef(null);
+
+  // Persist uploaded files in component state (could be moved to Firestore subcollection in the future)
+  const STORAGE_KEY = `uploads_${activityId}`;
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      setUploads(saved);
+    } catch { setUploads([]); }
+  }, [STORAGE_KEY]);
+
+  const persist = (list) => {
+    setUploads(list);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  };
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    setProgress(0);
+    try {
+      const path = activityFilePath(activityId, file.name);
+      const { url, storagePath } = await uploadFile(file, path, setProgress);
+      const record = {
+        id:          Date.now().toString(),
+        name:        file.name,
+        type:        file.type,
+        size:        file.size,
+        url,
+        storagePath,
+        uploadedBy:  profile?.name || "",
+        uploadedAt:  new Date().toISOString(),
+      };
+      persist([...uploads, record]);
+    } catch (err) {
+      alert(err.message || "Upload failed.");
+    } finally {
+      setBusy(false);
+      setProgress(null);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  const remove = async (rec) => {
+    if (!window.confirm(`Remove "${rec.name}"?`)) return;
+    await deleteFile(rec.storagePath);
+    persist(uploads.filter(u => u.id !== rec.id));
+  };
+
+  const fmtSize = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${(b / 1024).toFixed(0)} KB`;
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div style={{ fontWeight: 600, fontSize: 13, color: "#555" }}>Uploaded files</div>
+        {canEdit && (
+          <>
+            <button className="btn btn-sm btn-primary" onClick={() => inputRef.current?.click()} disabled={busy}>
+              {busy ? `Uploading ${progress ?? 0}%…` : "+ Upload file"}
+            </button>
+            <input ref={inputRef} type="file" style={{ display: "none" }} onChange={handleFile} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" />
+          </>
+        )}
+      </div>
+      {progress !== null && (
+        <div style={{ background: "#e8e8e4", borderRadius: 4, height: 6, marginBottom: 10, overflow: "hidden" }}>
+          <div style={{ width: `${progress}%`, height: 6, background: "#4a9e6b", transition: "width 0.2s" }} />
+        </div>
+      )}
+      {uploads.length === 0 ? (
+        <div style={{ color: "#aaa", fontSize: 12 }}>No files uploaded yet.{canEdit ? " Max 10 MB per file." : ""}</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {uploads.map(u => (
+            <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "#f5f4f0", borderRadius: 7, border: "1px solid #e8e8e4" }}>
+              <span style={{ fontSize: 18 }}>{fileIcon(u.type)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</div>
+                <div style={{ fontSize: 11, color: "#888" }}>{fmtSize(u.size)} · Uploaded by {u.uploadedBy}</div>
+              </div>
+              <a href={u.url} target="_blank" rel="noreferrer" className="btn btn-sm">Download</a>
+              {canEdit && <button className="btn btn-sm btn-danger" onClick={() => remove(u)}>Remove</button>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ActivityDetail({ activityId, profile, goPage }) {
   const [activity, setActivity] = useState(null);
@@ -146,11 +320,14 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
               {activity.date} · {activity.type} · {activity.location || "Location not set"}
               {program && <span> · <span style={{ color: "#4a9e6b" }}>{program.name}</span></span>}
             </div>
-            {activity.reportedBy && <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>Reported by: {activity.reportedBy}</div>}
+            <div style={{ fontSize: 12, color: "#888", marginTop: 4, display: "flex", gap: 16, flexWrap: "wrap" }}>
+              {activity.reportedBy && <span>Reported by: <strong>{activity.reportedBy}</strong></span>}
+              {activity.assignedTo && <span>Assigned to: <strong style={{ color: "#2d7a4f" }}>{activity.assignedTo}</strong></span>}
+            </div>
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-          {activity.link        && <a href={activity.link}        target="_blank" rel="noreferrer" className="btn btn-sm">Open Meta-Wiki report →</a>}
+          {activity.link         && <a href={activity.link}         target="_blank" rel="noreferrer" className="btn btn-sm">Open Meta-Wiki report →</a>}
           {activity.wikiEventUrl && <a href={activity.wikiEventUrl} target="_blank" rel="noreferrer" className="btn btn-sm">Open WEP event →</a>}
         </div>
       </div>
@@ -182,15 +359,11 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
         </div>
       </div>
 
-      {/* Evidence links */}
+      {/* Evidence links + File uploads */}
       <div className="panel">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div className="panel-title" style={{ marginBottom: 0 }}>Evidence &amp; links</div>
+          <div className="panel-title" style={{ marginBottom: 0 }}>Evidence &amp; files</div>
           {canEdit && <button className="btn btn-sm btn-primary" onClick={() => setShowAdd(s => !s)}>+ Add link</button>}
-        </div>
-
-        <div style={{ fontSize: 12, color: "#888", marginBottom: 12 }}>
-          Paste links to photos, reports, or spreadsheets stored on Google Drive, Dropbox, Meta-Wiki, or any public URL.
         </div>
 
         {showAdd && (
@@ -218,13 +391,13 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
           </div>
         )}
 
-        {evidence.length === 0 ? (
-          <div className="empty">No evidence links yet.{canEdit ? " Click '+ Add link' to attach a Google Drive folder, report, or photo gallery." : ""}</div>
+        {evidence.length === 0 && !showAdd ? (
+          <div className="empty" style={{ marginBottom: 16 }}>No evidence links yet.</div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
             {evidence.map(ev => (
               <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "#f9f9f7", borderRadius: 8, border: "1px solid #e8e8e4" }}>
-                <div style={{ fontSize: 22, flexShrink: 0 }}>{ICON[ev.evidenceType] || "🔗"}</div>
+                <div style={{ fontSize: 22, flexShrink: 0 }}>{LINK_ICON[ev.evidenceType] || "🔗"}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 500, fontSize: 13 }}>{ev.title || ev.url}</div>
                   <div style={{ fontSize: 11, color: "#888" }}>
@@ -239,7 +412,12 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
             ))}
           </div>
         )}
+
+        <FileUploadPanel activityId={activityId} canEdit={canEdit} profile={profile} />
       </div>
+
+      {/* Comments — open to all roles including viewer */}
+      <CommentsPanel docType="activity" docId={activityId} profile={profile} />
     </div>
   );
 }

@@ -144,5 +144,22 @@ service cloud.firestore {
       allow read:   if isAuth() && (request.auth.uid == uid || isAdmin());
       allow update, delete: if isAdmin();
     }
+
+    // ── /notifications ─────────────────────────────────────────────────────────
+    match /notifications/{docId} {
+      allow read:   if isAnyStaff();
+      allow create: if isAnyStaff();
+      allow update: if isAnyStaff();
+      allow delete: if isAdmin();
+    }
+
+    // ── /comments ──────────────────────────────────────────────────────────────
+    // Viewers can post and read comments (their only write permission).
+    match /comments/{docId} {
+      allow read:   if isAnyStaff();
+      allow create: if isAnyStaff();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
   }
 }

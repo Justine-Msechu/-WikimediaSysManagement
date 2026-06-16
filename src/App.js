@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { logout } from "./firebase/auth";
 import { addAudit, AUDIT_ACTIONS } from "./services/auditService";
 import { ROLE_LABELS, ROLE_COLORS } from "./services/userService";
+import { listenNotifications, markAllRead } from "./services/notificationService";
 
 import Login         from "./pages/Login";
 import Dashboard     from "./pages/Dashboard";
@@ -89,21 +90,33 @@ function AppShell() {
   }
 
   const role = profile.role;
-  const [budgetEntries,  setBudgetEntries]  = React.useState([]);
-  const [reviewPrograms, setReviewPrograms] = React.useState([]);
+  const [budgetEntries,   setBudgetEntries]   = React.useState([]);
+  const [reviewPrograms,  setReviewPrograms]  = React.useState([]);
+  const [notifications,   setNotifications]   = React.useState([]);
+  const [showNotifPanel,  setShowNotifPanel]  = React.useState(false);
+
   React.useEffect(() => {
     const { listenBudgetEntries } = require("./services/budgetService");
     const { listenPrograms }      = require("./services/programService");
     const u1 = listenBudgetEntries(setBudgetEntries);
     const u2 = listenPrograms(setReviewPrograms);
-    return () => { u1(); u2(); };
-  }, []);
+    const u3 = listenNotifications(role, setNotifications);
+    return () => { u1(); u2(); u3(); };
+  }, [role]);
+
   const pendingBudget   = budgetEntries.filter(e => e.status === "submitted").length;
   const pendingPrograms = reviewPrograms.filter(p => p.status === "submitted").length;
   const myDraftCount    = budgetEntries.filter(e => e.status === "draft" && e.requestedBy === profile?.name).length;
   const reviewBadge     = ["admin","finance_officer"].includes(role)
     ? pendingBudget + pendingPrograms
     : myDraftCount + pendingPrograms;
+
+  const unreadNotifs  = notifications.filter(n => !n.read);
+  const markAllAsRead = () => {
+    const ids = unreadNotifs.map(n => n.id);
+    if (ids.length) markAllRead(ids).catch(() => {});
+    setShowNotifPanel(false);
+  };
 
   const handleLogout = async () => {
     await addAudit(profile, AUDIT_ACTIONS.LOGOUT, "auth", { details: "Signed out" });
@@ -175,6 +188,42 @@ function AppShell() {
         </nav>
 
         <div className="sidebar-footer">
+          {/* Notification bell */}
+          <div style={{ position: "relative", marginBottom: 10 }}>
+            <button
+              onClick={() => setShowNotifPanel(v => !v)}
+              style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "#ccc", fontSize: 12, cursor: "pointer", padding: "6px 10px", display: "flex", alignItems: "center", gap: 8 }}
+            >
+              <span style={{ fontSize: 16 }}>🔔</span>
+              <span>Notifications</span>
+              {unreadNotifs.length > 0 && (
+                <span style={{ marginLeft: "auto", background: "#c0392b", color: "#fff", borderRadius: 10, padding: "1px 7px", fontSize: 10, fontWeight: 700 }}>{unreadNotifs.length}</span>
+              )}
+            </button>
+            {showNotifPanel && (
+              <div style={{ position: "absolute", bottom: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #e8e8e4", borderRadius: 10, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", zIndex: 1000, maxHeight: 320, overflowY: "auto", marginBottom: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderBottom: "1px solid #f0f0ec" }}>
+                  <span style={{ fontWeight: 600, fontSize: 13, color: "#1c2b1e" }}>Notifications</span>
+                  {unreadNotifs.length > 0 && <button onClick={markAllAsRead} style={{ fontSize: 11, color: "#4a9e6b", background: "none", border: "none", cursor: "pointer" }}>Mark all read</button>}
+                </div>
+                {notifications.length === 0 ? (
+                  <div style={{ padding: "16px 14px", color: "#aaa", fontSize: 13 }}>No notifications yet.</div>
+                ) : (
+                  notifications.slice(0, 20).map(n => (
+                    <div
+                      key={n.id}
+                      onClick={() => { if (n.link) { goPage(n.link); } setShowNotifPanel(false); if (!n.read) markAllRead([n.id]).catch(() => {}); }}
+                      style={{ padding: "10px 14px", borderBottom: "1px solid #f5f4f0", cursor: n.link ? "pointer" : "default", background: n.read ? "#fff" : "#f0f7f3" }}
+                    >
+                      <div style={{ fontWeight: n.read ? 400 : 600, fontSize: 13, color: "#1c2b1e", marginBottom: 2 }}>{n.title}</div>
+                      <div style={{ fontSize: 12, color: "#666", lineHeight: 1.4 }}>{n.body}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="role-badge-block">
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
               <span className="role-dot" style={{ background: roleColor }} />

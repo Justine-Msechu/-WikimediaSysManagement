@@ -7,6 +7,7 @@ import {
 import { listenSettings, updateSettings } from "../services/settingsService";
 import { listenPrograms } from "../services/programService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import { notifySubmission } from "../services/notificationService";
 import logo from "../assets/logo.png";
 
 function fmt(n)    { return (n || 0).toLocaleString(); }
@@ -205,6 +206,7 @@ export default function Budget({ profile }) {
     if (!editId) {
       const id = await addBudgetEntry(data);
       await addAudit(profile, submit ? AUDIT_ACTIONS.SUBMIT : AUDIT_ACTIONS.CREATE, "budget", { targetId: id, recordTitle: form.title, details: `TZS ${fmt(form.amount)}, ${form.category}` });
+      if (submit) notifySubmission({ submitterName: profile?.name || "A coordinator", itemType: "Budget entry", itemTitle: form.title, itemId: id }).catch(() => {});
       showToast(submit ? "Entry submitted for approval." : "Entry created.");
     } else {
       await updateBudgetEntry(editId, data);

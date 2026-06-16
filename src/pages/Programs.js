@@ -3,6 +3,7 @@ import { listenPrograms, addProgram, updateProgram, deleteProgram, submitProgram
 import { listenActivities } from "../services/activityService";
 import { listenSettings } from "../services/settingsService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import { notifySubmission } from "../services/notificationService";
 
 const STATUS_BADGE = {
   draft:     { label: "Draft",            color: "#2563eb", bg: "#eff6ff" },
@@ -99,6 +100,7 @@ export default function Programs({ profile }) {
     if (!window.confirm(`Submit "${p.name}" for approval? You will not be able to edit it until it is reviewed.`)) return;
     await submitProgram(p.id, profile?.name || "");
     await addAudit(profile, AUDIT_ACTIONS.SUBMIT, "programs", { targetId: p.id, recordTitle: p.name });
+    notifySubmission({ submitterName: profile?.name || "A coordinator", itemType: "Program", itemTitle: p.name, itemId: p.id }).catch(() => {});
     showToast(`"${p.name}" submitted for approval.`);
   };
 

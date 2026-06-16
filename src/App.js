@@ -100,7 +100,7 @@ function AppShell() {
     const { listenPrograms }      = require("./services/programService");
     const u1 = listenBudgetEntries(setBudgetEntries);
     const u2 = listenPrograms(setReviewPrograms);
-    const u3 = listenNotifications(role, setNotifications);
+    const u3 = listenNotifications(role, profile?.name || "", setNotifications);
     return () => { u1(); u2(); u3(); };
   }, [role]);
 

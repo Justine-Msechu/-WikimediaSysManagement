@@ -4,6 +4,7 @@ import { listenPrograms } from "../services/programService";
 import { listenSettings } from "../services/settingsService";
 import { listenUsers } from "../services/userService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import { notifyAssignment } from "../services/notificationService";
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
@@ -101,10 +102,19 @@ export default function Activities({ profile, goPage }) {
     if (!editId) {
       const id = await addActivity(data);
       await addAudit(profile, AUDIT_ACTIONS.CREATE, "activities", { targetId: id, recordTitle: form.name });
+      // Notify the assigned person if they are not the one creating the activity
+      if (form.assignedTo && form.assignedTo !== profile?.name) {
+        notifyAssignment({ assignedTo: form.assignedTo, activityName: form.name, assignedBy: profile?.name || "Admin" }).catch(() => {});
+      }
       showToast("Activity logged.");
     } else {
+      const prev = activities.find(a => a.id === editId);
       await updateActivity(editId, data);
       await addAudit(profile, AUDIT_ACTIONS.UPDATE, "activities", { targetId: editId, recordTitle: form.name });
+      // Notify if the assignee changed to someone other than the editor
+      if (form.assignedTo && form.assignedTo !== prev?.assignedTo && form.assignedTo !== profile?.name) {
+        notifyAssignment({ assignedTo: form.assignedTo, activityName: form.name, assignedBy: profile?.name || "Admin" }).catch(() => {});
+      }
       showToast("Activity updated.");
     }
     setShowForm(false);

@@ -18,8 +18,9 @@ function sanitizeWikiUsername(v) {
   s = s.replace(/^User:/i, "");
   // Decode URI encoding
   try { s = decodeURIComponent(s); } catch (_) {}
-  // Replace underscores with spaces
-  s = s.replace(/_/g, " ").trim();
+  // Replace underscores with spaces; trimStart only so trailing spaces aren't
+  // eaten while the user is still typing (e.g. "Justine Msechu")
+  s = s.replace(/_/g, " ").trimStart();
   return s;
 }
 
@@ -108,8 +109,8 @@ export default function PublicRegister({ formId }) {
 
   const submit = async (e) => {
     e.preventDefault();
-    // Re-sanitize at submit time to catch browser autofill bypassing onChange
-    const cleanUsername = sanitizeWikiUsername(vals.wikimediaUsername);
+    // Re-sanitize at submit time (catches autofill) and fully trim
+    const cleanUsername = sanitizeWikiUsername(vals.wikimediaUsername).trim();
     setVals(v => ({ ...v, wikimediaUsername: cleanUsername }));
 
     const newErrors = {

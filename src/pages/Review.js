@@ -1,9 +1,20 @@
 import React, { useState, useEffect } from "react";
 import {
-  listenBudgetEntries, updateBudgetEntry, BUDGET_STATUS_BADGE,
+  listenBudgetEntries, updateBudgetEntry, addBudgetEntry, BUDGET_STATUS_BADGE,
 } from "../services/budgetService";
 import { listenPrograms, approveProgram, rejectProgram } from "../services/programService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+
+const EXPENSE_TYPE_MAP = {
+  "Food and drinks":   "Food & refreshments",
+  "Venue / Room Hire": "Venue rentals",
+  "Transport":         "Local transportation",
+  "Facilitators":      "Volunteer support",
+  "Equipment":         "Office expenses",
+  "Materials":         "Office expenses",
+  "Internet/Supplies": "Internet & computers",
+  "Bank charges":      "Bank fees",
+};
 
 function fmt(n) { return (n || 0).toLocaleString(); }
 
@@ -40,8 +51,33 @@ export default function Review({ profile, goPage }) {
 
   const approveProgram_ = async (p) => {
     await approveProgram(p.id, profile?.name || "");
-    await addAudit(profile, AUDIT_ACTIONS.APPROVE, "programs", { targetId: p.id, recordTitle: p.name });
-    showToast(`"${p.name}" approved and locked.`);
+
+    // Create an approved budget entry for each line item
+    const today = new Date().toISOString().slice(0, 10);
+    const items = p.budgetItems || [];
+    for (const it of items) {
+      const amount = (Number(it.unitCost) || 0) * (Number(it.quantity) || 1);
+      await addBudgetEntry({
+        title:           it.description || p.name,
+        description:     it.note || "",
+        category:        EXPENSE_TYPE_MAP[it.expenseType] || "Food & refreshments",
+        programId:       p.id,
+        amount,
+        date:            today,
+        requestedBy:     p.submittedBy || "",
+        status:          "approved",
+        reviewedBy:      profile?.name || "",
+        reviewedAt:      today,
+        reviewerComment: "",
+        fromProgramApproval: true,
+      });
+    }
+
+    await addAudit(profile, AUDIT_ACTIONS.APPROVE, "programs", {
+      targetId: p.id, recordTitle: p.name,
+      details: `${items.length} budget line items created as approved expenses`,
+    });
+    showToast(`"${p.name}" approved — ${items.length} expense ${items.length === 1 ? "entry" : "entries"} created.`);
     setProgReviewId(null); setProgReviewComment("");
   };
 

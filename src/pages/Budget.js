@@ -265,6 +265,41 @@ export default function Budget({ profile }) {
     showToast("Monthly plan saved.");
   };
 
+  // ── use-all: bulk-create draft entries from a program's budget items ───────
+  const EXPENSE_TYPE_MAP = {
+    "Food and drinks":  "Food & refreshments",
+    "Venue / Room Hire": "Venue rentals",
+    "Transport":        "Local transportation",
+    "Facilitators":     "Volunteer support",
+    "Equipment":        "Office expenses",
+    "Materials":        "Office expenses",
+    "Internet/Supplies": "Internet & computers",
+    "Bank charges":     "Bank fees",
+  };
+
+  const useAll = async (prog) => {
+    const items = prog.budgetItems || [];
+    if (!items.length) return;
+    if (!window.confirm(`Create ${items.length} draft budget entries for "${prog.name}"?`)) return;
+    const today = new Date().toISOString().slice(0, 10);
+    for (const it of items) {
+      const total = (Number(it.unitCost) || 0) * (Number(it.quantity) || 1);
+      await addBudgetEntry({
+        title:           it.description || "Budget item",
+        description:     it.note || "",
+        category:        EXPENSE_TYPE_MAP[it.expenseType] || "Food & refreshments",
+        programId:       prog.id,
+        amount:          total,
+        date:            today,
+        requestedBy:     profile?.name || "",
+        status:          "draft",
+        reviewerComment: "",
+      });
+    }
+    setForm(null); setEditId(null);
+    showToast(`${items.length} draft entries created for ${prog.name}.`);
+  };
+
   // ── print ─────────────────────────────────────────────────────────────────
   const printBudgets = (subset) => {
     const orgName = settings?.org?.name || "Wikimedians of Kilimanjaro";
@@ -399,15 +434,18 @@ export default function Budget({ profile }) {
                   <div style={{ gridColumn: "1 / -1", background: "#f0f7f3", border: "1px solid #b7e0c8", borderRadius: 8, padding: "12px 14px", marginTop: 4 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: items.length ? 10 : 0, flexWrap: "wrap", gap: 8 }}>
                       <div style={{ fontWeight: 700, fontSize: 13, color: selProg.color || "#2d7a4f" }}>{selProg.name} — budget reference</div>
-                      <div style={{ display: "flex", gap: 16, fontSize: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 12, flexWrap: "wrap" }}>
                         <span>Planned: <strong>TZS {fmt(planned)}</strong></span>
                         <span>Spent: <strong style={{ color: "#c0392b" }}>TZS {fmt(spent)}</strong></span>
                         <span>Remaining: <strong style={{ color: remaining < 0 ? "#c0392b" : "#2d7a4f" }}>TZS {fmt(remaining)}</strong></span>
+                        {items.length > 0 && (
+                          <button className="btn btn-sm btn-primary" onClick={() => useAll(selProg)}>Use all</button>
+                        )}
                       </div>
                     </div>
                     {items.length > 0 && (
                       <>
-                        <div style={{ fontSize: 11, color: "#666", marginBottom: 6 }}>Click a line item to pre-fill the form:</div>
+                        <div style={{ fontSize: 11, color: "#666", marginBottom: 6 }}>Click a line item to pre-fill the form, or click <strong>Use all</strong> to create all as drafts at once:</div>
                         <div style={{ overflowX: "auto" }}>
                           <table style={{ fontSize: 11 }}>
                             <thead>

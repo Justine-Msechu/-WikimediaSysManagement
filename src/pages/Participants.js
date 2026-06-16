@@ -165,13 +165,13 @@ export default function Participants({ profile }) {
             <div className="field"><label>Phone</label><input value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="+255 …" /></div>
             <div className="field"><label>Gender</label>
               <select value={form.gender} onChange={e => setF("gender", e.target.value)}>
-                <option value="">— Not specified —</option>
+                <option value="">(Not specified)</option>
                 {GENDERS.map(g => <option key={g}>{g}</option>)}
               </select>
             </div>
             <div className="field"><label>Region</label>
               <select value={form.region} onChange={e => setF("region", e.target.value)}>
-                <option value="">— Not specified —</option>
+                <option value="">(Not specified)</option>
                 {REGIONS.map(r => <option key={r}>{r}</option>)}
               </select>
             </div>
@@ -197,11 +197,11 @@ export default function Participants({ profile }) {
                 {filtered.map(p => (
                   <tr key={p.id}>
                     <td style={{ fontWeight: 500 }}>{p.name}</td>
-                    <td>{p.wikimediaUsername ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(p.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{p.wikimediaUsername}</a> : "—"}</td>
-                    <td style={{ fontSize: 12, color: "#555" }}>{p.email || "—"}</td>
-                    <td style={{ fontSize: 12 }}>{p.gender || "—"}</td>
-                    <td style={{ fontSize: 12 }}>{p.region || "—"}</td>
-                    <td>{p.isNew ? <span className="badge badge-green">New</span> : "—"}</td>
+                    <td>{p.wikimediaUsername ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(p.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{p.wikimediaUsername}</a> : ""}</td>
+                    <td style={{ fontSize: 12, color: "#555" }}>{p.email || ""}</td>
+                    <td style={{ fontSize: 12 }}>{p.gender || ""}</td>
+                    <td style={{ fontSize: 12 }}>{p.region || ""}</td>
+                    <td>{p.isNew ? <span className="badge badge-green">New</span> : ""}</td>
                     <td>
                       {canEdit && <div style={{ display: "flex", gap: 6 }}>
                         <button className="btn btn-sm" onClick={() => openEdit(p)}>Edit</button>

@@ -8,42 +8,42 @@ import logo from "../assets/logo.png";
 
 function buildReport(a, programName) {
   const lines = [
-    `ACTIVITY REPORT — ${(a.name || "").toUpperCase()}`,
+    `ACTIVITY REPORT: ${(a.name || "").toUpperCase()}`,
     "=".repeat(60),
-    `Date:        ${a.date || "—"}`,
-    `Location:    ${a.location || "—"}`,
-    `Type:        ${a.type || "—"}`,
-    `Program:     ${programName || "—"}`,
-    `Reported by: ${a.reportedBy || "—"}`,
+    `Date:        ${a.date || ""}`,
+    `Location:    ${a.location || ""}`,
+    `Type:        ${a.type || ""}`,
+    `Program:     ${programName || ""}`,
+    `Reported by: ${a.reportedBy || ""}`,
     "",
     "PARTICIPATION",
     "-".repeat(40),
-    `Total participants:  ${a.participants ?? "—"}`,
-    `Women:               ${a.women ?? "—"}`,
-    `New editors:         ${a.newEditors ?? "—"}`,
-    `Youth (≤25):         ${a.youth ?? "—"}`,
-    `Persons w/ disab.:   ${a.pwd ?? "—"}`,
+    `Total participants:  ${a.participants ?? ""}`,
+    `Women:               ${a.women ?? ""}`,
+    `New editors:         ${a.newEditors ?? ""}`,
+    `Youth (≤25):         ${a.youth ?? ""}`,
+    `Persons w/ disab.:   ${a.pwd ?? ""}`,
     "",
     "CONTENT CONTRIBUTIONS",
     "-".repeat(40),
-    `Articles created:    ${a.created ?? "—"}`,
-    `Articles improved:   ${a.improved ?? "—"}`,
-    `Commons uploads:     ${a.commons ?? "—"}`,
-    `Wikidata items:      ${a.wikidata ?? "—"}`,
+    `Articles created:    ${a.created ?? ""}`,
+    `Articles improved:   ${a.improved ?? ""}`,
+    `Commons uploads:     ${a.commons ?? ""}`,
+    `Wikidata items:      ${a.wikidata ?? ""}`,
     "",
     "NARRATIVE",
     "-".repeat(40),
-    `Summary:\n${a.summary || "—"}`,
+    `Summary:\n${a.summary || ""}`,
     "",
-    `Challenges:\n${a.challenges || "—"}`,
+    `Challenges:\n${a.challenges || ""}`,
     "",
-    `Lessons learned:\n${a.lessons || "—"}`,
+    `Lessons learned:\n${a.lessons || ""}`,
     "",
-    `Impact stories:\n${a.stories || "—"}`,
+    `Impact stories:\n${a.stories || ""}`,
     "",
-    `Next steps:\n${a.nextSteps || "—"}`,
+    `Next steps:\n${a.nextSteps || ""}`,
     "",
-    `Report link: ${a.link || "—"}`,
+    `Report link: ${a.link || ""}`,
   ];
   return lines.join("\n");
 }
@@ -162,7 +162,7 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
           {STAT_ROWS.map(([label, val]) => (
             <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f5f4f0", fontSize: 13 }}>
               <span style={{ color: "#555" }}>{label}</span>
-              <span style={{ fontWeight: 600 }}>{val ?? "—"}</span>
+              <span style={{ fontWeight: 600 }}>{val ?? ""}</span>
             </div>
           ))}
         </div>
@@ -200,7 +200,7 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
                 <input value={linkForm.url} onChange={e => setF("url", e.target.value)} placeholder="https://drive.google.com/…" autoFocus />
               </div>
               <div className="field"><label>Title</label>
-                <input value={linkForm.title} onChange={e => setF("title", e.target.value)} placeholder="e.g. Event photos — July 2026" />
+                <input value={linkForm.title} onChange={e => setF("title", e.target.value)} placeholder="e.g. Event photos: July 2026" />
               </div>
               <div className="field"><label>Evidence type</label>
                 <select value={linkForm.evidenceType} onChange={e => setF("evidenceType", e.target.value)}>
@@ -229,7 +229,7 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
                   <div style={{ fontWeight: 500, fontSize: 13 }}>{ev.title || ev.url}</div>
                   <div style={{ fontSize: 11, color: "#888" }}>
                     {ev.evidenceType}
-                    {ev.description ? ` — ${ev.description}` : ""}
+                    {ev.description ? `: ${ev.description}` : ""}
                     {ev.addedBy ? ` · Added by ${ev.addedBy}` : ""}
                   </div>
                 </div>

@@ -7,7 +7,7 @@ import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 const STATUS_BADGE = {
   draft:     { label: "Draft",            color: "#2563eb", bg: "#eff6ff" },
   submitted: { label: "Pending approval", color: "#d97706", bg: "#fff8e1" },
-  approved:  { label: "Approved — Locked", color: "#2d7a4f", bg: "#f0f7f3" },
+  approved:  { label: "Approved (Locked)", color: "#2d7a4f", bg: "#f0f7f3" },
 };
 
 const PROGRAM_COLORS = ["#2d7a4f", "#2563eb", "#9333ea", "#d97706", "#0891b2", "#c0392b", "#059669", "#7c3aed", "#db2777"];
@@ -262,7 +262,7 @@ export default function Programs({ profile }) {
                     {p.status === "approved" && (
                       <div style={{ fontSize: 11, color: "#2d7a4f" }}>
                         Approved by {p.approvedBy} · {p.approvedAt ? new Date(p.approvedAt).toLocaleDateString("en-GB") : ""}
-                        {!isAdmin && <span style={{ marginLeft: 8, color: "#888" }}>— budget locked</span>}
+                        {!isAdmin && <span style={{ marginLeft: 8, color: "#888" }}>budget locked</span>}
                       </div>
                     )}
                   </div>
@@ -284,8 +284,8 @@ export default function Programs({ profile }) {
                 {/* Stats row */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, borderTop: "1px solid #f0f0ec", paddingTop: 10, marginTop: 6 }}>
                   {[
-                    { label: "Sessions",       value: `${s.sessions} / ${p.plannedSessions || "—"}` },
-                    { label: "Budget (TZS)",   value: total ? fmt(total) : "—" },
+                    { label: "Sessions",       value: `${s.sessions} / ${p.plannedSessions || ""}` },
+                    { label: "Budget (TZS)",   value: total ? fmt(total) : "" },
                     { label: "Participants",   value: s.participants },
                     { label: "Women",          value: s.women },
                     { label: "New editors",    value: s.newEditors },
@@ -329,8 +329,8 @@ export default function Programs({ profile }) {
                             const usd   = total * (item.exchangeRate || pRate);
                             return (
                               <tr key={i}>
-                                <td style={{ fontWeight: 500 }}>{item.description || "—"}</td>
-                                <td style={{ color: "#555" }}>{item.note || "—"}</td>
+                                <td style={{ fontWeight: 500 }}>{item.description || ""}</td>
+                                <td style={{ color: "#555" }}>{item.note || ""}</td>
                                 <td style={{ textAlign: "right" }}>{fmt(item.unitCost)}</td>
                                 <td style={{ textAlign: "right", fontWeight: 600 }}>{fmt(total)}</td>
                                 <td>{item.expenseType}</td>

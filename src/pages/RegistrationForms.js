@@ -126,7 +126,7 @@ export default function RegistrationForms({ profile }) {
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>${escHtml(selectedForm.title)} — Attendance Sheet</title>
+<title>${escHtml(selectedForm.title)}: Attendance Sheet</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#1c2b1e;padding:24px}
@@ -228,7 +228,7 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
           <div className="panel-title">{editId ? "Edit form" : "New registration form"}</div>
           <div style={{ fontSize: 12, color: "#888", marginBottom: 12 }}>Full name and Wikipedia username are always collected.</div>
           <div className="form-grid">
-            <div className="field"><label>Form title <span className="req">★</span></label><input value={formData.title} onChange={e => setF("title", e.target.value)} placeholder="e.g. Wiki Women Workshop — July 2026" /></div>
+            <div className="field"><label>Form title <span className="req">★</span></label><input value={formData.title} onChange={e => setF("title", e.target.value)} placeholder="e.g. Wiki Women Workshop: July 2026" /></div>
             <div className="field"><label>Event date</label><input type="date" value={formData.date} onChange={e => setF("date", e.target.value)} /></div>
             <div className="field"><label>Location</label><input value={formData.location} onChange={e => setF("location", e.target.value)} placeholder="Town, venue" /></div>
             <div className="field"><label>Wikipedia Event Platform URL</label><input value={formData.wikiEventUrl} onChange={e => setF("wikiEventUrl", e.target.value)} placeholder="https://www.mediawiki.org/wiki/…" /></div>
@@ -299,7 +299,7 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
                   <button className="btn btn-primary btn-sm" onClick={() => copyLink(selectedForm.id)}>{copiedLink ? "Copied!" : "Copy link"}</button>
                 </div>
                 {selectedForm.wikiEventUrl && (
-                  <div style={{ fontSize: 11, color: "#888", marginTop: 8 }}>Wikipedia Event Platform: <a href={selectedForm.wikiEventUrl} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{selectedForm.wikiEventUrl}</a> — shown on confirmation screen after registering</div>
+                  <div style={{ fontSize: 11, color: "#888", marginTop: 8 }}>Wikipedia Event Platform: <a href={selectedForm.wikiEventUrl} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{selectedForm.wikiEventUrl}</a>: shown on confirmation screen after registering</div>
                 )}
               </div>
 
@@ -328,10 +328,10 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
                       {registrations.map(r => (
                         <tr key={r.id}>
                           <td style={{ fontWeight: 500 }}>{r.name}</td>
-                          <td>{r.wikimediaUsername ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(r.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{r.wikimediaUsername}</a> : "—"}</td>
-                          <td style={{ fontSize: 12 }}>{r.email || "—"}</td>
-                          <td style={{ fontSize: 12 }}>{r.phone || "—"}</td>
-                          <td style={{ fontSize: 12, textAlign: "center" }}>{r.age || "—"}</td>
+                          <td>{r.wikimediaUsername ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(r.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{r.wikimediaUsername}</a> : ""}</td>
+                          <td style={{ fontSize: 12 }}>{r.email || ""}</td>
+                          <td style={{ fontSize: 12 }}>{r.phone || ""}</td>
+                          <td style={{ fontSize: 12, textAlign: "center" }}>{r.age || ""}</td>
                           <td>
                             {canEdit ? (
                               <select value={r.attendance || ""} onChange={e => markAttendance(r.id, e.target.value)} style={{ fontSize: 12 }}>
@@ -339,7 +339,7 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
                                 {ATTENDANCE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                               </select>
                             ) : (
-                              r.attendance ? <span className={`badge ${ATTENDANCE_BADGE[r.attendance] || "badge-gray"}`}>{r.attendance}</span> : "—"
+                              r.attendance ? <span className={`badge ${ATTENDANCE_BADGE[r.attendance] || "badge-gray"}`}>{r.attendance}</span> : ""
                             )}
                           </td>
                         </tr>

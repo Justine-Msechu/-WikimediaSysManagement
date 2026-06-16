@@ -84,7 +84,7 @@ export default function Activities({ profile, goPage }) {
 
   const filtered = activities.filter(a => !filter || a.name?.toLowerCase().includes(filter.toLowerCase()) || a.type?.toLowerCase().includes(filter.toLowerCase()));
 
-  const programName = (id) => programs.find(p => p.id === id)?.name || "—";
+  const programName = (id) => programs.find(p => p.id === id)?.name || "";
 
   return (
     <div>
@@ -105,7 +105,7 @@ export default function Activities({ profile, goPage }) {
             <div className="field"><label>Activity name <span className="req">★</span></label><input value={form.name || ""} onChange={e => setF("name", e.target.value)} placeholder="e.g. Edit-a-thon – Women in Science" /></div>
             <div className="field"><label>Program</label>
               <select value={form.programId || ""} onChange={e => setF("programId", e.target.value)}>
-                <option value="">— No program —</option>
+                <option value="">(No program)</option>
                 {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
@@ -164,9 +164,9 @@ export default function Activities({ profile, goPage }) {
                     <td style={{ fontWeight: 500 }}>{a.name}</td>
                     <td style={{ fontSize: 12, color: "#666" }}>{programName(a.programId)}</td>
                     <td style={{ fontSize: 12 }}>{a.type}</td>
-                    <td style={{ textAlign: "center" }}>{a.participants ?? "—"}</td>
-                    <td style={{ textAlign: "center" }}>{a.women ?? "—"}</td>
-                    <td style={{ textAlign: "center" }}>{a.newEditors ?? "—"}</td>
+                    <td style={{ textAlign: "center" }}>{a.participants ?? ""}</td>
+                    <td style={{ textAlign: "center" }}>{a.women ?? ""}</td>
+                    <td style={{ textAlign: "center" }}>{a.newEditors ?? ""}</td>
                     <td>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button className="btn btn-sm" onClick={() => goPage("activity-detail", a.id)}>View</button>

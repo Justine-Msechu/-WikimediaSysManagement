@@ -60,7 +60,7 @@ export default function DonorDashboard({ profile }) {
     <div>
       <div className="page-title">Public dashboard</div>
       <div style={{ fontSize: 13, color: "#888", marginBottom: 20 }}>
-        Grant: <strong>{grant.title || "—"}</strong> · {grant.cycle || "—"} · Status: <span style={{ color: "#2d7a4f", fontWeight: 600 }}>{grant.status || "active"}</span>
+        Grant: <strong>{grant.title || ""}</strong> · {grant.cycle || ""} · Status: <span style={{ color: "#2d7a4f", fontWeight: 600 }}>{grant.status || "active"}</span>
       </div>
 
       {/* Headline KPIs */}
@@ -146,7 +146,7 @@ export default function DonorDashboard({ profile }) {
             <div style={{ minWidth: 90, fontSize: 11, color: "#888" }}>{a.date}</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 500, fontSize: 13 }}>{a.name}</div>
-              <div style={{ fontSize: 11, color: "#888" }}>{a.type} · {a.participants || 0} participants · {a.location || "—"}</div>
+              <div style={{ fontSize: 11, color: "#888" }}>{a.type} · {a.participants || 0} participants · {a.location || ""}</div>
             </div>
           </div>
         ))}

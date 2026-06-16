@@ -224,7 +224,7 @@ export default function PublicRegister({ formId }) {
             />
             <FieldError msg={errors.wikimediaUsername} />
             <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>
-              Enter your Wikipedia username only — without "User:" prefix. You can paste your full Wikipedia profile URL and it will be cleaned automatically. Leave blank if you don't have an account yet.
+              Enter your Wikipedia username only, without "User:" prefix. You can paste your full Wikipedia profile URL and it will be cleaned automatically. Leave blank if you don't have an account yet.
             </div>
           </div>
 

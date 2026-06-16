@@ -66,49 +66,49 @@ export default function FinalReport({ profile }) {
 
   const downloadReport = () => {
     const lines = [
-      `WIKIMEDIA COMMUNITY KILIMANJARO — GSF FINAL LEARNING REPORT`,
-      `Grant: ${grant.title || "—"} | Cycle: ${grant.cycle || "—"} | ID: ${grant.id || "—"}`,
+      `WIKIMEDIA COMMUNITY KILIMANJARO: GSF FINAL LEARNING REPORT`,
+      `Grant: ${grant.title || ""} | Cycle: ${grant.cycle || ""} | ID: ${grant.id || ""}`,
       "=".repeat(70),
       "",
-      "PART 1 — YOUR WORK AND LEARNING",
+      "PART 1: YOUR WORK AND LEARNING",
       "-".repeat(40),
-      `Q1 — Programs and approaches:\n${answers.q1 || "(not filled)"}`,
+      `Q1: Programs and approaches:\n${answers.q1 || "(not filled)"}`,
       "",
-      `Q2 — Lessons, successes, plans:\n${answers.q2 || "(not filled)"}`,
+      `Q2: Lessons, successes, plans:\n${answers.q2 || "(not filled)"}`,
       "",
-      `Q3 — Links to documentation:\n${answers.q3 || "(not filled)"}`,
+      `Q3: Links to documentation:\n${answers.q3 || "(not filled)"}`,
       "",
-      `Q4 — Sharing with community:\n${answers.q4 || "(not filled)"}`,
+      `Q4: Sharing with community:\n${answers.q4 || "(not filled)"}`,
       "",
-      `Q5 — Impact measurement:\n${answers.q5 || "(not filled)"}`,
+      `Q5: Impact measurement:\n${answers.q5 || "(not filled)"}`,
       "",
-      `Q6.1 — Diversity (participants):\n${answers.q6_1 || "(not filled)"}`,
+      `Q6.1: Diversity (participants):\n${answers.q6_1 || "(not filled)"}`,
       "",
-      `Q6.2 — Diversity (content):\n${answers.q6_2 || "(not filled)"}`,
+      `Q6.2: Diversity (content):\n${answers.q6_2 || "(not filled)"}`,
       "",
-      `Q6.3 — Retention:\n${answers.q6_3 || "(not filled)"}`,
+      `Q6.3: Retention:\n${answers.q6_3 || "(not filled)"}`,
       "",
-      "PART 2 — METRICS",
+      "PART 2: METRICS",
       "-".repeat(40),
       ...METRIC_ROWS.map(({ key, label }) => {
         const m = metrics[key] || { target: 0, result: 0 };
         return `${label}: ${fmt(m.result)} / ${fmt(m.target)} (${pct(m.result, m.target)}%)`;
       }),
       "",
-      "PART 3 — SKILL DEVELOPMENT",
+      "PART 3: SKILL DEVELOPMENT",
       "-".repeat(40),
-      `Q12 — New skills:\n${answers.q12 || "(not filled)"}`,
+      `Q12: New skills:\n${answers.q12 || "(not filled)"}`,
       "",
-      `Q13 — Capacity focus:\n${answers.q13 || "(not filled)"}`,
+      `Q13: Capacity focus:\n${answers.q13 || "(not filled)"}`,
       "",
-      "PART 4 — FINANCIAL REPORTING",
+      "PART 4: FINANCIAL REPORTING",
       "-".repeat(40),
       `Grant total: USD ${fmt(grant.totalUSD)} | TZS rate: ${grant.conversionRate || "0.000413"}`,
-      `Q17 — Other funding:\n${answers.q17 || "(not filled)"}`,
+      `Q17: Other funding:\n${answers.q17 || "(not filled)"}`,
       "",
-      `Q18 — Financial report link:\n${answers.q18 || "(not filled)"}`,
+      `Q18: Financial report link:\n${answers.q18 || "(not filled)"}`,
       "",
-      `Q19 — Unspent funds:\n${answers.q19 || "(not filled)"}`,
+      `Q19: Unspent funds:\n${answers.q19 || "(not filled)"}`,
       "",
       `Generated: ${new Date().toLocaleString()}`,
     ];
@@ -162,13 +162,13 @@ export default function FinalReport({ profile }) {
         <button className="btn" onClick={() => window.print()}>Print / Save as PDF</button>
       </div>
 
-      <div className="rpt-part-header">Part 1 — Your work and learning</div>
+      <div className="rpt-part-header">Part 1: Your work and learning</div>
 
       <QuestionBlock qnum="Q1" question="Describe your programs and approaches for the year. Explain how you adapted your planned activities. What were the major challenges?" hint="Reference the activities logged in the system. Explain each program and any changes from your plan." ansKey="q1" answers={answers} onChange={setAns} canEdit={canEdit}>
         {activities.length > 0 && (
           <div style={{ fontSize: 12 }}>
             <div style={{ color: "#555", marginBottom: 4 }}>Activities logged this cycle:</div>
-            {activities.slice(0, 5).map(a => <div key={a.id} style={{ color: "#555", marginBottom: 2 }}>• {a.date} — {a.name} ({a.participants || 0} participants, {a.type})</div>)}
+            {activities.slice(0, 5).map(a => <div key={a.id} style={{ color: "#555", marginBottom: 2 }}>• {a.date}: {a.name} ({a.participants || 0} participants, {a.type})</div>)}
             {activities.length > 5 && <div style={{ color: "#aaa" }}>…and {activities.length - 5} more</div>}
           </div>
         )}
@@ -200,11 +200,11 @@ export default function FinalReport({ profile }) {
 
       <QuestionBlock qnum="Q6.3" question="What steps are you taking to retain participants, especially women and underrepresented groups?" ansKey="q6_3" answers={answers} onChange={setAns} canEdit={canEdit} />
 
-      <div className="rpt-part-header">Part 2 — Metrics</div>
+      <div className="rpt-part-header">Part 2: Metrics</div>
 
       <div className="rpt-q-block">
         <div className="rpt-q-num">14.1</div>
-        <div className="rpt-q-text">Participants, editors, and organizers — target vs result</div>
+        <div className="rpt-q-text">Participants, editors, and organizers: target vs result</div>
         <div className="rpt-q-data">
           <table style={{ fontSize: 12 }}>
             <thead><tr><th>Metric</th><th>Target</th><th>Result</th><th>% achieved</th></tr></thead>
@@ -222,7 +222,7 @@ export default function FinalReport({ profile }) {
 
       <div className="rpt-q-block">
         <div className="rpt-q-num">14.2</div>
-        <div className="rpt-q-text">Wikimedia project contributions — target vs result</div>
+        <div className="rpt-q-text">Wikimedia project contributions: target vs result</div>
         <div className="rpt-q-data">
           <table style={{ fontSize: 12 }}>
             <thead><tr><th>Project</th><th>Target created</th><th>Result created</th><th>Target improved</th><th>Result improved</th></tr></thead>
@@ -239,13 +239,13 @@ export default function FinalReport({ profile }) {
         </div>
       </div>
 
-      <div className="rpt-part-header">Part 3 — Skill development</div>
+      <div className="rpt-part-header">Part 3: Skill development</div>
 
       <QuestionBlock qnum="Q12" question="What new skills have you or your members developed? How will these help your organization address community needs?" hint="Think about Wikipedia editing, event management, leadership, outreach, Kiwix, digital literacy." ansKey="q12" answers={answers} onChange={setAns} canEdit={canEdit} />
 
       <QuestionBlock qnum="Q13" question="What is one capacity area your organization should focus on in the coming year and why?" ansKey="q13" answers={answers} onChange={setAns} canEdit={canEdit} />
 
-      <div className="rpt-part-header">Part 4 — Financial reporting</div>
+      <div className="rpt-part-header">Part 4: Financial reporting</div>
 
       <QuestionBlock qnum="Q17" question="Have you received any other sources of revenue or funding during this grant period? If yes, describe." ansKey="q17" answers={answers} onChange={setAns} canEdit={canEdit} />
 

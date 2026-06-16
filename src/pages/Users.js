@@ -137,7 +137,7 @@ export default function Users({ profile }) {
                     {Object.values(ROLES).map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                   </select>
                   <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => activatePending(p)}>Activate</button>
-                  <div style={{ fontSize: 11, color: "#aaa" }}>Requested: {p.requestedAt ? new Date(p.requestedAt).toLocaleDateString("en-GB") : "—"}</div>
+                  <div style={{ fontSize: 11, color: "#aaa" }}>Requested: {p.requestedAt ? new Date(p.requestedAt).toLocaleDateString("en-GB") : ""}</div>
                 </div>
               );
             })}
@@ -186,7 +186,7 @@ export default function Users({ profile }) {
                     <td style={{ fontSize: 12, color: "#555" }}>{u.email}</td>
                     <td><RoleBadge role={u.role} /></td>
                     <td><span className={`badge ${u.isActive === false ? "badge-red" : "badge-green"}`}>{u.isActive === false ? "Inactive" : "Active"}</span></td>
-                    <td style={{ fontSize: 11, color: "#888" }}>{u.lastLogin ? (u.lastLogin.toDate ? u.lastLogin.toDate().toLocaleDateString("en-GB") : "—") : "Never"}</td>
+                    <td style={{ fontSize: 11, color: "#888" }}>{u.lastLogin ? (u.lastLogin.toDate ? u.lastLogin.toDate().toLocaleDateString("en-GB") : "") : "Never"}</td>
                     <td>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button className="btn btn-sm" onClick={() => openEdit(u)}>Edit</button>

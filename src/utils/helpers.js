@@ -71,7 +71,7 @@ export function buildActivityReport(activity, program) {
       return `  ${e.description.padEnd(28)} ${fmt(lineTZS).padStart(12)} TZS  ($${lineUSD.toFixed(2)})`;
     }).join("\n");
 
-  return `WIKIMEDIA COMMUNITY KILIMANJARO — ACTIVITY REPORT
+  return `WIKIMEDIA COMMUNITY KILIMANJARO: ACTIVITY REPORT
 ${"═".repeat(52)}
 Program:      ${progName}
 Activity:     ${activity.title}
@@ -134,13 +134,13 @@ export function compileGrantReport(state) {
     if (progActs.length === 0) return null;
     const stats = programStats(p.id, acts);
     const lines = progActs.map(a => {
-      const parts = [`  • ${a.title} (${a.date}${a.location ? ", " + a.location : ""}) — ${a.totalParticipants || 0} participants`];
+      const parts = [`  • ${a.title} (${a.date}${a.location ? ", " + a.location : ""}), ${a.totalParticipants || 0} participants`];
       if (a.summary)    parts.push(`    Summary: ${a.summary}`);
       if (a.challenges) parts.push(`    Challenges: ${a.challenges}`);
       if (a.nextSteps)  parts.push(`    Next steps: ${a.nextSteps}`);
       return parts.join("\n");
     }).join("\n\n");
-    return `${p.name} (${p.category}) — ${stats.completed}/${p.plannedSessions} sessions, ${stats.totalParticipants} participants, $${stats.totalUSD.toFixed(0)} spent\n${lines}`;
+    return `${p.name} (${p.category}) - ${stats.completed}/${p.plannedSessions} sessions, ${stats.totalParticipants} participants, $${stats.totalUSD.toFixed(0)} spent\n${lines}`;
   }).filter(Boolean).join("\n\n─────────────────────────────────────────\n\n");
 
   // Lessons + impact stories for Q2
@@ -171,11 +171,11 @@ export function compileGrantReport(state) {
   const progFinance = programs.map(p => {
     const stats = programStats(p.id, acts);
     const pTZS = acts.filter(a => a.programId === p.id).reduce((s, a) => s + activityTotalTZS(a), 0);
-    return `  ${p.name}: ${fmt(pTZS)} TZS ($${stats.totalUSD.toFixed(2)}) — ${stats.completed} sessions`;
+    return `  ${p.name}: ${fmt(pTZS)} TZS ($${stats.totalUSD.toFixed(2)}) : ${stats.completed} sessions`;
   }).join("\n");
 
   return {
-    part1q1: `${ans.q1 || "(Not yet written — write your narrative above, then the auto-data below feeds into it)"}
+    part1q1: `${ans.q1 || "(Not yet written. Write your narrative above, then the auto-data below feeds into it)"}
 
 ════════════════════════════════════════════════
 AUTO-GENERATED FROM ACTIVITY LOGS
@@ -219,16 +219,16 @@ Q6.3 – Retaining underrepresented groups:
 ${ans.q6_3 || "(Not yet written)"}`,
 
     part2metrics: `Participants & editors (target vs result):
-  All participants    — Target: ${m.participants.target},    Result: ${m.participants.result}   (${pct(m.participants.result, m.participants.target)}%)
-  All editors         — Target: ${m.allEditors.target},     Result: ${m.allEditors.result}   (${pct(m.allEditors.result, m.allEditors.target)}%)
-  New editors         — Target: ${m.newEditors.target},     Result: ${m.newEditors.result}   (${pct(m.newEditors.result, m.newEditors.target)}%)
-  Retained editors    — Target: ${m.retainedEditors.target}, Result: ${m.retainedEditors.result}   (${pct(m.retainedEditors.result, m.retainedEditors.target)}%)
-  All organizers      — Target: ${m.allOrganizers.target},  Result: ${m.allOrganizers.result}   (${pct(m.allOrganizers.result, m.allOrganizers.target)}%)
-  New organizers      — Target: ${m.newOrganizers.target},  Result: ${m.newOrganizers.result}   (${pct(m.newOrganizers.result, m.newOrganizers.target)}%)
+  All participants   :  Target: ${m.participants.target},    Result: ${m.participants.result}   (${pct(m.participants.result, m.participants.target)}%)
+  All editors        :  Target: ${m.allEditors.target},     Result: ${m.allEditors.result}   (${pct(m.allEditors.result, m.allEditors.target)}%)
+  New editors        :  Target: ${m.newEditors.target},     Result: ${m.newEditors.result}   (${pct(m.newEditors.result, m.newEditors.target)}%)
+  Retained editors   :  Target: ${m.retainedEditors.target}, Result: ${m.retainedEditors.result}   (${pct(m.retainedEditors.result, m.retainedEditors.target)}%)
+  All organizers     :  Target: ${m.allOrganizers.target},  Result: ${m.allOrganizers.result}   (${pct(m.allOrganizers.result, m.allOrganizers.target)}%)
+  New organizers     :  Target: ${m.newOrganizers.target},  Result: ${m.newOrganizers.result}   (${pct(m.newOrganizers.result, m.newOrganizers.target)}%)
 
 Wikimedia project contributions (target vs result):
 ${m.projects.map(p =>
-  `  ${p.name}:\n    Created  — Target: ${fmt(p.tCreated)}, Result: ${fmt(p.rCreated)} (${pct(p.rCreated, p.tCreated)}%)\n    Improved — Target: ${fmt(p.tImproved)}, Result: ${fmt(p.rImproved)} (${pct(p.rImproved, p.tImproved)}%)`
+  `  ${p.name}:\n    Created :  Target: ${fmt(p.tCreated)}, Result: ${fmt(p.rCreated)} (${pct(p.rCreated, p.tCreated)}%)\n    Improved:  Target: ${fmt(p.tImproved)}, Result: ${fmt(p.rImproved)} (${pct(p.rImproved, p.tImproved)}%)`
 ).join("\n")}`,
 
     part3skills: `Q12 – Skills developed:

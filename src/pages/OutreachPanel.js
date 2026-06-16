@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { fmt } from "../utils/helpers";
 
-export default function OutreachPanel({ campaignUrl, title = "Outreach Dashboard — live editing stats" }) {
+export default function OutreachPanel({ campaignUrl, title = "Outreach Dashboard: live editing stats" }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -55,7 +55,7 @@ export default function OutreachPanel({ campaignUrl, title = "Outreach Dashboard
 
       {error && (
         <div className="empty" style={{ color: "#c0392b" }}>
-          Could not load ({error}) —{" "}
+          Could not load ({error}):{" "}
           <a href={`${baseUrl}/programs`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>
             View directly on Outreach Dashboard ↗
           </a>

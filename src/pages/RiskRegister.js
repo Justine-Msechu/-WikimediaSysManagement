@@ -125,7 +125,7 @@ export default function RiskRegister({ profile }) {
                     <td style={{ fontSize: 12, textAlign: "center" }}>{r.likelihood}</td>
                     <td style={{ fontSize: 12, textAlign: "center" }}>{r.impact}</td>
                     <td><span style={{ fontWeight: 700, color: HEAT_COLOR(r.score || r.likelihood * r.impact) }}>{r.score || r.likelihood * r.impact}</span></td>
-                    <td style={{ fontSize: 12 }}>{r.owner || "—"}</td>
+                    <td style={{ fontSize: 12 }}>{r.owner || ""}</td>
                     <td><span className={`badge ${STATUS_BADGE[r.status] || "badge-gray"}`}>{r.status}</span></td>
                     <td>
                       {canEdit && <div style={{ display: "flex", gap: 6 }}>

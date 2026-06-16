@@ -88,7 +88,7 @@ export function addAudit(currentLog = [], currentUser, entry) {
 }
 
 export function formatTimestamp(iso) {
-  if (!iso) return "—";
+  if (!iso) return "";
   const d = new Date(iso);
   return d.toLocaleDateString("en-GB", {
     day: "2-digit", month: "short", year: "numeric",

@@ -47,7 +47,7 @@ export default function Review({ profile, goPage }) {
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
-  const progName  = (id) => programs.find(p => p.id === id)?.name || "—";
+  const progName  = (id) => programs.find(p => p.id === id)?.name || "";
 
   const approveProgram_ = async (p) => {
     await approveProgram(p.id, profile?.name || "");
@@ -77,7 +77,7 @@ export default function Review({ profile, goPage }) {
       targetId: p.id, recordTitle: p.name,
       details: `${items.length} budget line items created as approved expenses`,
     });
-    showToast(`"${p.name}" approved — ${items.length} expense ${items.length === 1 ? "entry" : "entries"} created.`);
+    showToast(`"${p.name}" approved: ${items.length} expense ${items.length === 1 ? "entry" : "entries"} created.`);
     setProgReviewId(null); setProgReviewComment("");
   };
 
@@ -155,7 +155,7 @@ export default function Review({ profile, goPage }) {
                       <div>
                         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{p.name}</div>
                         <div style={{ fontSize: 11, color: "#888" }}>
-                          {p.category} · Submitted by {p.submittedBy || "—"} · Budget: <strong>TZS {fmt(totalTZS)} / ${((totalTZS * pRate)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                          {p.category} · Submitted by {p.submittedBy || ""} · Budget: <strong>TZS {fmt(totalTZS)} / ${((totalTZS * pRate)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                         </div>
                         {p.description && <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>{p.description}</div>}
                         {items.length > 0 && (
@@ -212,7 +212,7 @@ export default function Review({ profile, goPage }) {
                           placeholder="Explain what needs to be changed…"
                           style={{ width: "100%", fontSize: 13, padding: "6px 8px", border: "1px solid #f5c6c0", borderRadius: 5, boxSizing: "border-box" }} />
                         <div className="btn-row" style={{ marginTop: 8 }}>
-                          <button className="btn btn-sm btn-danger" onClick={() => rejectProgram_(p, progReviewComment)}>Confirm — return for revision</button>
+                          <button className="btn btn-sm btn-danger" onClick={() => rejectProgram_(p, progReviewComment)}>Confirm: return for revision</button>
                           <button className="btn btn-sm" onClick={() => setProgReviewId(null)}>Cancel</button>
                         </div>
                       </div>
@@ -280,7 +280,7 @@ export default function Review({ profile, goPage }) {
           )}
           {activeSection === "draft" && (
             <div style={{ fontSize: 13, color: current.color }}>
-              {canApprove ? "Draft entries that have not been submitted yet." : "Your draft entries — submit them when ready for review."}
+              {canApprove ? "Draft entries that have not been submitted yet." : "Your draft entries. Submit them when ready for review."}
             </div>
           )}
           {activeSection === "approved" && (

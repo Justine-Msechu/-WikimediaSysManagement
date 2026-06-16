@@ -3,7 +3,7 @@ import { listenAuditLogs, AUDIT_ACTIONS } from "../services/auditService";
 import { ROLE_LABELS } from "../services/userService";
 
 function tsLabel(ts) {
-  if (!ts) return "—";
+  if (!ts) return "";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
   return d.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
@@ -71,12 +71,12 @@ export default function AuditLog({ profile }) {
                   return (
                     <tr key={l.id || i}>
                       <td style={{ fontSize: 11, color: "#888", whiteSpace: "nowrap" }}>{tsLabel(l.timestamp)}</td>
-                      <td style={{ fontWeight: 500, fontSize: 13 }}>{l.userName || "—"}</td>
-                      <td><span style={{ fontSize: 11, color: "#555" }}>{ROLE_LABELS[l.role] || l.role || "—"}</span></td>
+                      <td style={{ fontWeight: 500, fontSize: 13 }}>{l.userName || ""}</td>
+                      <td><span style={{ fontSize: 11, color: "#555" }}>{ROLE_LABELS[l.role] || l.role || ""}</span></td>
                       <td><span className={`badge ${badge.cls}`} style={{ fontSize: 10 }}>{badge.label}</span></td>
-                      <td style={{ fontSize: 12, color: "#555" }}>{l.module || "—"}</td>
-                      <td style={{ fontSize: 12 }}>{l.recordTitle || l.targetId || "—"}</td>
-                      <td style={{ fontSize: 12, color: "#888", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{l.details || "—"}</td>
+                      <td style={{ fontSize: 12, color: "#555" }}>{l.module || ""}</td>
+                      <td style={{ fontSize: 12 }}>{l.recordTitle || l.targetId || ""}</td>
+                      <td style={{ fontSize: 12, color: "#888", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{l.details || ""}</td>
                     </tr>
                   );
                 })}

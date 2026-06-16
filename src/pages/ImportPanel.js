@@ -180,7 +180,7 @@ export default function ImportPanel({
             (organisers + participants who signed up by editing the page).
             <br />
             <span style={{ color: "#d97706" }}>
-              ⚠ Participants who clicked the on-page "Register" button without editing the page cannot be fetched — Wikipedia doesn't expose that data publicly.
+              ⚠ Participants who clicked the on-page "Register" button without editing the page cannot be fetched. Wikipedia doesn't expose that data publicly.
             </span>
           </div>
 
@@ -317,11 +317,11 @@ export default function ImportPanel({
                       return (
                         <tr key={r.username} style={{ background: exists ? "#f8f8f6" : "#fff" }}>
                           <td style={{ fontFamily: "monospace", color: exists ? "#aaa" : "#1c2b1e" }}>{r.username}</td>
-                          <td style={{ color: exists ? "#aaa" : "#333" }}>{r.realName || "—"}</td>
-                          <td>{r.articlesCreated || "—"}</td>
-                          <td>{r.articlesEdited || "—"}</td>
-                          <td>{r.filesUploaded || "—"}</td>
-                          <td>{r.totalEdits || "—"}</td>
+                          <td style={{ color: exists ? "#aaa" : "#333" }}>{r.realName || ""}</td>
+                          <td>{r.articlesCreated || ""}</td>
+                          <td>{r.articlesEdited || ""}</td>
+                          <td>{r.filesUploaded || ""}</td>
+                          <td>{r.totalEdits || ""}</td>
                           <td>
                             {exists
                               ? <span style={{ fontSize: 10, color: "#4a9e6b" }}>✓ exists</span>

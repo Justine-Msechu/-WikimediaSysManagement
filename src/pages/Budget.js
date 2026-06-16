@@ -65,7 +65,7 @@ function budgetPrintHtml(programs, approvedEntries, orgName, logoSrc) {
   }).join("<hr>");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
-  <title>Program Budgets — ${esc(orgName)}</title>
+  <title>Program Budgets: ${esc(orgName)}</title>
   <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #1c2b1e; padding: 32px; max-width: 960px; margin: 0 auto; }
     .header { display: flex; align-items: center; gap: 18px; margin-bottom: 24px; border-bottom: 2px solid #2d7a4f; padding-bottom: 16px; }
@@ -204,7 +204,7 @@ export default function Budget({ profile }) {
     const data = { ...form, status: submit ? "submitted" : "draft" };
     if (!editId) {
       const id = await addBudgetEntry(data);
-      await addAudit(profile, submit ? AUDIT_ACTIONS.SUBMIT : AUDIT_ACTIONS.CREATE, "budget", { targetId: id, recordTitle: form.title, details: `TZS ${fmt(form.amount)} — ${form.category}` });
+      await addAudit(profile, submit ? AUDIT_ACTIONS.SUBMIT : AUDIT_ACTIONS.CREATE, "budget", { targetId: id, recordTitle: form.title, details: `TZS ${fmt(form.amount)}, ${form.category}` });
       showToast(submit ? "Entry submitted for approval." : "Entry created.");
     } else {
       await updateBudgetEntry(editId, data);
@@ -333,7 +333,7 @@ export default function Budget({ profile }) {
       {grantTotalTZS > 0 && (
         <div className="panel" style={{ marginBottom: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
-            <span style={{ fontWeight: 600 }}>Budget utilisation — {budgetPct}%</span>
+            <span style={{ fontWeight: 600 }}>Budget utilisation: {budgetPct}%</span>
             <span style={{ color: "#888" }}>TZS {fmt(approvedSpend)} of TZS {fmt(grantTotalTZS)}</span>
           </div>
           <div style={{ background: "#e8e8e4", borderRadius: 5, height: 10, overflow: "hidden" }}>
@@ -344,7 +344,7 @@ export default function Budget({ profile }) {
 
       {grantTotalUSD === 0 && (
         <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 8, padding: "10px 14px", fontSize: 13, marginBottom: 16 }}>
-          Grant total not configured — go to <strong>Grant setup</strong> to enter the total grant amount.
+          Grant total not configured. Go to <strong>Grant setup</strong> to enter the total grant amount.
         </div>
       )}
 
@@ -408,7 +408,7 @@ export default function Budget({ profile }) {
                 <div className="field">
                   <label>Program</label>
                   <select value={form.programId || ""} onChange={e => setF("programId", e.target.value)}>
-                    <option value="">— No program —</option>
+                    <option value="">(No program)</option>
                     {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
@@ -433,7 +433,7 @@ export default function Budget({ profile }) {
                 return (
                   <div style={{ gridColumn: "1 / -1", background: "#f0f7f3", border: "1px solid #b7e0c8", borderRadius: 8, padding: "12px 14px", marginTop: 4 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: items.length ? 10 : 0, flexWrap: "wrap", gap: 8 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: selProg.color || "#2d7a4f" }}>{selProg.name} — budget reference</div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: selProg.color || "#2d7a4f" }}>{selProg.name}: budget reference</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 12, flexWrap: "wrap" }}>
                         <span>Planned: <strong>TZS {fmt(planned)}</strong></span>
                         <span>Spent: <strong style={{ color: "#c0392b" }}>TZS {fmt(spent)}</strong></span>
@@ -483,8 +483,8 @@ export default function Budget({ profile }) {
                                     setF("category", cat);
                                     if (it.note) setF("description", it.note);
                                   }}>
-                                    <td style={{ fontWeight: 500 }}>{it.description || "—"}</td>
-                                    <td style={{ color: "#555" }}>{it.note || "—"}</td>
+                                    <td style={{ fontWeight: 500 }}>{it.description || ""}</td>
+                                    <td style={{ color: "#555" }}>{it.note || ""}</td>
                                     <td style={{ textAlign: "right" }}>{fmt(it.unitCost)}</td>
                                     <td style={{ textAlign: "center" }}>{it.quantity}</td>
                                     <td style={{ textAlign: "right", fontWeight: 600 }}>{fmt(total)}</td>
@@ -551,10 +551,10 @@ export default function Budget({ profile }) {
                           <td><span className="badge badge-gray" style={{ fontSize: 10 }}>{getGroup(entry.category)}</span></td>
                           <td style={{ fontSize: 12, color: "#555" }}>{entry.category}</td>
                           <td style={{ fontWeight: 600 }}>{fmt(entry.amount)}</td>
-                          <td style={{ fontSize: 12 }}>{entry.requestedBy || "—"}</td>
-                          <td style={{ fontSize: 12, color: "#888" }}>{entry.date || "—"}</td>
+                          <td style={{ fontSize: 12 }}>{entry.requestedBy || ""}</td>
+                          <td style={{ fontSize: 12, color: "#888" }}>{entry.date || ""}</td>
                           <td><span className={`badge ${badge.cls}`}>{badge.label}</span></td>
-                          <td style={{ fontSize: 11, color: "#777", maxWidth: 140 }}>{entry.reviewerComment || "—"}</td>
+                          <td style={{ fontSize: 11, color: "#777", maxWidth: 140 }}>{entry.reviewerComment || ""}</td>
                           <td>
                             <div style={{ display: "flex", gap: 4 }}>
                               {canApprove && entry.status === "submitted" && !reviewing && (
@@ -644,7 +644,7 @@ export default function Budget({ profile }) {
                         <div style={{ background: "#e8e8e4", borderRadius: 4, height: 8, overflow: "hidden" }}>
                           <div style={{ width: `${pct}%`, height: 8, borderRadius: 4, background: overBudget ? "#c0392b" : p.color || "#4a9e6b", transition: "width 0.3s" }} />
                         </div>
-                        <div style={{ fontSize: 11, color: "#aaa", marginTop: 3 }}>{pct}% of planned budget used{overBudget ? " — OVER BUDGET" : ""}</div>
+                        <div style={{ fontSize: 11, color: "#aaa", marginTop: 3 }}>{pct}% of planned budget used{overBudget ? " : OVER BUDGET" : ""}</div>
                       </div>
                     )}
                     {progEntries.length > 0 ? (
@@ -657,8 +657,8 @@ export default function Budget({ profile }) {
                                 <td style={{ fontWeight: 500 }}>{e.title}</td>
                                 <td style={{ color: "#555" }}>{e.category}</td>
                                 <td style={{ textAlign: "right", fontWeight: 600 }}>{fmt(e.amount)}</td>
-                                <td style={{ color: "#888" }}>{e.date || "—"}</td>
-                                <td style={{ color: "#888" }}>{e.requestedBy || "—"}</td>
+                                <td style={{ color: "#888" }}>{e.date || ""}</td>
+                                <td style={{ color: "#888" }}>{e.requestedBy || ""}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -680,7 +680,7 @@ export default function Budget({ profile }) {
         <div className="panel" style={{ borderRadius: "0 8px 8px 8px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <div>
-              <div className="panel-title" style={{ marginBottom: 2 }}>Monthly cash flow — July 2025 to June 2026</div>
+              <div className="panel-title" style={{ marginBottom: 2 }}>Monthly cash flow: July 2025 to June 2026</div>
               <div style={{ fontSize: 12, color: "#888" }}>Planned amounts are editable. Actual figures come from approved entries.</div>
             </div>
             {canAdmin && !cfEditing && <button className="btn btn-sm btn-primary" onClick={startEditCF}>Edit planned</button>}
@@ -722,7 +722,7 @@ export default function Budget({ profile }) {
                         </td>
                         <td style={{ textAlign: "right", fontWeight: actual ? 600 : 400 }}>{fmt(actual)}</td>
                         <td style={{ textAlign: "right", fontWeight: 500, color: variance > 0 ? "#c0392b" : variance < 0 ? "#2d7a4f" : "#aaa" }}>
-                          {variance > 0 ? `+${fmt(variance)}` : variance < 0 ? `−${fmt(Math.abs(variance))}` : "—"}
+                          {variance > 0 ? `+${fmt(variance)}` : variance < 0 ? `−${fmt(Math.abs(variance))}` : "0"}
                         </td>
                         <td style={{ textAlign: "right", color: "#555" }}>{fmt(cumActual)}</td>
                         <td style={{ textAlign: "right", fontWeight: 600, color: balance < 0 ? "#c0392b" : "#2d7a4f" }}>{fmt(balance)}</td>
@@ -822,7 +822,7 @@ export default function Budget({ profile }) {
       {/* ── P&L ───────────────────────────────────────────────────────────── */}
       {tab === "pl" && (
         <div className="panel" style={{ borderRadius: "0 8px 8px 8px" }}>
-          <div className="panel-title">Projected profit &amp; loss — {settings?.grant?.grantPeriod || "2025–2026"}</div>
+          <div className="panel-title">Projected profit &amp; loss: {settings?.grant?.grantPeriod || "2025–2026"}</div>
 
           <table style={{ maxWidth: 580 }}>
             <thead>

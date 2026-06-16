@@ -5,7 +5,8 @@ import { getProgramById } from "../services/programService";
 import { addEvidenceLink, removeEvidenceLink, EVIDENCE_TYPES } from "../services/storageService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { addComment, listenComments, ROLE_COLOR } from "../services/commentService";
-import { uploadFile, deleteFile, activityFilePath, fileIcon } from "../services/fileService";
+import { uploadToDrive, deleteFromDrive, fileIcon } from "../services/driveService";
+import { listenActivityFiles, addActivityFile, removeActivityFile } from "../services/activityFilesService";
 import logo from "../assets/logo.png";
 
 function buildReport(a, programName) {
@@ -139,25 +140,14 @@ function CommentsPanel({ docType, docId, profile }) {
 }
 
 function FileUploadPanel({ activityId, canEdit, profile }) {
-  const [uploads,   setUploads]   = useState([]);
-  const [progress,  setProgress]  = useState(null);
-  const [busy,      setBusy]      = useState(false);
+  const [uploads,  setUploads]  = useState([]);
+  const [progress, setProgress] = useState(null);
+  const [busy,     setBusy]     = useState(false);
   const inputRef = useRef(null);
 
-  // Persist uploaded files in component state (could be moved to Firestore subcollection in the future)
-  const STORAGE_KEY = `uploads_${activityId}`;
-
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-      setUploads(saved);
-    } catch { setUploads([]); }
-  }, [STORAGE_KEY]);
-
-  const persist = (list) => {
-    setUploads(list);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  };
+    return listenActivityFiles(activityId, setUploads);
+  }, [activityId]);
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -165,19 +155,8 @@ function FileUploadPanel({ activityId, canEdit, profile }) {
     setBusy(true);
     setProgress(0);
     try {
-      const path = activityFilePath(activityId, file.name);
-      const { url, storagePath } = await uploadFile(file, path, setProgress);
-      const record = {
-        id:          Date.now().toString(),
-        name:        file.name,
-        type:        file.type,
-        size:        file.size,
-        url,
-        storagePath,
-        uploadedBy:  profile?.name || "",
-        uploadedAt:  new Date().toISOString(),
-      };
-      persist([...uploads, record]);
+      const result = await uploadToDrive(file, setProgress);
+      await addActivityFile(activityId, { ...result, uploadedBy: profile?.name || "" });
     } catch (err) {
       alert(err.message || "Upload failed.");
     } finally {
@@ -189,8 +168,8 @@ function FileUploadPanel({ activityId, canEdit, profile }) {
 
   const remove = async (rec) => {
     if (!window.confirm(`Remove "${rec.name}"?`)) return;
-    await deleteFile(rec.storagePath);
-    persist(uploads.filter(u => u.id !== rec.id));
+    await deleteFromDrive(rec.fileId);   // best-effort — works only for the uploader
+    await removeActivityFile(rec.id);    // always removes from the shared list
   };
 
   const fmtSize = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${(b / 1024).toFixed(0)} KB`;
@@ -198,11 +177,11 @@ function FileUploadPanel({ activityId, canEdit, profile }) {
   return (
     <div style={{ marginTop: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <div style={{ fontWeight: 600, fontSize: 13, color: "#555" }}>Uploaded files</div>
+        <div style={{ fontWeight: 600, fontSize: 13, color: "#555" }}>Uploaded files (Google Drive)</div>
         {canEdit && (
           <>
             <button className="btn btn-sm btn-primary" onClick={() => inputRef.current?.click()} disabled={busy}>
-              {busy ? `Uploading ${progress ?? 0}%…` : "+ Upload file"}
+              {busy ? `Uploading ${progress ?? 0}%…` : "+ Upload to Drive"}
             </button>
             <input ref={inputRef} type="file" style={{ display: "none" }} onChange={handleFile} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" />
           </>
@@ -214,17 +193,17 @@ function FileUploadPanel({ activityId, canEdit, profile }) {
         </div>
       )}
       {uploads.length === 0 ? (
-        <div style={{ color: "#aaa", fontSize: 12 }}>No files uploaded yet.{canEdit ? " Max 10 MB per file." : ""}</div>
+        <div style={{ color: "#aaa", fontSize: 12 }}>No files uploaded yet.{canEdit ? " Files go to Google Drive. Max 10 MB." : ""}</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {uploads.map(u => (
             <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "#f5f4f0", borderRadius: 7, border: "1px solid #e8e8e4" }}>
-              <span style={{ fontSize: 18 }}>{fileIcon(u.type)}</span>
+              <span style={{ fontSize: 18 }}>{fileIcon(u.mimeType)}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</div>
-                <div style={{ fontSize: 11, color: "#888" }}>{fmtSize(u.size)} · Uploaded by {u.uploadedBy}</div>
+                <div style={{ fontSize: 11, color: "#888" }}>{u.size ? fmtSize(u.size) : ""}{u.uploadedBy ? ` · Uploaded by ${u.uploadedBy}` : ""}</div>
               </div>
-              <a href={u.url} target="_blank" rel="noreferrer" className="btn btn-sm">Download</a>
+              <a href={u.url} target="_blank" rel="noreferrer" className="btn btn-sm">Open in Drive</a>
               {canEdit && <button className="btn btn-sm btn-danger" onClick={() => remove(u)}>Remove</button>}
             </div>
           ))}

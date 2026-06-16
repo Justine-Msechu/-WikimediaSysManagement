@@ -4,6 +4,16 @@ import {
   listenRegistrations, updateAttendance,
 } from "../services/registrationService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import logo from "../assets/logo.png";
+
+const EXPENSE_TYPES = [
+  "Transport", "Food & refreshments", "Stipend / allowance",
+  "Venue hire", "Merchandise & prizes", "Other",
+];
+
+function escHtml(s) {
+  return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
 const STATUS_BADGE = {
   draft:  { label: "Draft",  cls: "badge-gray" },
@@ -30,6 +40,7 @@ export default function RegistrationForms({ profile }) {
   const [formData,     setFormData]     = useState(emptyForm());
   const [copiedLink,   setCopiedLink]   = useState(false);
   const [copiedUsernames, setCopiedUsernames] = useState(false);
+  const [expenseType,  setExpenseType]  = useState(EXPENSE_TYPES[0]);
   const [toast,        setToast]        = useState("");
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
 
@@ -104,6 +115,102 @@ export default function RegistrationForms({ profile }) {
   };
 
   const withWiki = registrations.filter(r => r.wikimediaUsername).length;
+
+  const printSheet = () => {
+    const MIN_ROWS = Math.max(30, registrations.length);
+    const rows = [...registrations];
+    while (rows.length < MIN_ROWS) rows.push(null);
+    const logoUrl = window.location.origin + logo;
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>${escHtml(selectedForm.title)} — Attendance Sheet</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#1c2b1e;padding:24px}
+.no-print{margin-bottom:18px}
+.btn{padding:8px 22px;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:700;margin-right:8px}
+.bp{background:#2d7a4f;color:#fff}.bc{background:#888;color:#fff}
+.hdr{display:flex;align-items:center;gap:16px;margin-bottom:18px;padding-bottom:14px;border-bottom:3px solid #1c2b1e}
+.hdr img{width:60px;height:60px;object-fit:contain}
+.hdr h1{font-size:17px;font-weight:700;margin-bottom:2px}
+.hdr p{font-size:11px;color:#555}
+.info{width:auto;margin-bottom:18px;border-collapse:collapse}
+.info td{padding:4px 8px;font-size:12px;border-bottom:1px dotted #ddd}
+.info td:first-child{font-weight:700;width:160px;color:#333}
+table.att{width:100%;border-collapse:collapse}
+table.att th{background:#1c2b1e;color:#fff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.4px}
+table.att th.c{text-align:center;width:36px}
+table.att th.v{width:110px}
+table.att th.s{width:140px}
+table.att td{border:1px solid #bbb;padding:5px 10px;height:30px;font-size:12px}
+table.att td.c{text-align:center;background:#f5f5f3;color:#777;font-weight:600;border:1px solid #bbb}
+table.att tr:nth-child(even) td{background:#fafaf8}
+table.att tr:nth-child(even) td.c{background:#f0f0ee}
+.footer{margin-top:36px;display:flex;gap:80px}
+.fl{display:flex;flex-direction:column;gap:6px}
+.fl span{font-weight:700;font-size:12px}
+.fl div{border-bottom:1px solid #444;width:220px;margin-top:18px}
+@media print{.no-print{display:none!important}body{padding:12px}}
+</style>
+</head>
+<body>
+<div class="no-print">
+  <button class="btn bp" onclick="window.print()">&#128424; Print</button>
+  <button class="btn bc" onclick="window.close()">Close</button>
+</div>
+
+<div class="hdr">
+  <img src="${logoUrl}" alt="Wikimedia Community Kilimanjaro logo"/>
+  <div>
+    <h1>Wikimedia Community Kilimanjaro</h1>
+    <p>Participants Attendance Sheet</p>
+  </div>
+</div>
+
+<table class="info">
+  <tr><td>User Group</td><td>Wikimedia Community Kilimanjaro</td></tr>
+  <tr><td>Event</td><td>${escHtml(selectedForm.title)}</td></tr>
+  <tr><td>Date</td><td>${escHtml(selectedForm.date || "")}</td></tr>
+  <tr><td>Location</td><td>${escHtml(selectedForm.location || "")}</td></tr>
+  <tr><td>Currency</td><td>TZS</td></tr>
+  <tr><td>Type of expense</td><td>${escHtml(expenseType)}</td></tr>
+</table>
+
+<table class="att">
+  <thead>
+    <tr>
+      <th class="c">#</th>
+      <th>Full Name</th>
+      <th>Wikipedia Username</th>
+      <th class="v">Value (TZS)</th>
+      <th class="s">Signature</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${rows.map((r, i) => `<tr>
+      <td class="c">${i + 1}</td>
+      <td>${escHtml(r?.name || "")}</td>
+      <td>${escHtml(r?.wikimediaUsername || "")}</td>
+      <td class="v"></td>
+      <td class="s"></td>
+    </tr>`).join("")}
+  </tbody>
+</table>
+
+<div class="footer">
+  <div class="fl"><span>Organiser</span><div></div></div>
+  <div class="fl"><span>Signature</span><div></div></div>
+</div>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank");
+    win.document.write(html);
+    win.document.close();
+  };
 
   return (
     <div>
@@ -197,13 +304,17 @@ export default function RegistrationForms({ profile }) {
               </div>
 
               {/* Actions */}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <button className="btn btn-sm" onClick={exportCSV}>Export CSV</button>
                 {wikiUsernames.length > 0 && (
                   <button className="btn btn-sm" onClick={copyUsernames}>
                     {copiedUsernames ? "Copied!" : `Copy Wikipedia usernames (${wikiUsernames.length})`}
                   </button>
                 )}
+                <select value={expenseType} onChange={e => setExpenseType(e.target.value)} style={{ fontSize: 12 }}>
+                  {EXPENSE_TYPES.map(t => <option key={t}>{t}</option>)}
+                </select>
+                <button className="btn btn-sm btn-primary" onClick={printSheet}>🖨 Print attendance sheet</button>
               </div>
             </div>
 

@@ -46,10 +46,12 @@ export default function Activities({ profile, goPage }) {
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const n = (v) => v === "" ? null : Number(v);
 
-  const coordinators = users.filter(u => ["admin", "coordinator"].includes(u.role) && u.isActive !== false);
+  const coordinators    = users.filter(u => ["admin", "coordinator"].includes(u.role) && u.isActive !== false);
+  const approvedPrograms = programs.filter(p => p.status === "approved");
+  const hasApproved      = approvedPrograms.length > 0;
 
   const openCreate = () => {
-    setForm({ ...emptyActivity(programs), reportedBy: profile?.name || "", assignedTo: profile?.name || "" });
+    setForm({ ...emptyActivity(approvedPrograms), reportedBy: profile?.name || "", assignedTo: profile?.name || "" });
     setEditId(null);
     setEditVersion(null);
     setShowForm(true);
@@ -147,6 +149,13 @@ export default function Activities({ profile, goPage }) {
       )}
       <div className="page-title">Activities</div>
 
+      {/* Warn if no approved programs exist yet */}
+      {canEdit && !hasApproved && (
+        <div className="alert alert-warn" style={{ marginBottom: 16 }}>
+          No approved programs yet. Activities must belong to an approved program. Go to <strong>Programs</strong>, add budget items, submit for review, and get it approved before logging activities.
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap" }}>
         <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Search activities…" style={{ flex: 1, minWidth: 200, fontSize: 13 }} />
         <button
@@ -156,7 +165,7 @@ export default function Activities({ profile, goPage }) {
         >
           My tasks {myTaskCount > 0 && <span style={{ marginLeft: 4, background: myTasksOnly ? "rgba(255,255,255,0.3)" : "#2d7a4f", color: "#fff", borderRadius: 10, padding: "0 6px", fontSize: 10 }}>{myTaskCount}</span>}
         </button>
-        {canEdit && <button className="btn btn-primary" onClick={openCreate}>+ Log activity</button>}
+        {canEdit && <button className="btn btn-primary" onClick={openCreate} disabled={!hasApproved} title={!hasApproved ? "No approved programs — approve a program first" : ""}>+ Log activity</button>}
       </div>
 
       {showForm && (
@@ -172,8 +181,8 @@ export default function Activities({ profile, goPage }) {
             <div className="field">
               <label>Program</label>
               <select value={form.programId || ""} onChange={e => setF("programId", e.target.value)}>
-                <option value="">(No program)</option>
-                {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                <option value="">(No program — general/admin task)</option>
+                {approvedPrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <div className="field">

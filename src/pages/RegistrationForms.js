@@ -3,6 +3,7 @@ import {
   listenForms, addForm, updateForm, deleteForm,
   listenRegistrations, updateAttendance,
 } from "../services/registrationService";
+import { listenPrograms } from "../services/programService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import logo from "../assets/logo.png";
 
@@ -27,12 +28,13 @@ const ATTENDANCE_BADGE   = { present: "badge-green", absent: "badge-red", excuse
 function emptyForm() {
   return {
     title: "", description: "", date: "", location: "",
-    wikiEventUrl: "", status: "draft",
+    wikiEventUrl: "", status: "draft", programId: "",
   };
 }
 
 export default function RegistrationForms({ profile }) {
   const [forms,        setForms]        = useState([]);
+  const [programs,     setPrograms]     = useState([]);
   const [selectedForm, setSelectedForm] = useState(null);
   const [registrations,setRegistrations]= useState([]);
   const [showBuilder,  setShowBuilder]  = useState(false);
@@ -44,7 +46,14 @@ export default function RegistrationForms({ profile }) {
   const [toast,        setToast]        = useState("");
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
 
-  useEffect(() => { return listenForms(setForms); }, []);
+  const approvedPrograms = programs.filter(p => p.status === "approved");
+  const hasApproved      = approvedPrograms.length > 0;
+
+  useEffect(() => {
+    const u1 = listenForms(setForms);
+    const u2 = listenPrograms(setPrograms);
+    return () => { u1(); u2(); };
+  }, []);
 
   useEffect(() => {
     if (!selectedForm) { setRegistrations([]); return; }
@@ -55,10 +64,11 @@ export default function RegistrationForms({ profile }) {
   const setF = (k, v) => setFormData(f => ({ ...f, [k]: v }));
 
   const openCreate = () => { setFormData(emptyForm()); setEditId(null); setShowBuilder(true); };
-  const openEdit   = (f) => { setFormData({ title: f.title, description: f.description || "", date: f.date || "", location: f.location || "", wikiEventUrl: f.wikiEventUrl || "", status: f.status }); setEditId(f.id); setShowBuilder(true); };
+  const openEdit   = (f) => { setFormData({ title: f.title, description: f.description || "", date: f.date || "", location: f.location || "", wikiEventUrl: f.wikiEventUrl || "", status: f.status, programId: f.programId || "" }); setEditId(f.id); setShowBuilder(true); };
 
   const saveForm = async () => {
     if (!formData.title.trim()) { alert("Form title is required."); return; }
+    if (!formData.programId)    { alert("Please select an approved program for this form."); return; }
     if (!editId) {
       const id = await addForm(formData);
       await addAudit(profile, AUDIT_ACTIONS.CREATE, "registrationForms", { targetId: id, recordTitle: formData.title });
@@ -217,9 +227,15 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
       {toast && <div style={{ position: "fixed", bottom: 24, right: 24, background: "#2d7a4f", color: "#fff", padding: "10px 18px", borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 9999 }}>✓ {toast}</div>}
       <div className="page-title">Event registration forms</div>
 
+      {canEdit && !hasApproved && (
+        <div className="alert alert-warn" style={{ marginBottom: 16 }}>
+          No approved programs yet. Registration forms must be linked to an approved program. Go to <strong>Programs</strong>, submit a program for review, and get it approved before creating forms.
+        </div>
+      )}
+
       {canEdit && (
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-          <button className="btn btn-primary" onClick={openCreate}>+ New form</button>
+          <button className="btn btn-primary" onClick={openCreate} disabled={!hasApproved} title={!hasApproved ? "No approved programs — approve a program first" : ""}>+ New form</button>
         </div>
       )}
 
@@ -229,6 +245,13 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
           <div style={{ fontSize: 12, color: "#888", marginBottom: 12 }}>Full name and Wikipedia username are always collected.</div>
           <div className="form-grid">
             <div className="field"><label>Form title <span className="req">★</span></label><input value={formData.title} onChange={e => setF("title", e.target.value)} placeholder="e.g. Wiki Women Workshop: July 2026" /></div>
+            <div className="field">
+              <label>Program <span className="req">★</span></label>
+              <select value={formData.programId} onChange={e => setF("programId", e.target.value)}>
+                <option value="">Select approved program…</option>
+                {approvedPrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
             <div className="field"><label>Event date</label><input type="date" value={formData.date} onChange={e => setF("date", e.target.value)} /></div>
             <div className="field"><label>Location</label><input value={formData.location} onChange={e => setF("location", e.target.value)} placeholder="Town, venue" /></div>
             <div className="field"><label>Wikipedia Event Platform URL</label><input value={formData.wikiEventUrl} onChange={e => setF("wikiEventUrl", e.target.value)} placeholder="https://www.mediawiki.org/wiki/…" /></div>
@@ -252,6 +275,11 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{f.title}</div>
                     {f.date && <div style={{ fontSize: 11, color: "#888" }}>{f.date}</div>}
+                    {f.programId && (
+                      <div style={{ fontSize: 11, color: "#4a9e6b", marginTop: 2 }}>
+                        {programs.find(p => p.id === f.programId)?.name || ""}
+                      </div>
+                    )}
                   </div>
                   <span className={`badge ${badge.cls}`} style={{ fontSize: 10 }}>{badge.label}</span>
                 </div>

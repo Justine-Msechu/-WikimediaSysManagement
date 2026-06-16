@@ -7,9 +7,101 @@ import {
 import { listenSettings, updateSettings } from "../services/settingsService";
 import { listenPrograms } from "../services/programService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import logo from "../assets/logo.png";
 
 function fmt(n)    { return (n || 0).toLocaleString(); }
 function fmtUSD(n) { return `$${(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
+function esc(s)    { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function budgetPrintHtml(programs, approvedEntries, orgName, logoSrc) {
+  const rows = (items, pRate) => items.map(it => {
+    const total = (Number(it.unitCost)||0) * (Number(it.quantity)||1);
+    const usd   = total * pRate;
+    return `<tr>
+      <td>${esc(it.description)}</td>
+      <td>${esc(it.note)}</td>
+      <td style="text-align:right">${fmt(it.unitCost)}</td>
+      <td style="text-align:center">${it.quantity}</td>
+      <td style="text-align:right"><strong>${fmt(total)}</strong></td>
+      <td>${esc(it.expenseType)}</td>
+      <td style="text-align:right">${(it.exchangeRate||pRate).toFixed(7)}</td>
+      <td style="text-align:right"><strong>${fmtUSD(usd)}</strong></td>
+    </tr>`;
+  }).join("");
+
+  const progHtml = programs.map(p => {
+    const pRate   = Number(p.exchangeRate || 0.000438);
+    const items   = p.budgetItems || [];
+    const totalTZS = items.reduce((s,i) => s + (Number(i.unitCost)||0)*(Number(i.quantity)||1), 0);
+    const totalUSD = totalTZS * pRate;
+    const actual   = approvedEntries.filter(e => e.programId === p.id).reduce((s,e) => s+(e.amount||0), 0);
+    return `
+    <div class="prog-block">
+      <div class="prog-title" style="color:${p.color||'#2d7a4f'}">${esc(p.name)}</div>
+      <div class="prog-cat">${esc(p.category)}</div>
+      ${p.description ? `<div class="prog-desc">${esc(p.description)}</div>` : ""}
+      ${items.length === 0 ? "<p style='color:#aaa;font-size:12px'>No budget line items.</p>" : `
+      <table>
+        <thead><tr>
+          <th>Description</th><th>Note</th>
+          <th style="text-align:right">Unit cost (TZS)</th>
+          <th style="text-align:center">Qty</th>
+          <th style="text-align:right">Total (TZS)</th>
+          <th>Expense type</th>
+          <th style="text-align:right">Rate</th>
+          <th style="text-align:right">USD</th>
+        </tr></thead>
+        <tbody>${rows(items, pRate)}</tbody>
+        <tfoot><tr class="total-row">
+          <td colspan="4" style="text-align:right">You wish to be reimbursed in TZS:</td>
+          <td style="text-align:right">${fmt(totalTZS)}</td>
+          <td style="text-align:right">USD</td>
+          <td></td>
+          <td style="text-align:right">${fmtUSD(totalUSD)}</td>
+        </tr></tfoot>
+      </table>`}
+      <div class="actual-note">Actual spend recorded: <strong>TZS ${fmt(actual)}</strong> | Remaining: <strong>TZS ${fmt(totalTZS - actual)}</strong></div>
+    </div>`;
+  }).join("<hr>");
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Program Budgets — ${esc(orgName)}</title>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #1c2b1e; padding: 32px; max-width: 960px; margin: 0 auto; }
+    .header { display: flex; align-items: center; gap: 18px; margin-bottom: 24px; border-bottom: 2px solid #2d7a4f; padding-bottom: 16px; }
+    .header img { width: 56px; height: 56px; object-fit: contain; }
+    .header h1 { font-size: 20px; margin: 0; color: #1c2b1e; }
+    .header small { display: block; font-size: 12px; color: #888; margin-top: 4px; }
+    .prog-block { margin: 20px 0; page-break-inside: avoid; }
+    .prog-title { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
+    .prog-cat   { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #888; margin-bottom: 4px; }
+    .prog-desc  { font-size: 12px; color: #555; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 12px; }
+    th { background: #1c2b1e; color: #fff; padding: 7px 8px; text-align: left; font-size: 11px; }
+    td { padding: 6px 8px; border-bottom: 1px solid #e8e8e4; }
+    tr:nth-child(even) td { background: #f9f9f7; }
+    .total-row td { background: #f0f7f3 !important; font-weight: 700; border-top: 2px solid #2d7a4f; }
+    .actual-note { font-size: 12px; color: #555; margin-top: 8px; padding: 6px 10px; background: #f5f4f0; border-radius: 5px; }
+    hr { border: none; border-top: 2px dashed #e8e8e4; margin: 24px 0; }
+    .no-print { text-align: center; margin-bottom: 20px; }
+    .no-print button { padding: 10px 28px; font-size: 14px; background: #2d7a4f; color: #fff; border: none; border-radius: 7px; cursor: pointer; margin: 0 6px; }
+    .no-print button.sec { background: #f5f4f0; color: #333; border: 1px solid #ccc; }
+    @media print { .no-print { display: none; } }
+  </style></head><body>
+  <div class="no-print">
+    <button onclick="window.print()">Print</button>
+    <button class="sec" onclick="window.close()">Close</button>
+  </div>
+  <div class="header">
+    <img src="${logoSrc}" alt="logo">
+    <div>
+      <h1>Program Budget Report</h1>
+      <small>${esc(orgName)} &nbsp;·&nbsp; Printed ${new Date().toLocaleDateString("en-GB", { day:"2-digit", month:"long", year:"numeric" })}</small>
+    </div>
+  </div>
+  ${progHtml}
+  </body></html>`;
+}
 
 function getMonthName(dateStr) {
   if (!dateStr) return null;
@@ -173,6 +265,15 @@ export default function Budget({ profile }) {
     showToast("Monthly plan saved.");
   };
 
+  // ── print ─────────────────────────────────────────────────────────────────
+  const printBudgets = (subset) => {
+    const orgName = settings?.org?.name || "Wikimedians of Kilimanjaro";
+    const html = budgetPrintHtml(subset, approved, orgName, logo);
+    const w = window.open("", "_blank", "width=1000,height=750");
+    w.document.write(html);
+    w.document.close();
+  };
+
   // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div>
@@ -285,6 +386,93 @@ export default function Budget({ profile }) {
                   <input type="date" value={form.date} onChange={e => setF("date", e.target.value)} />
                 </div>
               </div>
+              {/* Program budget reference */}
+              {(() => {
+                const selProg = form.programId ? programs.find(p => p.id === form.programId) : null;
+                if (!selProg) return null;
+                const items      = selProg.budgetItems || [];
+                const pRate      = Number(selProg.exchangeRate || rate);
+                const planned    = selProg.plannedBudget || items.reduce((s,i) => s+(Number(i.unitCost)||0)*(Number(i.quantity)||1), 0);
+                const spent      = approved.filter(e => e.programId === selProg.id).reduce((s,e) => s+(e.amount||0), 0);
+                const remaining  = planned - spent;
+                return (
+                  <div style={{ gridColumn: "1 / -1", background: "#f0f7f3", border: "1px solid #b7e0c8", borderRadius: 8, padding: "12px 14px", marginTop: 4 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: items.length ? 10 : 0, flexWrap: "wrap", gap: 8 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: selProg.color || "#2d7a4f" }}>{selProg.name} — budget reference</div>
+                      <div style={{ display: "flex", gap: 16, fontSize: 12 }}>
+                        <span>Planned: <strong>TZS {fmt(planned)}</strong></span>
+                        <span>Spent: <strong style={{ color: "#c0392b" }}>TZS {fmt(spent)}</strong></span>
+                        <span>Remaining: <strong style={{ color: remaining < 0 ? "#c0392b" : "#2d7a4f" }}>TZS {fmt(remaining)}</strong></span>
+                      </div>
+                    </div>
+                    {items.length > 0 && (
+                      <>
+                        <div style={{ fontSize: 11, color: "#666", marginBottom: 6 }}>Click a line item to pre-fill the form:</div>
+                        <div style={{ overflowX: "auto" }}>
+                          <table style={{ fontSize: 11 }}>
+                            <thead>
+                              <tr>
+                                <th>Description</th>
+                                <th>Note</th>
+                                <th style={{ textAlign: "right" }}>Unit cost</th>
+                                <th style={{ textAlign: "center" }}>Qty</th>
+                                <th style={{ textAlign: "right" }}>Total (TZS)</th>
+                                <th>Expense type</th>
+                                <th style={{ textAlign: "right" }}>USD</th>
+                                <th></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {items.map((it, i) => {
+                                const total = (Number(it.unitCost)||0) * (Number(it.quantity)||1);
+                                const usd   = total * pRate;
+                                return (
+                                  <tr key={i} style={{ cursor: "pointer" }} onClick={() => {
+                                    setF("title",  it.description || "");
+                                    setF("amount", total);
+                                    // map expenseType to a matching budget category
+                                    const typeMap = {
+                                      "Food and drinks": "Food & refreshments",
+                                      "Venue / Room Hire": "Venue rentals",
+                                      "Transport": "Local transportation",
+                                      "Facilitators": "Volunteer support",
+                                      "Equipment": "Office expenses",
+                                      "Materials": "Office expenses",
+                                      "Internet/Supplies": "Internet & computers",
+                                      "Bank charges": "Bank fees",
+                                    };
+                                    const cat = typeMap[it.expenseType] || form.category;
+                                    setF("category", cat);
+                                    if (it.note) setF("description", it.note);
+                                  }}>
+                                    <td style={{ fontWeight: 500 }}>{it.description || "—"}</td>
+                                    <td style={{ color: "#555" }}>{it.note || "—"}</td>
+                                    <td style={{ textAlign: "right" }}>{fmt(it.unitCost)}</td>
+                                    <td style={{ textAlign: "center" }}>{it.quantity}</td>
+                                    <td style={{ textAlign: "right", fontWeight: 600 }}>{fmt(total)}</td>
+                                    <td>{it.expenseType}</td>
+                                    <td style={{ textAlign: "right", color: "#555" }}>{fmtUSD(usd)}</td>
+                                    <td><button className="btn btn-sm btn-primary" style={{ fontSize: 10 }} tabIndex={-1} onClick={e => { e.stopPropagation(); setF("title", it.description||""); setF("amount", total); setF("description", it.note||""); }}>Use</button></td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                            <tfoot>
+                              <tr style={{ fontWeight: 700, background: "#e8f5ee" }}>
+                                <td colSpan={4} style={{ textAlign: "right" }}>Total planned:</td>
+                                <td style={{ textAlign: "right" }}>{fmt(planned)}</td>
+                                <td>USD</td>
+                                <td style={{ textAlign: "right" }}>{fmtUSD(planned * pRate)}</td>
+                                <td></td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
               <div className="field">
                 <label>Description</label>
                 <textarea rows={2} value={form.description} onChange={e => setF("description", e.target.value)} />
@@ -374,9 +562,14 @@ export default function Budget({ profile }) {
       {/* ── PROGRAMS ──────────────────────────────────────────────────────── */}
       {tab === "programs" && (
         <div className="panel" style={{ borderRadius: "0 8px 8px 8px" }}>
-          <div style={{ marginBottom: 16 }}>
-            <div className="panel-title" style={{ marginBottom: 2 }}>Program budgets</div>
-            <div style={{ fontSize: 12, color: "#888" }}>Set planned budgets on each program in the Programs page. Link budget entries to a program using the Program dropdown when creating an expense.</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+            <div>
+              <div className="panel-title" style={{ marginBottom: 2 }}>Program budgets</div>
+              <div style={{ fontSize: 12, color: "#888" }}>Set planned budgets on each program in the Programs page. Link budget entries to a program using the Program dropdown when creating an expense.</div>
+            </div>
+            {programs.length > 0 && (
+              <button className="btn btn-sm" onClick={() => printBudgets(programs)}>Print all budgets</button>
+            )}
           </div>
 
           {programs.length === 0 ? (
@@ -397,10 +590,15 @@ export default function Budget({ profile }) {
                         <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</div>
                         <div style={{ fontSize: 11, color: p.color || "#4a9e6b", fontWeight: 600 }}>{p.category}</div>
                       </div>
-                      <div style={{ display: "flex", gap: 20, textAlign: "right" }}>
-                        <div><div style={{ fontSize: 11, color: "#888" }}>Planned</div><div style={{ fontWeight: 600 }}>TZS {fmt(plannedBudget)}</div></div>
-                        <div><div style={{ fontSize: 11, color: "#888" }}>Spent</div><div style={{ fontWeight: 600, color: overBudget ? "#c0392b" : "#2d7a4f" }}>TZS {fmt(actualSpend)}</div></div>
-                        <div><div style={{ fontSize: 11, color: "#888" }}>Remaining</div><div style={{ fontWeight: 600, color: overBudget ? "#c0392b" : "#2d7a4f" }}>TZS {fmt(remaining)}</div></div>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", gap: 20, textAlign: "right" }}>
+                          <div><div style={{ fontSize: 11, color: "#888" }}>Planned</div><div style={{ fontWeight: 600 }}>TZS {fmt(plannedBudget)}</div></div>
+                          <div><div style={{ fontSize: 11, color: "#888" }}>Spent</div><div style={{ fontWeight: 600, color: overBudget ? "#c0392b" : "#2d7a4f" }}>TZS {fmt(actualSpend)}</div></div>
+                          <div><div style={{ fontSize: 11, color: "#888" }}>Remaining</div><div style={{ fontWeight: 600, color: overBudget ? "#c0392b" : "#2d7a4f" }}>TZS {fmt(remaining)}</div></div>
+                        </div>
+                        {(p.budgetItems?.length > 0) && (
+                          <button className="btn btn-sm" style={{ whiteSpace: "nowrap" }} onClick={() => printBudgets([p])}>Print budget</button>
+                        )}
                       </div>
                     </div>
                     {plannedBudget > 0 && (

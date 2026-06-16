@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { listenPrograms, addProgram, updateProgram, deleteProgram, DEFAULT_PROGRAMS, PROGRAM_CATEGORIES } from "../services/programService";
+import { listenPrograms, addProgram, updateProgram, deleteProgram, submitProgram, DEFAULT_PROGRAMS, PROGRAM_CATEGORIES } from "../services/programService";
 import { listenActivities } from "../services/activityService";
 import { listenSettings } from "../services/settingsService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+
+const STATUS_BADGE = {
+  draft:     { label: "Draft",            color: "#2563eb", bg: "#eff6ff" },
+  submitted: { label: "Pending approval", color: "#d97706", bg: "#fff8e1" },
+  approved:  { label: "Approved — Locked", color: "#2d7a4f", bg: "#f0f7f3" },
+};
 
 const PROGRAM_COLORS = ["#2d7a4f", "#2563eb", "#9333ea", "#d97706", "#0891b2", "#c0392b", "#059669", "#7c3aed", "#db2777"];
 
@@ -87,6 +93,17 @@ export default function Programs({ profile }) {
     await addAudit(profile, AUDIT_ACTIONS.DELETE, "programs", { targetId: p.id, recordTitle: p.name });
     showToast("Program deleted.");
   };
+
+  const submit = async (p) => {
+    if (!p.budgetItems?.length) { alert("Add at least one budget item before submitting."); return; }
+    if (!window.confirm(`Submit "${p.name}" for approval? You will not be able to edit it until it is reviewed.`)) return;
+    await submitProgram(p.id, profile?.name || "");
+    await addAudit(profile, AUDIT_ACTIONS.SUBMIT, "programs", { targetId: p.id, recordTitle: p.name });
+    showToast(`"${p.name}" submitted for approval.`);
+  };
+
+  const isAdmin = profile?.role === "admin";
+  const canEditProgram = (p) => isAdmin || (canEdit && p.status !== "approved" && p.status !== "submitted");
 
   const statsFor = (pid) => {
     const acts = activities.filter(a => a.programId === pid);
@@ -225,18 +242,39 @@ export default function Programs({ profile }) {
               <div key={p.id} className="panel" style={{ borderTop: `4px solid ${p.color || "#4a9e6b"}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>{p.name}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</span>
+                      {(() => {
+                        const s = STATUS_BADGE[p.status] || STATUS_BADGE.draft;
+                        return <span style={{ fontSize: 10, fontWeight: 700, color: s.color, background: s.bg, border: `1px solid ${s.color}33`, borderRadius: 5, padding: "2px 8px" }}>{s.label}</span>;
+                      })()}
+                    </div>
                     <div style={{ fontSize: 11, color: p.color || "#4a9e6b", fontWeight: 600, marginBottom: 4 }}>{p.category}</div>
-                    {p.description && <div style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>{p.description}</div>}
+                    {p.description && <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>{p.description}</div>}
+                    {p.rejectionComment && (
+                      <div style={{ fontSize: 12, color: "#c0392b", background: "#fdf0ee", border: "1px solid #f5c6c0", borderRadius: 5, padding: "4px 10px", marginBottom: 4 }}>
+                        Returned: {p.rejectionComment}
+                      </div>
+                    )}
+                    {p.status === "approved" && (
+                      <div style={{ fontSize: 11, color: "#2d7a4f" }}>
+                        Approved by {p.approvedBy} · {p.approvedAt ? new Date(p.approvedAt).toLocaleDateString("en-GB") : ""}
+                        {!isAdmin && <span style={{ marginLeft: 8, color: "#888" }}>— budget locked</span>}
+                      </div>
+                    )}
                   </div>
-                  <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 12 }}>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 12, flexWrap: "wrap" }}>
                     {(p.budgetItems?.length > 0) && (
                       <button className="btn btn-sm" onClick={() => setExpanded(isExp ? null : p.id)}>
                         {isExp ? "Hide budget" : "View budget"}
                       </button>
                     )}
-                    {canEdit && <button className="btn btn-sm" onClick={() => openEdit(p)}>Edit</button>}
-                    {canEdit && <button className="btn btn-sm btn-danger" onClick={() => del(p)}>✕</button>}
+                    {/* Submit for approval — only draft programs with budget items */}
+                    {canEdit && p.status === "draft" && (p.budgetItems?.length > 0) && (
+                      <button className="btn btn-sm btn-primary" onClick={() => submit(p)}>Submit for approval</button>
+                    )}
+                    {canEditProgram(p) && <button className="btn btn-sm" onClick={() => openEdit(p)}>Edit</button>}
+                    {canEditProgram(p) && p.status === "draft" && <button className="btn btn-sm btn-danger" onClick={() => del(p)}>✕</button>}
                   </div>
                 </div>
 

@@ -54,9 +54,14 @@ service cloud.firestore {
     }
 
     // ── /programs ──────────────────────────────────────────────────────────
+    // Approved programs are locked — only admins can touch them.
     match /programs/{docId} {
       allow read:   if isAnyStaff();
-      allow write:  if isCoordinator();
+      allow create: if isCoordinator();
+      allow update: if isAdmin() ||
+        (isCoordinator() && resource.data.status != "approved");
+      allow delete: if isAdmin() ||
+        (isCoordinator() && resource.data.status == "draft");
     }
 
     // ── /activities ────────────────────────────────────────────────────────

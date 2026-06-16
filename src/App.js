@@ -89,14 +89,21 @@ function AppShell() {
   }
 
   const role = profile.role;
-  const [budgetEntries, setBudgetEntries] = React.useState([]);
+  const [budgetEntries,  setBudgetEntries]  = React.useState([]);
+  const [reviewPrograms, setReviewPrograms] = React.useState([]);
   React.useEffect(() => {
     const { listenBudgetEntries } = require("./services/budgetService");
-    return listenBudgetEntries(setBudgetEntries);
+    const { listenPrograms }      = require("./services/programService");
+    const u1 = listenBudgetEntries(setBudgetEntries);
+    const u2 = listenPrograms(setReviewPrograms);
+    return () => { u1(); u2(); };
   }, []);
-  const pendingCount = budgetEntries.filter(e => e.status === "submitted").length;
-  const myDraftCount = budgetEntries.filter(e => e.status === "draft" && e.requestedBy === profile?.name).length;
-  const reviewBadge  = ["admin","finance_officer"].includes(role) ? pendingCount : myDraftCount;
+  const pendingBudget   = budgetEntries.filter(e => e.status === "submitted").length;
+  const pendingPrograms = reviewPrograms.filter(p => p.status === "submitted").length;
+  const myDraftCount    = budgetEntries.filter(e => e.status === "draft" && e.requestedBy === profile?.name).length;
+  const reviewBadge     = ["admin","finance_officer"].includes(role)
+    ? pendingBudget + pendingPrograms
+    : myDraftCount + pendingPrograms;
 
   const handleLogout = async () => {
     await addAudit(profile, AUDIT_ACTIONS.LOGOUT, "auth", { details: "Signed out" });

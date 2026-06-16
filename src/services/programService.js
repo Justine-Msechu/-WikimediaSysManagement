@@ -9,7 +9,7 @@ export async function getPrograms() {
 }
 
 export async function addProgram(data) {
-  return addDocument("programs", data);
+  return addDocument("programs", { ...data, status: "draft" });
 }
 
 export async function updateProgram(id, data) {
@@ -18,6 +18,31 @@ export async function updateProgram(id, data) {
 
 export async function deleteProgram(id) {
   return deleteDocument("programs", id);
+}
+
+export async function submitProgram(id, submitterName) {
+  return updateDocument("programs", id, {
+    status:      "submitted",
+    submittedBy: submitterName,
+    submittedAt: new Date().toISOString(),
+  });
+}
+
+export async function approveProgram(id, approverName) {
+  return updateDocument("programs", id, {
+    status:     "approved",
+    approvedBy: approverName,
+    approvedAt: new Date().toISOString(),
+    rejectionComment: "",
+  });
+}
+
+export async function rejectProgram(id, comment) {
+  return updateDocument("programs", id, {
+    status:           "draft",
+    rejectionComment: comment,
+    rejectedAt:       new Date().toISOString(),
+  });
 }
 
 export function listenPrograms(callback) {

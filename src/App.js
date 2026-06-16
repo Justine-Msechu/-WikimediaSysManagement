@@ -56,6 +56,7 @@ function AppShell() {
   const { currentUser, profile, loading } = useAuth();
   const [page, setPage]                   = useState("dashboard");
   const [selectedActivityId, setSelectedActivityId] = useState(null);
+  const [sidebarOpen, setSidebarOpen]     = useState(false);
 
   const publicFormId = getPublicFormId();
 
@@ -126,6 +127,7 @@ function AppShell() {
   };
 
   const goPage = (id, extraId) => {
+    setSidebarOpen(false);
     if (id === "activity-detail" && extraId) {
       setSelectedActivityId(extraId);
     } else {
@@ -166,7 +168,23 @@ function AppShell() {
 
   return (
     <div className="app-layout">
-      <aside className="sidebar">
+
+      {/* Mobile top bar — only visible on small screens */}
+      <div className="mobile-topbar">
+        <button className="hamburger" onClick={() => setSidebarOpen(v => !v)} aria-label="Open menu">
+          <span /><span /><span />
+        </button>
+        <img src={logo} alt="logo" className="mobile-topbar-logo" />
+        <span className="mobile-topbar-title">GSF Manager</span>
+        {unreadNotifs.length > 0 && (
+          <span style={{ background: "#c0392b", color: "#fff", borderRadius: 10, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{unreadNotifs.length}</span>
+        )}
+      </div>
+
+      {/* Backdrop overlay — closes sidebar when tapped */}
+      <div className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`} onClick={() => setSidebarOpen(false)} />
+
+      <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
         <div className="sidebar-brand">
           <img src={logo} alt="Wikimedia Community Kilimanjaro" className="sidebar-logo" />
         </div>

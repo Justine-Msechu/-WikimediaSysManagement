@@ -16,6 +16,7 @@ import Metrics       from "./pages/Metrics";
 import Participants  from "./pages/Participants";
 import RegistrationForms from "./pages/RegistrationForms";
 import PublicRegister    from "./pages/PublicRegister";
+import Review        from "./pages/Review";
 import RiskRegister  from "./pages/RiskRegister";
 import DonorDashboard from "./pages/DonorDashboard";
 import FinalReport   from "./pages/FinalReport";
@@ -33,6 +34,7 @@ const NAV = [
   { id: "activities",   label: "Activities",     icon: "◉", roles: null },
   { id: "timeline",     label: "Timeline",       icon: "◷", roles: null },
   { id: "budget",       label: "Budget",         icon: "◎", roles: null },
+  { id: "review",       label: "Review",         icon: "✓", roles: null },
   { id: "metrics",      label: "Metrics",        icon: "◑", roles: null },
   { id: "participants", label: "Participants",    icon: "◐", roles: ["admin", "coordinator"] },
   { id: "risks",        label: "Risk register",  icon: "◬", roles: ["admin", "coordinator", "finance_officer"] },
@@ -87,6 +89,14 @@ function AppShell() {
   }
 
   const role = profile.role;
+  const [budgetEntries, setBudgetEntries] = React.useState([]);
+  React.useEffect(() => {
+    const { listenBudgetEntries } = require("./services/budgetService");
+    return listenBudgetEntries(setBudgetEntries);
+  }, []);
+  const pendingCount = budgetEntries.filter(e => e.status === "submitted").length;
+  const myDraftCount = budgetEntries.filter(e => e.status === "draft" && e.requestedBy === profile?.name).length;
+  const reviewBadge  = ["admin","finance_officer"].includes(role) ? pendingCount : myDraftCount;
 
   const handleLogout = async () => {
     await addAudit(profile, AUDIT_ACTIONS.LOGOUT, "auth", { details: "Signed out" });
@@ -118,6 +128,7 @@ function AppShell() {
       case "activities":   return <Activities   profile={profile} goPage={goPage} />;
       case "timeline":     return <Timeline     profile={profile} goPage={goPage} />;
       case "budget":       return <Budget       profile={profile} />;
+      case "review":       return <Review       profile={profile} goPage={goPage} />;
       case "metrics":      return <Metrics      profile={profile} />;
       case "participants": return <Participants profile={profile} />;
       case "risks":        return <RiskRegister profile={profile} />;
@@ -149,6 +160,9 @@ function AppShell() {
             >
               <span className="nav-icon">{n.icon}</span>
               <span>{n.label}</span>
+              {n.id === "review" && reviewBadge > 0 && (
+                <span style={{ marginLeft: "auto", background: "#d97706", color: "#fff", borderRadius: 10, padding: "1px 7px", fontSize: 10, fontWeight: 700 }}>{reviewBadge}</span>
+              )}
             </button>
           ))}
         </nav>

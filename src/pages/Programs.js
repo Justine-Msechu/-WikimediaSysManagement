@@ -6,7 +6,7 @@ import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 const PROGRAM_COLORS = ["#2d7a4f", "#2563eb", "#9333ea", "#d97706", "#0891b2", "#c0392b", "#059669", "#7c3aed", "#db2777"];
 
 function emptyProgram() {
-  return { name: "", category: "Content Creation", description: "", plannedSessions: 1, color: PROGRAM_COLORS[0] };
+  return { name: "", category: "Content Creation", description: "", plannedSessions: 1, plannedBudget: 0, color: PROGRAM_COLORS[0] };
 }
 
 export default function Programs({ profile }) {
@@ -28,7 +28,7 @@ export default function Programs({ profile }) {
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const openCreate = () => { setForm(emptyProgram()); setEditId(null); setShowForm(true); };
-  const openEdit   = (p) => { setForm({ name: p.name, category: p.category, description: p.description || "", plannedSessions: p.plannedSessions || 1, color: p.color || PROGRAM_COLORS[0] }); setEditId(p.id); setShowForm(true); };
+  const openEdit   = (p) => { setForm({ name: p.name, category: p.category, description: p.description || "", plannedSessions: p.plannedSessions || 1, plannedBudget: p.plannedBudget || 0, color: p.color || PROGRAM_COLORS[0] }); setEditId(p.id); setShowForm(true); };
 
   const save = async () => {
     if (!form.name.trim()) { alert("Program name is required."); return; }
@@ -92,6 +92,7 @@ export default function Programs({ profile }) {
               </select>
             </div>
             <div className="field"><label>Planned sessions</label><input type="number" min="1" value={form.plannedSessions} onChange={e => setF("plannedSessions", Number(e.target.value))} /></div>
+            <div className="field"><label>Planned budget (TZS)</label><input type="number" min="0" value={form.plannedBudget} onChange={e => setF("plannedBudget", Number(e.target.value) || 0)} placeholder="0" /></div>
             <div className="field"><label>Colour</label>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 4 }}>
                 {PROGRAM_COLORS.map(c => (
@@ -132,6 +133,7 @@ export default function Programs({ profile }) {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, borderTop: "1px solid #f0f0ec", paddingTop: 10, marginTop: 4 }}>
                   {[
                     { label: "Sessions", value: `${s.sessions} / ${p.plannedSessions || "—"}` },
+                    { label: "Planned budget", value: p.plannedBudget ? `TZS ${(p.plannedBudget).toLocaleString()}` : "—" },
                     { label: "Participants", value: s.participants },
                     { label: "Women", value: s.women },
                     { label: "New editors", value: s.newEditors },

@@ -5,6 +5,7 @@ import {
   FISCAL_MONTHS, getGroup, DEFAULT_PERSONNEL,
 } from "../services/budgetService";
 import { listenSettings, updateSettings } from "../services/settingsService";
+import { listenPrograms } from "../services/programService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 
 function fmt(n)    { return (n || 0).toLocaleString(); }
@@ -19,13 +20,14 @@ function getMonthName(dateStr) {
 function emptyEntry(profile) {
   return {
     title: "", description: "", category: "Food & refreshments",
-    amount: 0, date: new Date().toISOString().slice(0, 10),
+    programId: "", amount: 0, date: new Date().toISOString().slice(0, 10),
     requestedBy: profile?.name || "", status: "draft", reviewerComment: "",
   };
 }
 
 const TABS = [
   { id: "expenses",  label: "Expenses"           },
+  { id: "programs",  label: "Programs"           },
   { id: "monthly",   label: "Monthly cash flow"  },
   { id: "personnel", label: "Personnel"          },
   { id: "pl",        label: "P&L"                },
@@ -35,6 +37,7 @@ export default function Budget({ profile }) {
   const [tab,           setTab]           = useState("expenses");
   const [entries,       setEntries]       = useState([]);
   const [settings,      setSettings]      = useState(null);
+  const [programs,      setPrograms]      = useState([]);
   const [toast,         setToast]         = useState("");
 
   // Expenses tab
@@ -61,12 +64,13 @@ export default function Budget({ profile }) {
 
   useEffect(() => {
     const u1 = listenBudgetEntries(setEntries);
+    const u3 = listenPrograms(setPrograms);
     const u2 = listenSettings(s => {
       setSettings(s);
       setPersonnel(s?.personnel?.length ? s.personnel : DEFAULT_PERSONNEL);
       setCashFlow(s?.cashFlow || {});
     });
-    return () => { u1(); u2(); };
+    return () => { u1(); u2(); u3(); };
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
@@ -266,6 +270,13 @@ export default function Budget({ profile }) {
                   </select>
                 </div>
                 <div className="field">
+                  <label>Program</label>
+                  <select value={form.programId || ""} onChange={e => setF("programId", e.target.value)}>
+                    <option value="">— No program —</option>
+                    {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div className="field">
                   <label>Amount (TZS)</label>
                   <input type="number" min="0" value={form.amount} onChange={e => setF("amount", Number(e.target.value) || 0)} />
                 </div>
@@ -355,6 +366,74 @@ export default function Budget({ profile }) {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── PROGRAMS ──────────────────────────────────────────────────────── */}
+      {tab === "programs" && (
+        <div className="panel" style={{ borderRadius: "0 8px 8px 8px" }}>
+          <div style={{ marginBottom: 16 }}>
+            <div className="panel-title" style={{ marginBottom: 2 }}>Program budgets</div>
+            <div style={{ fontSize: 12, color: "#888" }}>Set planned budgets on each program in the Programs page. Link budget entries to a program using the Program dropdown when creating an expense.</div>
+          </div>
+
+          {programs.length === 0 ? (
+            <div className="empty">No programs yet. Go to Programs to create some.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {programs.map(p => {
+                const progEntries  = approved.filter(e => e.programId === p.id);
+                const actualSpend  = progEntries.reduce((s, e) => s + (e.amount || 0), 0);
+                const plannedBudget = Number(p.plannedBudget || 0);
+                const pct          = plannedBudget > 0 ? Math.min(100, Math.round((actualSpend / plannedBudget) * 100)) : 0;
+                const remaining    = plannedBudget - actualSpend;
+                const overBudget   = remaining < 0;
+                return (
+                  <div key={p.id} style={{ border: `1px solid #e8e8e4`, borderLeft: `4px solid ${p.color || "#4a9e6b"}`, borderRadius: 8, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: p.color || "#4a9e6b", fontWeight: 600 }}>{p.category}</div>
+                      </div>
+                      <div style={{ display: "flex", gap: 20, textAlign: "right" }}>
+                        <div><div style={{ fontSize: 11, color: "#888" }}>Planned</div><div style={{ fontWeight: 600 }}>TZS {fmt(plannedBudget)}</div></div>
+                        <div><div style={{ fontSize: 11, color: "#888" }}>Spent</div><div style={{ fontWeight: 600, color: overBudget ? "#c0392b" : "#2d7a4f" }}>TZS {fmt(actualSpend)}</div></div>
+                        <div><div style={{ fontSize: 11, color: "#888" }}>Remaining</div><div style={{ fontWeight: 600, color: overBudget ? "#c0392b" : "#2d7a4f" }}>TZS {fmt(remaining)}</div></div>
+                      </div>
+                    </div>
+                    {plannedBudget > 0 && (
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ background: "#e8e8e4", borderRadius: 4, height: 8, overflow: "hidden" }}>
+                          <div style={{ width: `${pct}%`, height: 8, borderRadius: 4, background: overBudget ? "#c0392b" : p.color || "#4a9e6b", transition: "width 0.3s" }} />
+                        </div>
+                        <div style={{ fontSize: 11, color: "#aaa", marginTop: 3 }}>{pct}% of planned budget used{overBudget ? " — OVER BUDGET" : ""}</div>
+                      </div>
+                    )}
+                    {progEntries.length > 0 ? (
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ fontSize: 12 }}>
+                          <thead><tr><th>Title</th><th>Category</th><th style={{ textAlign: "right" }}>Amount (TZS)</th><th>Date</th><th>By</th></tr></thead>
+                          <tbody>
+                            {progEntries.map(e => (
+                              <tr key={e.id}>
+                                <td style={{ fontWeight: 500 }}>{e.title}</td>
+                                <td style={{ color: "#555" }}>{e.category}</td>
+                                <td style={{ textAlign: "right", fontWeight: 600 }}>{fmt(e.amount)}</td>
+                                <td style={{ color: "#888" }}>{e.date || "—"}</td>
+                                <td style={{ color: "#888" }}>{e.requestedBy || "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: "#aaa" }}>No approved expenses linked to this program yet.</div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

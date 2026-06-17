@@ -2,6 +2,7 @@
 // Requires REACT_APP_GOOGLE_CLIENT_ID in .env
 
 const CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+const FOLDER_ID = process.env.REACT_APP_GOOGLE_DRIVE_FOLDER_ID || null;
 const SCOPE     = "https://www.googleapis.com/auth/drive.file";
 const MAX_MB    = 10;
 
@@ -78,7 +79,7 @@ export async function uploadToDrive(file, onProgress) {
 
   const token    = await getToken();
   const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._\- ]/g, "_")}`;
-  const metadata = { name: safeName };
+  const metadata = FOLDER_ID ? { name: safeName, parents: [FOLDER_ID] } : { name: safeName };
 
   const form = new FormData();
   form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));

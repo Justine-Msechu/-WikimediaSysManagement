@@ -16,6 +16,7 @@ import Budget        from "./pages/Budget";
 import Metrics       from "./pages/Metrics";
 import Participants  from "./pages/Participants";
 import RegistrationForms from "./pages/RegistrationForms";
+import Volunteers        from "./pages/Volunteers";
 import PublicRegister    from "./pages/PublicRegister";
 import Review        from "./pages/Review";
 import RiskRegister  from "./pages/RiskRegister";
@@ -43,6 +44,7 @@ const NAV = [
   { id: "report",       label: "Final report",   icon: "▤", roles: null },
   { id: "audit",        label: "Audit log",      icon: "☰", roles: ["admin"] },
   { id: "users",        label: "Users",          icon: "◯", roles: ["admin"] },
+  { id: "volunteers",   label: "Volunteers",     icon: "◎", roles: ["admin", "coordinator"] },
   { id: "register",     label: "Reg. forms",     icon: "◫", roles: ["admin", "coordinator"] },
   { id: "settings",     label: "Settings",       icon: "⚙", roles: null },
 ];
@@ -158,6 +160,7 @@ function AppShell() {
       case "report":       return <FinalReport  profile={profile} />;
       case "audit":        return role === "admin" ? <AuditLog profile={profile} /> : <Dashboard profile={profile} goPage={goPage} />;
       case "users":        return role === "admin" ? <Users    profile={profile} /> : <Dashboard profile={profile} goPage={goPage} />;
+      case "volunteers":   return <Volunteers         profile={profile} />;
       case "register":     return <RegistrationForms profile={profile} />;
       case "settings":     return <Settings     profile={profile} />;
       default:             return <Dashboard    profile={profile} goPage={goPage} />;

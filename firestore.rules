@@ -162,6 +162,22 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── /volunteers ────────────────────────────────────────────────────────────
+    match /volunteers/{docId} {
+      allow read:   if isAnyStaff();
+      allow create: if isCoordinator();
+      allow update: if isCoordinator();
+      allow delete: if isAdmin();
+    }
+
+    // ── /volunteerTasks ────────────────────────────────────────────────────────
+    match /volunteerTasks/{docId} {
+      allow read:   if isAnyStaff();
+      allow create: if isCoordinator();
+      allow update: if isCoordinator();
+      allow delete: if isCoordinator();
+    }
+
     // ── /activityFiles ─────────────────────────────────────────────────────────
     // Metadata for files uploaded to Google Drive and linked to an activity.
     // Any authenticated staff can read and add; coordinators and above can delete.

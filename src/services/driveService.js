@@ -90,7 +90,7 @@ export async function uploadToDrive(file, onProgress) {
 
   const token    = await getToken();
   const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._\- ]/g, "_")}`;
-  const metadata = FOLDER_ID ? { name: safeName, parents: [FOLDER_ID] } : { name: safeName };
+  const metadata = { name: safeName };
 
   const form = new FormData();
   form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));

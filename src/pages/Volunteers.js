@@ -257,10 +257,15 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
           ``,
           `Wikimedia Community Kilimanjaro`,
         ].filter(line => line !== undefined).join("\n");
-        sendEmailNotification({ toEmails: [volunteer.email], subject, body }).catch(() => {});
+        const result = await sendEmailNotification({ toEmails: [volunteer.email], subject, body });
+        if (!result.ok) {
+          showToast(`Task saved but email failed: ${result.error}`);
+        } else {
+          showToast(`Task assigned. Email sent to ${volunteer.email}.`);
+        }
+      } else {
+        showToast("Task assigned. (No email — volunteer has no email address.)");
       }
-
-      showToast("Task assigned.");
     } else {
       await updateTask(editId, form);
       await addAudit(profile, AUDIT_ACTIONS.UPDATE, "volunteerTasks", { targetId: editId, recordTitle: form.title });

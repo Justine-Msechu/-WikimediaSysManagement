@@ -43,17 +43,19 @@ export async function getAdminEmails() {
     .map(u => u.email);
 }
 
-// Sends email via EmailJS if configured in env vars. Silently skips if not.
+// Sends email via EmailJS. Returns { ok, error } so callers can surface failures.
 export async function sendEmailNotification({ toEmails, subject, body }) {
   const serviceId  = process.env.REACT_APP_EMAILJS_SERVICE_ID;
   const templateId = process.env.REACT_APP_EMAILJS_TEMPLATE_ID;
   const publicKey  = process.env.REACT_APP_EMAILJS_PUBLIC_KEY;
-  if (!serviceId || !templateId || !publicKey) return;
+  if (!serviceId || !templateId || !publicKey) {
+    return { ok: false, error: "EmailJS not configured" };
+  }
 
   const recipients = Array.isArray(toEmails) ? toEmails : [toEmails];
-  await Promise.allSettled(
-    recipients.map(email =>
-      fetch("https://api.emailjs.com/api/v1.0/email/send", {
+  const results = await Promise.allSettled(
+    recipients.map(async email => {
+      const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -62,9 +64,21 @@ export async function sendEmailNotification({ toEmails, subject, body }) {
           user_id:         publicKey,
           template_params: { to_email: email, subject, message: body },
         }),
-      })
-    )
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.status);
+        throw new Error(`EmailJS ${res.status}: ${text}`);
+      }
+      return res;
+    })
   );
+
+  const failed = results.filter(r => r.status === "rejected");
+  if (failed.length) {
+    const reasons = failed.map(r => r.reason?.message || "unknown").join("; ");
+    return { ok: false, error: reasons };
+  }
+  return { ok: true };
 }
 
 // Notify admins when something is submitted for review

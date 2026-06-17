@@ -7,6 +7,7 @@ import {
 } from "../services/volunteerService";
 import { listenPrograms } from "../services/programService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import { sendEmailNotification } from "../services/notificationService";
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
@@ -236,6 +237,29 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
     if (!editId) {
       const id = await addTask(form);
       await addAudit(profile, AUDIT_ACTIONS.CREATE, "volunteerTasks", { targetId: id, recordTitle: form.title });
+
+      // Email the volunteer if they have an email address
+      const volunteer = volunteers.find(v => v.id === form.volunteerId);
+      if (volunteer?.email) {
+        const prog = approvedPrograms.find(p => p.id === form.programId);
+        const subject = `New task assigned to you: ${form.title}`;
+        const body = [
+          `Dear ${volunteer.name},`,
+          ``,
+          `You have been assigned a new task by ${form.assignedBy || "your coordinator"}:`,
+          ``,
+          `Task:        ${form.title}`,
+          prog ? `Program:     ${prog.name}` : "",
+          form.dueDate ? `Due date:    ${form.dueDate}` : "",
+          form.description ? `\nDetails:\n${form.description}` : "",
+          ``,
+          `Please contact your coordinator if you have any questions.`,
+          ``,
+          `Wikimedia Community Kilimanjaro`,
+        ].filter(line => line !== undefined).join("\n");
+        sendEmailNotification({ toEmails: [volunteer.email], subject, body }).catch(() => {});
+      }
+
       showToast("Task assigned.");
     } else {
       await updateTask(editId, form);

@@ -182,8 +182,12 @@ service cloud.firestore {
     // ── /volunteerTasks ────────────────────────────────────────────────────────
     match /volunteerTasks/{docId} {
       // Coordinators/admins manage all tasks.
-      // Volunteers can read and update only tasks assigned to them.
-      allow read:   if isAnyStaff() || (isVolunteer() && resource.data.volunteerId == myVolunteerId());
+      // Volunteers: list is allowed (the client query filters by their volunteerId,
+      //   so only their own tasks are returned). get() calls are not supported in
+      //   list rules, so we cannot do per-document volunteerId checks here.
+      // For single-document get and update, we DO check volunteerId via get().
+      allow list:   if isAnyStaff() || isVolunteer();
+      allow get:    if isAnyStaff() || (isVolunteer() && resource.data.volunteerId == myVolunteerId());
       allow create: if isCoordinator();
       allow update: if isCoordinator() || (isVolunteer() && resource.data.volunteerId == myVolunteerId());
       allow delete: if isCoordinator();

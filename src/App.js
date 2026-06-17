@@ -26,6 +26,8 @@ import AuditLog      from "./pages/AuditLog";
 import Users         from "./pages/Users";
 import Settings      from "./pages/Settings";
 import MyTasks       from "./pages/MyTasks";
+import Announcements from "./pages/Announcements";
+import Deadlines     from "./pages/Deadlines";
 
 import logo from "./assets/logo.png";
 import "./App.css";
@@ -47,7 +49,9 @@ const NAV = [
   { id: "users",        label: "Users",          icon: "◯", roles: ["admin"] },
   { id: "volunteers",   label: "Volunteers",     icon: "◎", roles: ["admin", "coordinator"] },
   { id: "register",     label: "Reg. forms",     icon: "◫", roles: ["admin", "coordinator"] },
-  { id: "settings",     label: "Settings",       icon: "⚙", roles: null },
+  { id: "announcements",label: "Announcements",  icon: "📢", roles: null },
+  { id: "deadlines",   label: "Deadlines",      icon: "⏰", roles: null },
+  { id: "settings",    label: "Settings",       icon: "⚙", roles: null },
   { id: "mytasks",     label: "My tasks",       icon: "✓", roles: ["volunteer"] },
 ];
 
@@ -143,16 +147,21 @@ function AppShell() {
     }
   };
 
-  // Volunteers only see "My tasks"; all other roles see everything except "mytasks"
+  // Volunteers see: My tasks, Announcements, Deadlines
+  const volunteerPages = new Set(["mytasks", "announcements", "deadlines"]);
   const visibleNav = isVolunteer
-    ? NAV.filter(n => n.id === "mytasks")
+    ? NAV.filter(n => volunteerPages.has(n.id))
     : NAV.filter(n => n.id !== "mytasks" && (!n.roles || n.roles.includes(role)));
 
   const effectivePage = isVolunteer ? "mytasks" : page;
   const activePage    = selectedActivityId ? null : effectivePage;
 
   const renderPage = () => {
-    if (isVolunteer) return <MyTasks profile={profile} />;
+    if (isVolunteer) {
+      if (page === "announcements") return <Announcements profile={profile} />;
+      if (page === "deadlines")     return <Deadlines     profile={profile} />;
+      return <MyTasks profile={profile} />;
+    }
     if (selectedActivityId) {
       return <ActivityDetail activityId={selectedActivityId} profile={profile} goPage={goPage} />;
     }
@@ -171,9 +180,11 @@ function AppShell() {
       case "report":       return <FinalReport  profile={profile} />;
       case "audit":        return role === "admin" ? <AuditLog profile={profile} /> : <Dashboard profile={profile} goPage={goPage} />;
       case "users":        return role === "admin" ? <Users    profile={profile} /> : <Dashboard profile={profile} goPage={goPage} />;
-      case "volunteers":   return <Volunteers         profile={profile} />;
-      case "register":     return <RegistrationForms profile={profile} />;
-      case "settings":     return <Settings     profile={profile} />;
+      case "volunteers":    return <Volunteers         profile={profile} />;
+      case "register":      return <RegistrationForms profile={profile} />;
+      case "announcements": return <Announcements     profile={profile} />;
+      case "deadlines":     return <Deadlines         profile={profile} />;
+      case "settings":      return <Settings          profile={profile} />;
       default:             return <Dashboard    profile={profile} goPage={goPage} />;
     }
   };

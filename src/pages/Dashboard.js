@@ -4,16 +4,60 @@ import { listenParticipants } from "../services/participantService";
 import { listenSettings } from "../services/settingsService";
 import { listenMetrics, DEFAULT_METRICS } from "../services/metricsService";
 import { listenBudgetEntries } from "../services/budgetService";
+import { listenAnnouncements } from "../services/announcementService";
+import { listenDeadlines } from "../services/deadlineService";
 
 function pct(r, t) { if (!t) return 0; return Math.min(999, Math.round((r / t) * 100)); }
-function fmt(n) { return (n || 0).toLocaleString(); }
+function fmt(n)    { return (n || 0).toLocaleString(); }
+function todayStr(){ return new Date().toISOString().slice(0, 10); }
+
+function getLast6Months() {
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    months.push({
+      key:   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      label: d.toLocaleDateString("en-GB", { month: "short" }),
+    });
+  }
+  return months;
+}
+
+function BarChart({ data, color = "#4a9e6b" }) {
+  const max = Math.max(...data.map(d => d.value), 1);
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 80, marginTop: 8 }}>
+      {data.map(d => (
+        <div key={d.label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+          {d.value > 0 && <div style={{ fontSize: 10, color: "#555", fontWeight: 600 }}>{d.value}</div>}
+          <div style={{
+            width: "100%",
+            height: `${Math.max(d.value > 0 ? (d.value / max) * 54 : 0, d.value ? 4 : 0)}px`,
+            background: color,
+            borderRadius: "3px 3px 0 0",
+            transition: "height 0.4s",
+          }} />
+          <div style={{ fontSize: 9, color: "#aaa", textAlign: "center", lineHeight: 1.2 }}>{d.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function daysUntil(date) {
+  return Math.round((new Date(date).setHours(0,0,0,0) - new Date(todayStr()).setHours(0,0,0,0)) / 86400000);
+}
 
 export default function Dashboard({ profile, goPage }) {
-  const [activities,    setActivities]    = useState([]);
-  const [participants,  setParticipants]  = useState([]);
-  const [settings,      setSettings]      = useState(null);
-  const [metrics,       setMetrics]       = useState(DEFAULT_METRICS);
-  const [budgetEntries, setBudgetEntries] = useState([]);
+  const [activities,     setActivities]     = useState([]);
+  const [participants,   setParticipants]   = useState([]);
+  const [settings,       setSettings]       = useState(null);
+  const [metrics,        setMetrics]        = useState(DEFAULT_METRICS);
+  const [budgetEntries,  setBudgetEntries]  = useState([]);
+  const [announcements,  setAnnouncements]  = useState([]);
+  const [deadlines,      setDeadlines]      = useState([]);
 
   useEffect(() => {
     const u1 = listenActivities(setActivities);
@@ -21,15 +65,17 @@ export default function Dashboard({ profile, goPage }) {
     const u3 = listenSettings(setSettings);
     const u4 = listenMetrics(setMetrics);
     const u5 = listenBudgetEntries(setBudgetEntries);
-    return () => { u1(); u2(); u3(); u4(); u5(); };
+    const u6 = listenAnnouncements(setAnnouncements);
+    const u7 = listenDeadlines(setDeadlines);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, []);
 
-  const grant = settings?.grant || {};
+  const grant          = settings?.grant || {};
   const totalBudgetTZS = grant.totalUSD ? Math.round(grant.totalUSD / (grant.conversionRate || 0.000413)) : 0;
   const approvedSpend  = budgetEntries.filter(e => e.status === "approved").reduce((s, e) => s + (e.amount || 0), 0);
   const budgetPct      = totalBudgetTZS ? Math.min(100, Math.round((approvedSpend / totalBudgetTZS) * 100)) : 0;
 
-  const canApprove = ["admin", "finance_officer"].includes(profile?.role);
+  const canApprove     = ["admin", "finance_officer"].includes(profile?.role);
   const pendingEntries = budgetEntries.filter(e => e.status === "submitted");
   const myDrafts       = budgetEntries.filter(e => e.status === "draft" && e.requestedBy === profile?.name);
   const actionItems    = [
@@ -42,15 +88,31 @@ export default function Dashboard({ profile, goPage }) {
       color: "#2563eb", bg: "#eff6ff", border: "#bfdbfe", page: "review",
     },
   ].filter(Boolean);
+
   const totalParticipants = activities.reduce((s, a) => s + (a.participants || 0), 0);
-  const totalWomen        = activities.reduce((s, a) => s + (a.women || 0), 0);
-  const totalNewEditors   = activities.reduce((s, a) => s + (a.newEditors || 0), 0);
+  const totalWomen        = activities.reduce((s, a) => s + (a.women       || 0), 0);
+  const totalNewEditors   = activities.reduce((s, a) => s + (a.newEditors  || 0), 0);
+
   const STAT_METRICS = [
     { key: "participants",  label: "Participants" },
     { key: "allEditors",    label: "Editors" },
     { key: "newEditors",    label: "New editors" },
     { key: "allOrganizers", label: "Organizers" },
   ];
+
+  // Monthly activity chart data
+  const months      = getLast6Months();
+  const chartData   = months.map(m => ({ label: m.label, value: activities.filter(a => a.date?.startsWith(m.key)).length }));
+  const chartPeople = months.map(m => ({
+    label: m.label,
+    value: activities.filter(a => a.date?.startsWith(m.key)).reduce((s, a) => s + (a.participants || 0), 0),
+  }));
+
+  // Upcoming deadlines for widget
+  const today         = todayStr();
+  const urgentDlines  = deadlines.filter(d => !d.done).slice(0, 4);
+  const latestAnnouncements = [...announcements].sort((a, b) => (a.pinned && !b.pinned) ? -1 : (!a.pinned && b.pinned) ? 1 : 0).slice(0, 3);
+
   return (
     <div>
       <div className="page-title">Dashboard</div>
@@ -59,11 +121,8 @@ export default function Dashboard({ profile, goPage }) {
       {actionItems.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
           {actionItems.map((item, i) => (
-            <div
-              key={i}
-              onClick={() => goPage(item.page)}
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: item.bg, border: `1px solid ${item.border}`, borderLeft: `4px solid ${item.color}`, borderRadius: 8, cursor: "pointer" }}
-            >
+            <div key={i} onClick={() => goPage(item.page)}
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: item.bg, border: `1px solid ${item.border}`, borderLeft: `4px solid ${item.color}`, borderRadius: 8, cursor: "pointer" }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: item.color }}>{item.label}</div>
               <div style={{ fontSize: 12, color: item.color, fontWeight: 500 }}>Go to Review →</div>
             </div>
@@ -71,6 +130,7 @@ export default function Dashboard({ profile, goPage }) {
         </div>
       )}
 
+      {/* Stat cards */}
       <div className="card-grid" style={{ marginBottom: 24 }}>
         {[
           { label: "Activities logged",  value: activities.length,      color: "#1c2b1e" },
@@ -78,7 +138,7 @@ export default function Dashboard({ profile, goPage }) {
           { label: "Women participants", value: fmt(totalWomen),        color: "#9333ea" },
           { label: "New editors",        value: fmt(totalNewEditors),   color: "#2563eb" },
           { label: "Registry size",      value: participants.length,    color: "#0891b2" },
-          { label: "Budget used",        value: `${budgetPct}%`,       color: budgetPct > 90 ? "#c0392b" : "#2d7a4f" },
+          { label: "Budget used",        value: `${budgetPct}%`,        color: budgetPct > 90 ? "#c0392b" : "#2d7a4f" },
         ].map(({ label, value, color }) => (
           <div key={label} className="stat-card">
             <div className="stat-label">{label}</div>
@@ -86,6 +146,20 @@ export default function Dashboard({ profile, goPage }) {
           </div>
         ))}
       </div>
+
+      {/* Charts row */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+        <div className="panel">
+          <div className="panel-title">Activities per month</div>
+          <BarChart data={chartData} color="#4a9e6b" />
+        </div>
+        <div className="panel">
+          <div className="panel-title">Participants per month</div>
+          <BarChart data={chartPeople} color="#2563eb" />
+        </div>
+      </div>
+
+      {/* Metrics + Recent activities */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
         <div className="panel">
           <div className="panel-title">Metrics progress</div>
@@ -105,6 +179,7 @@ export default function Dashboard({ profile, goPage }) {
             );
           })}
         </div>
+
         <div className="panel">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div className="panel-title" style={{ marginBottom: 0 }}>Recent activities</div>
@@ -119,6 +194,61 @@ export default function Dashboard({ profile, goPage }) {
             ))}
         </div>
       </div>
+
+      {/* Deadlines + Announcements */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+        {/* Upcoming deadlines widget */}
+        <div className="panel">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div className="panel-title" style={{ marginBottom: 0 }}>Upcoming deadlines</div>
+            <button className="btn btn-sm" onClick={() => goPage("deadlines")}>Manage →</button>
+          </div>
+          {urgentDlines.length === 0 ? (
+            <div className="empty">No upcoming deadlines.</div>
+          ) : (
+            urgentDlines.map(d => {
+              const days = daysUntil(d.date);
+              const color = days < 0 ? "#c0392b" : days <= 7 ? "#d97706" : days <= 30 ? "#2563eb" : "#2d7a4f";
+              return (
+                <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", paddingBottom: 10, marginBottom: 10, borderBottom: "1px solid #f0f0ec" }}>
+                  <div>
+                    <div style={{ fontWeight: 500, fontSize: 13 }}>{d.title}</div>
+                    <div style={{ fontSize: 11, color: "#888" }}>{d.type} · {d.date}</div>
+                  </div>
+                  <span style={{ color, fontWeight: 700, fontSize: 11, whiteSpace: "nowrap", marginLeft: 8 }}>
+                    {days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? "Today!" : `${days}d`}
+                  </span>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Announcements widget */}
+        <div className="panel">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div className="panel-title" style={{ marginBottom: 0 }}>Announcements</div>
+            <button className="btn btn-sm" onClick={() => goPage("announcements")}>View all →</button>
+          </div>
+          {latestAnnouncements.length === 0 ? (
+            <div className="empty">No announcements yet.</div>
+          ) : (
+            latestAnnouncements.map(a => (
+              <div key={a.id} style={{ paddingBottom: 10, marginBottom: 10, borderBottom: "1px solid #f0f0ec" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                  {a.priority === "urgent" && <span style={{ background: "#c0392b", color: "#fff", fontSize: 9, fontWeight: 700, borderRadius: 10, padding: "1px 6px" }}>URGENT</span>}
+                  {a.pinned && <span style={{ fontSize: 11 }}>📌</span>}
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{a.title}</div>
+                </div>
+                {a.body && <div style={{ fontSize: 12, color: "#666", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{a.body}</div>}
+                <div style={{ fontSize: 10, color: "#aaa", marginTop: 4 }}>By {a.createdBy}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Budget */}
       {totalBudgetTZS > 0 && (
         <div className="panel">
           <div className="panel-title">Budget utilisation</div>

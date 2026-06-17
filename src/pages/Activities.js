@@ -140,6 +140,21 @@ export default function Activities({ profile, goPage }) {
   const myTaskCount = activities.filter(a => a.assignedTo === profile?.name).length;
   const programName = (id) => programs.find(p => p.id === id)?.name || "";
 
+  const exportCSV = () => {
+    const headers = ["Date", "Activity name", "Type", "Program", "Assigned to", "Location", "Participants", "Women", "New editors", "Youth", "PWD", "Articles created", "Articles improved", "Commons", "Wikidata"];
+    const rows = filtered.map(a => [
+      a.date, a.name, a.type, programName(a.programId), a.assignedTo || "",
+      a.location || "", a.participants ?? "", a.women ?? "", a.newEditors ?? "",
+      a.youth ?? "", a.pwd ?? "", a.created ?? "", a.improved ?? "", a.commons ?? "", a.wikidata ?? "",
+    ].map(v => `"${String(v || "").replace(/"/g, '""')}"`).join(","));
+    const csv  = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = `activities-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
       {toast && (
@@ -158,6 +173,7 @@ export default function Activities({ profile, goPage }) {
 
       <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap" }}>
         <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Search activities…" style={{ flex: 1, minWidth: 200, fontSize: 13 }} />
+        <button className="btn btn-sm" onClick={exportCSV} title="Export visible activities to CSV">Export CSV</button>
         <button
           className={`btn btn-sm ${myTasksOnly ? "btn-primary" : ""}`}
           onClick={() => setMyTasksOnly(v => !v)}

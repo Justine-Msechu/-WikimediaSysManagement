@@ -42,6 +42,7 @@ export default function RegistrationForms({ profile }) {
   const [formData,     setFormData]     = useState(emptyForm());
   const [copiedLink,   setCopiedLink]   = useState(false);
   const [copiedUsernames, setCopiedUsernames] = useState(false);
+  const [showQR,       setShowQR]       = useState(false);
   const [expenseType,  setExpenseType]  = useState(EXPENSE_TYPES[0]);
   const [toast,        setToast]        = useState("");
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
@@ -321,10 +322,28 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
 
               {/* Share panel */}
               <div style={{ background: "#f0f8f3", border: "1px solid #b7e0c8", borderRadius: 8, padding: 14, marginBottom: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Share with participants</div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <input readOnly value={publicUrl(selectedForm.id)} style={{ flex: 1, fontSize: 12, background: "#fff" }} onFocus={e => e.target.select()} />
-                  <button className="btn btn-primary btn-sm" onClick={() => copyLink(selectedForm.id)}>{copiedLink ? "Copied!" : "Copy link"}</button>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Share with participants</div>
+                  <button className="btn btn-sm" onClick={() => setShowQR(v => !v)}>{showQR ? "Hide QR" : "Show QR code"}</button>
+                </div>
+                <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
+                      <input readOnly value={publicUrl(selectedForm.id)} style={{ flex: 1, fontSize: 12, background: "#fff" }} onFocus={e => e.target.select()} />
+                      <button className="btn btn-primary btn-sm" onClick={() => copyLink(selectedForm.id)}>{copiedLink ? "Copied!" : "Copy link"}</button>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#666" }}>Share this link or QR code so participants can register on their phone or computer.</div>
+                  </div>
+                  {showQR && (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(publicUrl(selectedForm.id))}`}
+                        alt="Registration QR code"
+                        style={{ width: 160, height: 160, border: "1px solid #ccc", borderRadius: 6, background: "#fff", padding: 4 }}
+                      />
+                      <div style={{ fontSize: 10, color: "#888" }}>Scan to register</div>
+                    </div>
+                  )}
                 </div>
                 {selectedForm.wikiEventUrl && (
                   <div style={{ fontSize: 11, color: "#888", marginTop: 8 }}>Wikipedia Event Platform: <a href={selectedForm.wikiEventUrl} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{selectedForm.wikiEventUrl}</a>: shown on confirmation screen after registering</div>

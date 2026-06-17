@@ -479,6 +479,7 @@ function Report({ volunteers, programs, tasks, profile }) {
       `In progress:    ${statusCount("in_progress")}`,
       `Pending:        ${statusCount("pending")}`,
       `Cancelled:      ${statusCount("cancelled")}`,
+      `Hours logged:   ${myTasks.reduce((s,t) => s+(t.hoursSpent||0), 0)}h`,
       "",
       "TASK DETAILS",
       "-".repeat(40),
@@ -544,10 +545,11 @@ function Report({ volunteers, programs, tasks, profile }) {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12, marginBottom: 20 }}>
             {[
-              ["Total tasks",   myTasks.length,            "#555"],
-              ["Completed",     statusCount("completed"),  "#2d7a4f"],
-              ["In progress",   statusCount("in_progress"),"#2563eb"],
-              ["Pending",       statusCount("pending"),    "#d97706"],
+              ["Total tasks",    myTasks.length,                                    "#555"],
+              ["Completed",      statusCount("completed"),                           "#2d7a4f"],
+              ["In progress",    statusCount("in_progress"),                         "#2563eb"],
+              ["Pending",        statusCount("pending"),                             "#d97706"],
+              ["Hours logged",   myTasks.reduce((s,t) => s+(t.hoursSpent||0), 0)+"h","#7c3aed"],
             ].map(([label, val, color]) => (
               <div key={label} className="panel" style={{ textAlign: "center" }}>
                 <div style={{ fontSize: 26, fontWeight: 700, color }}>{val}</div>

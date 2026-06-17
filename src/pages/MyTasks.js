@@ -10,6 +10,7 @@ export default function MyTasks({ profile }) {
   const [programs,   setPrograms]   = useState([]);
   const [volunteers, setVolunteers] = useState([]);
   const [notes,      setNotes]      = useState({});   // taskId -> draft note text
+  const [hours,      setHours]      = useState({});   // taskId -> hours spent (draft)
   const [saving,     setSaving]     = useState({});   // taskId -> bool
   const [toast,      setToast]      = useState("");
 
@@ -45,9 +46,15 @@ export default function MyTasks({ profile }) {
     if (!note) return;
     setSaving(s => ({ ...s, [task.id]: true }));
     try {
-      await updateTask(task.id, { volunteerNotes: note });
+      const h = parseFloat(hours[task.id]) || 0;
+      const totalHours = (task.hoursSpent || 0) + h;
+      await updateTask(task.id, {
+        volunteerNotes: note,
+        ...(h > 0 ? { hoursSpent: totalHours } : {}),
+      });
       setNotes(n => ({ ...n, [task.id]: "" }));
-      showToast("Progress note saved.");
+      setHours(h => ({ ...h, [task.id]: "" }));
+      showToast("Progress note saved." + (h > 0 ? ` (${h}h logged)` : ""));
     } finally {
       setSaving(s => ({ ...s, [task.id]: false }));
     }
@@ -144,23 +151,38 @@ export default function MyTasks({ profile }) {
                     </div>
                   )}
 
-                  {/* Progress note */}
-                  <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 4 }}>
+                  {/* Hours spent */}
+                  {t.hoursSpent > 0 && (
+                    <div style={{ fontSize: 12, color: "#2563eb", marginBottom: 8 }}>
+                      Total hours logged: <strong>{t.hoursSpent}h</strong>
+                    </div>
+                  )}
+
+                  {/* Progress note + hours */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 4 }}>
                     <textarea
                       rows={2}
                       value={notes[t.id] || ""}
                       onChange={e => setNotes(n => ({ ...n, [t.id]: e.target.value }))}
                       placeholder="Add a progress update or note for your coordinator…"
-                      style={{ flex: 1, fontSize: 13, resize: "none" }}
+                      style={{ fontSize: 13, resize: "none" }}
                     />
-                    <button
-                      className="btn btn-sm btn-primary"
-                      disabled={saving[t.id] || !notes[t.id]?.trim()}
-                      onClick={() => saveNote(t)}
-                      style={{ alignSelf: "flex-end" }}
-                    >
-                      Save note
-                    </button>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <input
+                        type="number" min="0" step="0.5"
+                        value={hours[t.id] || ""}
+                        onChange={e => setHours(h => ({ ...h, [t.id]: e.target.value }))}
+                        placeholder="Hours spent (optional)"
+                        style={{ width: 180, fontSize: 13 }}
+                      />
+                      <button
+                        className="btn btn-sm btn-primary"
+                        disabled={saving[t.id] || !notes[t.id]?.trim()}
+                        onClick={() => saveNote(t)}
+                      >
+                        Save note
+                      </button>
+                    </div>
                   </div>
 
                   <TaskComments taskId={t.id} profile={profile} />

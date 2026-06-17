@@ -196,6 +196,20 @@ service cloud.firestore {
       allow delete: if isCoordinator();
     }
 
+    // ── /announcements ─────────────────────────────────────────────────────────
+    match /announcements/{docId} {
+      allow read:   if isAnyStaff() || isVolunteer();
+      allow create: if isCoordinator();
+      allow update: if isCoordinator();
+      allow delete: if isAdmin();
+    }
+
+    // ── /deadlines ─────────────────────────────────────────────────────────────
+    match /deadlines/{docId} {
+      allow read:   if isAnyStaff() || isVolunteer();
+      allow write:  if isCoordinator();
+    }
+
     // ── /taskComments ──────────────────────────────────────────────────────────
     // Volunteers and all staff can read and post comments on tasks.
     match /taskComments/{docId} {

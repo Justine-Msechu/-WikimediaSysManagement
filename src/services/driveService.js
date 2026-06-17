@@ -112,7 +112,9 @@ export async function uploadToDrive(file, onProgress) {
 
     xhr.onload = () => {
       if (xhr.status >= 400) {
-        reject(new Error(`Upload failed (HTTP ${xhr.status}). Please try again.`));
+        let detail = xhr.responseText;
+        try { detail = JSON.parse(xhr.responseText)?.error?.message || detail; } catch (_) {}
+        reject(new Error(`Upload failed (HTTP ${xhr.status}): ${detail}`));
         return;
       }
       resolve(JSON.parse(xhr.responseText));

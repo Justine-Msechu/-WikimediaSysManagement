@@ -54,8 +54,9 @@ export default function MyTasks({ profile }) {
     );
   }
 
-  const active    = tasks.filter(t => t.status !== "completed" && t.status !== "cancelled");
-  const completed = tasks.filter(t => t.status === "completed");
+  const sorted    = [...tasks].sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""));
+  const active    = sorted.filter(t => t.status !== "completed" && t.status !== "cancelled");
+  const completed = sorted.filter(t => t.status === "completed");
 
   return (
     <div>

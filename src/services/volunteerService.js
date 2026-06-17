@@ -46,10 +46,11 @@ export function listenTasks(callback) {
 }
 
 export function listenTasksForVolunteer(volunteerId, callback) {
+  // No orderBy here — combining where() + orderBy() on different fields requires
+  // a composite Firestore index. Sort client-side instead.
   return listenCollection(
     "volunteerTasks", callback,
-    where("volunteerId", "==", volunteerId),
-    orderBy("createdAt", "desc")
+    where("volunteerId", "==", volunteerId)
   );
 }
 

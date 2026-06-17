@@ -12,6 +12,7 @@ export const ROLES = {
   COORDINATOR:     "coordinator",
   FINANCE_OFFICER: "finance_officer",
   VIEWER:          "viewer",
+  VOLUNTEER:       "volunteer",
 };
 
 export const ROLE_LABELS = {
@@ -19,6 +20,7 @@ export const ROLE_LABELS = {
   coordinator:     "Coordinator",
   finance_officer: "Finance Officer",
   viewer:          "Viewer",
+  volunteer:       "Volunteer",
 };
 
 export const ROLE_COLORS = {
@@ -26,10 +28,11 @@ export const ROLE_COLORS = {
   coordinator:     "#2d7a4f",
   finance_officer: "#2563eb",
   viewer:          "#888",
+  volunteer:       "#7c3aed",
 };
 
 export const ROLE_RANK = {
-  viewer: 0, finance_officer: 1, coordinator: 1, admin: 3,
+  volunteer: 0, viewer: 0, finance_officer: 1, coordinator: 1, admin: 3,
 };
 
 export function canApprove(profile) {

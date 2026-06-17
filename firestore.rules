@@ -28,6 +28,15 @@ service cloud.firestore {
       return isAuth() && myRole() in ["admin", "coordinator", "finance_officer", "viewer"];
     }
 
+    function isVolunteer() {
+      return isAuth() && myRole() == "volunteer";
+    }
+
+    // Returns the volunteerId stored on the logged-in user's profile
+    function myVolunteerId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.volunteerId;
+    }
+
     // ── /users ─────────────────────────────────────────────────────────────
     // Admins manage all users. Each user can read their own document (so the
     // app can load role + profile on login). Only admins can write.
@@ -56,7 +65,7 @@ service cloud.firestore {
     // ── /programs ──────────────────────────────────────────────────────────
     // Approved programs are locked — only admins can touch them.
     match /programs/{docId} {
-      allow read:   if isAnyStaff();
+      allow read:   if isAnyStaff() || isVolunteer();
       allow create: if isCoordinator();
       allow update: if isAdmin() ||
         (isCoordinator() && resource.data.status != "approved");
@@ -172,9 +181,11 @@ service cloud.firestore {
 
     // ── /volunteerTasks ────────────────────────────────────────────────────────
     match /volunteerTasks/{docId} {
-      allow read:   if isAnyStaff();
+      // Coordinators/admins manage all tasks.
+      // Volunteers can read and update only tasks assigned to them.
+      allow read:   if isAnyStaff() || (isVolunteer() && resource.data.volunteerId == myVolunteerId());
       allow create: if isCoordinator();
-      allow update: if isCoordinator();
+      allow update: if isCoordinator() || (isVolunteer() && resource.data.volunteerId == myVolunteerId());
       allow delete: if isCoordinator();
     }
 

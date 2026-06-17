@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { listenUsers, createUser, updateUser, activateUser, deactivateUser, ROLES, ROLE_LABELS, ROLE_COLORS } from "../services/userService";
+import { listenVolunteers } from "../services/volunteerService";
 import { sendReset } from "../firebase/auth";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { listenCollection, setDocument, deleteDocument } from "../firebase/firestore";
@@ -11,14 +12,15 @@ function RoleBadge({ role }) {
   return <span style={{ fontSize: 11, fontWeight: 600, color: ROLE_COLORS[role] || "#888", background: (ROLE_COLORS[role] || "#888") + "18", border: `1px solid ${(ROLE_COLORS[role] || "#888")}33`, borderRadius: 5, padding: "2px 8px" }}>{ROLE_LABELS[role] || role}</span>;
 }
 
-const EMPTY_FORM = { name: "", email: "", role: "coordinator" };
+const EMPTY_FORM = { name: "", email: "", role: "coordinator", volunteerId: "" };
 
 export default function Users({ profile }) {
-  const [users,    setUsers]    = useState([]);
-  const [pending,  setPending]  = useState([]);
-  const [showForm, setShowForm] = useState(false);
-  const [editId,   setEditId]   = useState(null);
-  const [form,     setForm]     = useState(EMPTY_FORM);
+  const [users,      setUsers]      = useState([]);
+  const [pending,    setPending]    = useState([]);
+  const [volunteers, setVolunteers] = useState([]);
+  const [showForm,   setShowForm]   = useState(false);
+  const [editId,     setEditId]     = useState(null);
+  const [form,       setForm]       = useState(EMPTY_FORM);
   const [error,    setError]    = useState("");
   const [toast,    setToast]    = useState("");
   const [busy,     setBusy]     = useState(false);
@@ -28,14 +30,15 @@ export default function Users({ profile }) {
   useEffect(() => {
     const u1 = listenUsers(setUsers);
     const u2 = listenCollection("pendingActivations", setPending);
-    return () => { u1(); u2(); };
+    const u3 = listenVolunteers(setVolunteers);
+    return () => { u1(); u2(); u3(); };
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const openCreate = () => { setForm(EMPTY_FORM); setEditId(null); setError(""); setShowForm(true); };
-  const openEdit   = (u) => { setForm({ name: u.name, email: u.email, role: u.role, password: "", confirm: "" }); setEditId(u.id); setError(""); setShowForm(true); };
+  const openEdit   = (u) => { setForm({ name: u.name, email: u.email, role: u.role, volunteerId: u.volunteerId || "", password: "", confirm: "" }); setEditId(u.id); setError(""); setShowForm(true); };
 
   const save = async () => {
     setError("");
@@ -44,12 +47,13 @@ export default function Users({ profile }) {
     if (!form.email.includes("@")) { setError("Enter a valid email address."); return; }
     setBusy(true);
     try {
+      const extraFields = form.role === "volunteer" ? { volunteerId: form.volunteerId || "" } : {};
       if (!editId) {
-        const uid = await createUser(form.email.trim().toLowerCase(), null, { name: form.name.trim(), role: form.role });
+        const uid = await createUser(form.email.trim().toLowerCase(), null, { name: form.name.trim(), role: form.role, ...extraFields });
         await addAudit(profile, AUDIT_ACTIONS.CREATE, "users", { targetId: uid, recordTitle: form.name, details: `Created user: ${form.name} (${ROLE_LABELS[form.role]})` });
         showToast(`Account created. A password-setup email has been sent to ${form.email.trim()}.`);
       } else {
-        await updateUser(editId, { name: form.name.trim(), role: form.role });
+        await updateUser(editId, { name: form.name.trim(), role: form.role, ...extraFields });
         await addAudit(profile, AUDIT_ACTIONS.UPDATE, "users", { targetId: editId, recordTitle: form.name, details: `Updated user: ${form.name}` });
         showToast("User updated.");
       }
@@ -166,6 +170,15 @@ export default function Users({ profile }) {
                 {Object.values(ROLES).map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
               </select>
             </div>
+            {form.role === "volunteer" && (
+              <div className="field"><label>Link to volunteer registry</label>
+                <select value={form.volunteerId} onChange={e => setF("volunteerId", e.target.value)}>
+                  <option value="">Select volunteer...</option>
+                  {volunteers.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                </select>
+                <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>Links this login account to the volunteer's task list.</div>
+              </div>
+            )}
           </div>
           <div className="btn-row">
             <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</button>

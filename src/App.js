@@ -25,6 +25,7 @@ import FinalReport   from "./pages/FinalReport";
 import AuditLog      from "./pages/AuditLog";
 import Users         from "./pages/Users";
 import Settings      from "./pages/Settings";
+import MyTasks       from "./pages/MyTasks";
 
 import logo from "./assets/logo.png";
 import "./App.css";
@@ -47,6 +48,7 @@ const NAV = [
   { id: "volunteers",   label: "Volunteers",     icon: "◎", roles: ["admin", "coordinator"] },
   { id: "register",     label: "Reg. forms",     icon: "◫", roles: ["admin", "coordinator"] },
   { id: "settings",     label: "Settings",       icon: "⚙", roles: null },
+  { id: "mytasks",     label: "My tasks",       icon: "✓", roles: ["volunteer"] },
 ];
 
 function getPublicFormId() {
@@ -92,20 +94,23 @@ function AppShell() {
     );
   }
 
-  const role = profile.role;
+  const role        = profile.role;
+  const isVolunteer = role === "volunteer";
+
   const [budgetEntries,   setBudgetEntries]   = React.useState([]);
   const [reviewPrograms,  setReviewPrograms]  = React.useState([]);
   const [notifications,   setNotifications]   = React.useState([]);
   const [showNotifPanel,  setShowNotifPanel]  = React.useState(false);
 
   React.useEffect(() => {
+    if (isVolunteer) return; // volunteers only see MyTasks, skip heavy listeners
     const { listenBudgetEntries } = require("./services/budgetService");
     const { listenPrograms }      = require("./services/programService");
     const u1 = listenBudgetEntries(setBudgetEntries);
     const u2 = listenPrograms(setReviewPrograms);
     const u3 = listenNotifications(role, profile?.name || "", setNotifications);
     return () => { u1(); u2(); u3(); };
-  }, [role]);
+  }, [role, isVolunteer]);
 
   const pendingBudget   = budgetEntries.filter(e => e.status === "submitted").length;
   const pendingPrograms = reviewPrograms.filter(p => p.status === "submitted").length;
@@ -138,10 +143,16 @@ function AppShell() {
     }
   };
 
-  const visibleNav = NAV.filter(n => !n.roles || n.roles.includes(role));
-  const activePage = selectedActivityId ? null : page;
+  // Volunteers only see "My tasks"; all other roles see everything except "mytasks"
+  const visibleNav = isVolunteer
+    ? NAV.filter(n => n.id === "mytasks")
+    : NAV.filter(n => n.id !== "mytasks" && (!n.roles || n.roles.includes(role)));
+
+  const effectivePage = isVolunteer ? "mytasks" : page;
+  const activePage    = selectedActivityId ? null : effectivePage;
 
   const renderPage = () => {
+    if (isVolunteer) return <MyTasks profile={profile} />;
     if (selectedActivityId) {
       return <ActivityDetail activityId={selectedActivityId} profile={profile} goPage={goPage} />;
     }

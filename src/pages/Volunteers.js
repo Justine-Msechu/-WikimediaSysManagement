@@ -379,6 +379,11 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
                         <strong style={{ color: "#2d7a4f" }}>Coordinator notes:</strong> {t.reportNotes}
                       </div>
                     )}
+                    {t.volunteerNotes && (
+                      <div style={{ marginTop: 6, background: "#f3f0ff", border: "1px solid #c4b5fd", borderRadius: 6, padding: "8px 12px", fontSize: 12 }}>
+                        <strong style={{ color: "#7c3aed" }}>Volunteer update:</strong> {t.volunteerNotes}
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                     <span style={{ background: TASK_STATUS_COLORS[t.status], color: "#fff", borderRadius: 10, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>
@@ -442,8 +447,9 @@ function Report({ volunteers, programs, tasks, profile }) {
         `Program:  ${programName(t.programId)}`,
         `Due:      ${t.dueDate || ""}`,
         `Assigned: ${t.assignedBy || ""}`,
-        t.description  ? `Details:  ${t.description}` : "",
-        t.reportNotes  ? `Notes:    ${t.reportNotes}` : "",
+        t.description    ? `Details:        ${t.description}` : "",
+        t.reportNotes    ? `Coord. notes:   ${t.reportNotes}` : "",
+        t.volunteerNotes ? `Volunteer note: ${t.volunteerNotes}` : "",
       ].filter(Boolean)),
       "",
       `Report generated: ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}`,
@@ -529,6 +535,11 @@ function Report({ volunteers, programs, tasks, profile }) {
                       {t.reportNotes  && (
                         <div style={{ marginTop: 8, background: "#f0f8f3", border: "1px solid #b7e0c8", borderRadius: 6, padding: "8px 12px", fontSize: 12 }}>
                           <strong style={{ color: "#2d7a4f" }}>Coordinator notes:</strong> {t.reportNotes}
+                        </div>
+                      )}
+                      {t.volunteerNotes && (
+                        <div style={{ marginTop: 6, background: "#f3f0ff", border: "1px solid #c4b5fd", borderRadius: 6, padding: "8px 12px", fontSize: 12 }}>
+                          <strong style={{ color: "#7c3aed" }}>Volunteer update:</strong> {t.volunteerNotes}
                         </div>
                       )}
                     </div>

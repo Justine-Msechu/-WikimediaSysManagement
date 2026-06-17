@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from "react";
-import { listenTasksForVolunteer, updateTask, TASK_STATUS_LABELS, TASK_STATUS_COLORS } from "../services/volunteerService";
+import { listenTasksForVolunteer, listenVolunteers, updateTask, TASK_STATUS_LABELS, TASK_STATUS_COLORS } from "../services/volunteerService";
 import { listenPrograms } from "../services/programService";
+import TaskComments from "./TaskComments";
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
 export default function MyTasks({ profile }) {
-  const [tasks,    setTasks]    = useState([]);
-  const [programs, setPrograms] = useState([]);
-  const [notes,    setNotes]    = useState({});   // taskId -> draft note text
-  const [saving,   setSaving]   = useState({});   // taskId -> bool
-  const [toast,    setToast]    = useState("");
+  const [tasks,      setTasks]      = useState([]);
+  const [programs,   setPrograms]   = useState([]);
+  const [volunteers, setVolunteers] = useState([]);
+  const [notes,      setNotes]      = useState({});   // taskId -> draft note text
+  const [saving,     setSaving]     = useState({});   // taskId -> bool
+  const [toast,      setToast]      = useState("");
 
   const volunteerId = profile?.volunteerId;
 
@@ -17,11 +19,16 @@ export default function MyTasks({ profile }) {
     if (!volunteerId) return;
     const u1 = listenTasksForVolunteer(volunteerId, setTasks);
     const u2 = listenPrograms(setPrograms);
-    return () => { u1(); u2(); };
+    const u3 = listenVolunteers(setVolunteers);
+    return () => { u1(); u2(); u3(); };
   }, [volunteerId]);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
-  const programName = (id) => programs.find(p => p.id === id)?.name || "";
+  const programName   = (id) => programs.find(p => p.id === id)?.name || "";
+  const coAssignees   = (t) => {
+    const ids = Array.isArray(t.volunteerIds) ? t.volunteerIds : (t.volunteerId ? [t.volunteerId] : []);
+    return ids.filter(id => id !== volunteerId).map(id => volunteers.find(v => v.id === id)?.name).filter(Boolean);
+  };
 
   const updateStatus = async (task, status) => {
     setSaving(s => ({ ...s, [task.id]: true }));
@@ -130,8 +137,15 @@ export default function MyTasks({ profile }) {
                     {t.status === "in_progress" && <button className="btn btn-sm" disabled={saving[t.id]} onClick={() => updateStatus(t, "pending")}>Put on hold</button>}
                   </div>
 
+                  {/* Co-assignees */}
+                  {coAssignees(t).length > 0 && (
+                    <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
+                      Working with: <strong>{coAssignees(t).join(", ")}</strong>
+                    </div>
+                  )}
+
                   {/* Progress note */}
-                  <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 4 }}>
                     <textarea
                       rows={2}
                       value={notes[t.id] || ""}
@@ -148,6 +162,8 @@ export default function MyTasks({ profile }) {
                       Save note
                     </button>
                   </div>
+
+                  <TaskComments taskId={t.id} profile={profile} />
                 </div>
               );
             })}
@@ -169,6 +185,7 @@ export default function MyTasks({ profile }) {
                       {t.assignedBy && ` · Assigned by ${t.assignedBy}`}
                     </div>
                     {t.volunteerNotes && <div style={{ fontSize: 12, color: "#7c3aed", marginTop: 4 }}>Your note: {t.volunteerNotes}</div>}
+                    {coAssignees(t).length > 0 && <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>With: {coAssignees(t).join(", ")}</div>}
                   </div>
                   <span style={{ background: TASK_STATUS_COLORS.completed, color: "#fff", borderRadius: 10, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>Completed</span>
                 </div>

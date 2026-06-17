@@ -8,6 +8,7 @@ import {
 import { listenPrograms } from "../services/programService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { sendEmailNotification } from "../services/notificationService";
+import TaskComments from "./TaskComments";
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
@@ -17,12 +18,19 @@ function emptyVolunteer() {
   return { name: "", phone: "", email: "", skills: [], availability: "", programs: [], notes: "", isActive: true };
 }
 
-function emptyTask(volunteers, programs) {
+function emptyTask(programs) {
   return {
-    title: "", description: "", volunteerId: volunteers[0]?.id || "",
+    title: "", description: "", volunteerIds: [],
     programId: programs[0]?.id || "", dueDate: "", status: "pending",
     assignedBy: "", reportNotes: "",
   };
+}
+
+// Returns the volunteer IDs on a task, handling both old (volunteerId) and new (volunteerIds) format
+function taskVolunteerIds(t) {
+  if (Array.isArray(t.volunteerIds) && t.volunteerIds.length > 0) return t.volunteerIds;
+  if (t.volunteerId) return [t.volunteerId];
+  return [];
 }
 
 // ── Volunteer Registry ─────────────────────────────────────────────────────────
@@ -35,12 +43,8 @@ function Registry({ volunteers, programs, profile, showToast }) {
 
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const toggleSkill = (skill) => {
-    setForm(f => ({
-      ...f,
-      skills: f.skills.includes(skill) ? f.skills.filter(s => s !== skill) : [...f.skills, skill],
-    }));
-  };
+  const toggleSkill = (skill) =>
+    setForm(f => ({ ...f, skills: f.skills.includes(skill) ? f.skills.filter(s => s !== skill) : [...f.skills, skill] }));
 
   const openCreate = () => { setForm(emptyVolunteer()); setEditId(null); setShowForm(true); };
   const openEdit   = (v) => {
@@ -157,12 +161,7 @@ function Registry({ volunteers, programs, profile, showToast }) {
           <table>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Email</th>
-                <th>Skills</th>
-                <th>Availability</th>
-                <th>Status</th>
+                <th>Name</th><th>Phone</th><th>Email</th><th>Skills</th><th>Availability</th><th>Status</th>
                 {canEdit && <th>Actions</th>}
               </tr>
             </thead>
@@ -215,15 +214,21 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const approvedPrograms = programs.filter(p => p.status === "approved");
 
+  const toggleVolunteer = (id) => {
+    const ids = form.volunteerIds || [];
+    setF("volunteerIds", ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id]);
+  };
+
   const openCreate = () => {
-    setForm({ ...emptyTask(volunteers, approvedPrograms), assignedBy: profile?.name || "" });
+    setForm({ ...emptyTask(approvedPrograms), assignedBy: profile?.name || "" });
     setEditId(null);
     setShowForm(true);
   };
 
   const openEdit = (t) => {
     setForm({
-      title: t.title, description: t.description || "", volunteerId: t.volunteerId,
+      title: t.title, description: t.description || "",
+      volunteerIds: taskVolunteerIds(t),
       programId: t.programId || "", dueDate: t.dueDate || "", status: t.status,
       assignedBy: t.assignedBy || "", reportNotes: t.reportNotes || "",
     });
@@ -232,42 +237,51 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
   };
 
   const save = async () => {
-    if (!form.title?.trim())     { alert("Task title is required."); return; }
-    if (!form.volunteerId)       { alert("Please assign this task to a volunteer."); return; }
+    if (!form.title?.trim())              { alert("Task title is required."); return; }
+    if (!form.volunteerIds?.length)       { alert("Assign this task to at least one volunteer."); return; }
+    const data = { ...form };
+    delete data.volunteerId; // remove legacy field if present
     if (!editId) {
-      const id = await addTask(form);
+      const id = await addTask(data);
       await addAudit(profile, AUDIT_ACTIONS.CREATE, "volunteerTasks", { targetId: id, recordTitle: form.title });
 
-      // Email the volunteer if they have an email address
-      const volunteer = volunteers.find(v => v.id === form.volunteerId);
-      if (volunteer?.email) {
-        const prog = approvedPrograms.find(p => p.id === form.programId);
-        const subject = `New task assigned to you: ${form.title}`;
-        const body = [
-          `Dear ${volunteer.name},`,
-          ``,
-          `You have been assigned a new task by ${form.assignedBy || "your coordinator"}:`,
-          ``,
-          `Task:        ${form.title}`,
-          prog ? `Program:     ${prog.name}` : "",
-          form.dueDate ? `Due date:    ${form.dueDate}` : "",
-          form.description ? `\nDetails:\n${form.description}` : "",
-          ``,
-          `Please contact your coordinator if you have any questions.`,
-          ``,
-          `Wikimedia Community Kilimanjaro`,
-        ].filter(line => line !== undefined).join("\n");
-        const result = await sendEmailNotification({ toEmails: [volunteer.email], subject, body });
-        if (!result.ok) {
-          showToast(`Task saved but email failed: ${result.error}`);
-        } else {
-          showToast(`Task assigned. Email sent to ${volunteer.email}.`);
-        }
+      // Email every assigned volunteer who has an email address
+      const prog = approvedPrograms.find(p => p.id === form.programId);
+      const emailResults = await Promise.all(
+        form.volunteerIds.map(async (vid) => {
+          const volunteer = volunteers.find(v => v.id === vid);
+          if (!volunteer?.email) return null;
+          const subject = `New task assigned to you: ${form.title}`;
+          const body = [
+            `Dear ${volunteer.name},`,
+            ``,
+            `You have been assigned a new task by ${form.assignedBy || "your coordinator"}:`,
+            ``,
+            `Task:     ${form.title}`,
+            prog ? `Program:  ${prog.name}` : "",
+            form.dueDate ? `Due date: ${form.dueDate}` : "",
+            form.description ? `\nDetails:\n${form.description}` : "",
+            ``,
+            `Log in to the GSF Manager to see your full task list.`,
+            ``,
+            `Wikimedia Community Kilimanjaro`,
+          ].filter(l => l !== undefined).join("\n");
+          const result = await sendEmailNotification({ toEmails: [volunteer.email], subject, body });
+          return { name: volunteer.name, ...result };
+        })
+      );
+
+      const sent   = emailResults.filter(r => r?.ok).map(r => r.name);
+      const failed = emailResults.filter(r => r && !r.ok);
+      if (failed.length) {
+        showToast(`Task assigned. Email failed for: ${failed.map(r => r.name).join(", ")}`);
+      } else if (sent.length) {
+        showToast(`Task assigned. Email sent to ${sent.join(", ")}.`);
       } else {
-        showToast("Task assigned. (No email — volunteer has no email address.)");
+        showToast("Task assigned. (No emails — volunteers have no email addresses.)");
       }
     } else {
-      await updateTask(editId, form);
+      await updateTask(editId, data);
       await addAudit(profile, AUDIT_ACTIONS.UPDATE, "volunteerTasks", { targetId: editId, recordTitle: form.title });
       showToast("Task updated.");
     }
@@ -285,10 +299,13 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
     showToast(`Task marked as ${TASK_STATUS_LABELS[status]}.`);
   };
 
-  const volunteerName = (id) => volunteers.find(v => v.id === id)?.name || "";
-  const programName   = (id) => programs.find(p => p.id === id)?.name   || "";
+  const volunteerNames = (t) => taskVolunteerIds(t)
+    .map(id => volunteers.find(v => v.id === id)?.name)
+    .filter(Boolean)
+    .join(", ");
 
-  const filtered = filter === "all" ? tasks : tasks.filter(t => t.status === filter);
+  const programName = (id) => programs.find(p => p.id === id)?.name || "";
+  const filtered    = filter === "all" ? tasks : tasks.filter(t => t.status === filter);
 
   return (
     <div>
@@ -315,12 +332,6 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
             <div className="field"><label>Task title <span className="req">★</span></label>
               <input value={form.title || ""} onChange={e => setF("title", e.target.value)} placeholder="e.g. Prepare training materials for Wikipedia workshop" />
             </div>
-            <div className="field"><label>Volunteer <span className="req">★</span></label>
-              <select value={form.volunteerId || ""} onChange={e => setF("volunteerId", e.target.value)}>
-                <option value="">Select volunteer...</option>
-                {volunteers.filter(v => v.isActive !== false).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-              </select>
-            </div>
             <div className="field"><label>Program</label>
               <select value={form.programId || ""} onChange={e => setF("programId", e.target.value)}>
                 <option value="">No specific program</option>
@@ -339,11 +350,41 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
               <input value={form.assignedBy || ""} onChange={e => setF("assignedBy", e.target.value)} placeholder="Coordinator name" />
             </div>
           </div>
+
+          {/* Multi-volunteer selector */}
+          <div className="field" style={{ marginTop: 8 }}>
+            <label>Assigned to <span className="req">★</span></label>
+            <div style={{ border: "1.5px solid #d0d0c8", borderRadius: 7, padding: "8px 12px", maxHeight: 180, overflowY: "auto", marginTop: 4 }}>
+              {volunteers.filter(v => v.isActive !== false).length === 0 ? (
+                <div style={{ fontSize: 13, color: "#aaa" }}>No active volunteers in the registry.</div>
+              ) : (
+                volunteers.filter(v => v.isActive !== false).map(v => (
+                  <label key={v.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", padding: "4px 0" }}>
+                    <input
+                      type="checkbox"
+                      checked={(form.volunteerIds || []).includes(v.id)}
+                      onChange={() => toggleVolunteer(v.id)}
+                    />
+                    <span>{v.name}</span>
+                    {v.skills?.length > 0 && (
+                      <span style={{ fontSize: 11, color: "#888" }}>— {v.skills.slice(0, 2).join(", ")}</span>
+                    )}
+                  </label>
+                ))
+              )}
+            </div>
+            {(form.volunteerIds || []).length > 0 && (
+              <div style={{ fontSize: 11, color: "#2d7a4f", marginTop: 4 }}>
+                {form.volunteerIds.length} volunteer{form.volunteerIds.length > 1 ? "s" : ""} selected
+              </div>
+            )}
+          </div>
+
           <div className="field" style={{ marginTop: 8 }}><label>Task description</label>
-            <textarea rows={3} value={form.description || ""} onChange={e => setF("description", e.target.value)} placeholder="Describe what the volunteer needs to do..." />
+            <textarea rows={3} value={form.description || ""} onChange={e => setF("description", e.target.value)} placeholder="Describe what the volunteer(s) need to do..." />
           </div>
           <div className="field" style={{ marginTop: 8 }}><label>Coordinator report notes</label>
-            <textarea rows={3} value={form.reportNotes || ""} onChange={e => setF("reportNotes", e.target.value)} placeholder="Notes on how the volunteer performed, outcomes achieved..." />
+            <textarea rows={3} value={form.reportNotes || ""} onChange={e => setF("reportNotes", e.target.value)} placeholder="Notes on outcomes achieved..." />
           </div>
           <div className="btn-row">
             <button className="btn btn-primary" onClick={save}>Save</button>
@@ -364,9 +405,9 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{t.title}</div>
                     <div style={{ fontSize: 12, color: "#555", display: "flex", gap: 12, flexWrap: "wrap" }}>
-                      <span>Volunteer: <strong>{volunteerName(t.volunteerId)}</strong></span>
+                      <span>Assigned to: <strong>{volunteerNames(t) || "—"}</strong></span>
                       {t.programId && <span>Program: <strong>{programName(t.programId)}</strong></span>}
-                      {t.assignedBy && <span>Assigned by: <strong>{t.assignedBy}</strong></span>}
+                      {t.assignedBy && <span>By: <strong>{t.assignedBy}</strong></span>}
                       {t.dueDate && (
                         <span style={{ color: isOverdue ? "#c0392b" : "#555" }}>
                           Due: <strong>{t.dueDate}</strong>{isOverdue ? " (overdue)" : ""}
@@ -400,6 +441,7 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
                     )}
                   </div>
                 </div>
+                <TaskComments taskId={t.id} profile={profile} />
               </div>
             );
           })}
@@ -413,10 +455,10 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
 function Report({ volunteers, programs, tasks, profile }) {
   const [selectedId, setSelectedId] = useState("");
 
-  const volunteer = volunteers.find(v => v.id === selectedId);
-  const myTasks   = tasks.filter(t => t.volunteerId === selectedId);
+  const volunteer   = volunteers.find(v => v.id === selectedId);
+  // Support both old (volunteerId) and new (volunteerIds) format
+  const myTasks     = tasks.filter(t => taskVolunteerIds(t).includes(selectedId));
   const programName = (id) => programs.find(p => p.id === id)?.name || "";
-
   const statusCount = (status) => myTasks.filter(t => t.status === status).length;
 
   const downloadReport = () => {
@@ -477,7 +519,6 @@ function Report({ volunteers, programs, tasks, profile }) {
 
       {volunteer && (
         <>
-          {/* Profile card */}
           <div className="panel" style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
               <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#2d7a4f", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, flexShrink: 0 }}>
@@ -501,7 +542,6 @@ function Report({ volunteers, programs, tasks, profile }) {
             </div>
           </div>
 
-          {/* Task stats */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12, marginBottom: 20 }}>
             {[
               ["Total tasks",   myTasks.length,            "#555"],
@@ -516,7 +556,6 @@ function Report({ volunteers, programs, tasks, profile }) {
             ))}
           </div>
 
-          {/* Task list */}
           {myTasks.length === 0 ? (
             <div className="panel"><div className="empty">No tasks assigned to {volunteer.name} yet.</div></div>
           ) : (
@@ -527,8 +566,8 @@ function Report({ volunteers, programs, tasks, profile }) {
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 3 }}>{t.title}</div>
                       <div style={{ fontSize: 12, color: "#666", display: "flex", gap: 10, flexWrap: "wrap" }}>
-                        {t.programId && <span>Program: {programName(t.programId)}</span>}
-                        {t.dueDate   && <span>Due: {t.dueDate}</span>}
+                        {t.programId  && <span>Program: {programName(t.programId)}</span>}
+                        {t.dueDate    && <span>Due: {t.dueDate}</span>}
                         {t.assignedBy && <span>Assigned by: {t.assignedBy}</span>}
                       </div>
                       {t.description  && <div style={{ fontSize: 13, color: "#555", marginTop: 6 }}>{t.description}</div>}
@@ -547,6 +586,7 @@ function Report({ volunteers, programs, tasks, profile }) {
                       {TASK_STATUS_LABELS[t.status]}
                     </span>
                   </div>
+                  <TaskComments taskId={t.id} profile={profile} />
                 </div>
               ))}
             </div>
@@ -580,7 +620,6 @@ export default function Volunteers({ profile }) {
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
-
   const pendingCount = tasks.filter(t => t.status === "pending").length;
 
   return (

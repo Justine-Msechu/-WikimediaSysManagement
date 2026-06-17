@@ -189,8 +189,20 @@ service cloud.firestore {
       allow list:   if isAnyStaff() || isVolunteer();
       allow get:    if isAnyStaff() || (isVolunteer() && resource.data.volunteerId == myVolunteerId());
       allow create: if isCoordinator();
-      allow update: if isCoordinator() || (isVolunteer() && resource.data.volunteerId == myVolunteerId());
+      // Support both old single-field (volunteerId) and new array (volunteerIds) format
+      allow update: if isCoordinator()
+        || (isVolunteer() && myVolunteerId() in resource.data.volunteerIds)
+        || (isVolunteer() && resource.data.volunteerId == myVolunteerId());
       allow delete: if isCoordinator();
+    }
+
+    // ── /taskComments ──────────────────────────────────────────────────────────
+    // Volunteers and all staff can read and post comments on tasks.
+    match /taskComments/{docId} {
+      allow read:   if isAnyStaff() || isVolunteer();
+      allow create: if isAnyStaff() || isVolunteer();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     // ── /activityFiles ─────────────────────────────────────────────────────────

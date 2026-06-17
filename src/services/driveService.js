@@ -1,10 +1,11 @@
 // Google Drive file upload service using Google Identity Services (GIS).
 // Requires REACT_APP_GOOGLE_CLIENT_ID in .env
 
-const CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
-const FOLDER_ID = process.env.REACT_APP_GOOGLE_DRIVE_FOLDER_ID || null;
-const SCOPE     = "https://www.googleapis.com/auth/drive.file";
-const MAX_MB    = 10;
+const CLIENT_ID   = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+const SCOPE       = "https://www.googleapis.com/auth/drive.file";
+const MAX_MB      = 10;
+const FOLDER_NAME = "WikiKilimanjaro GSF Evidence";
+const FOLDER_KEY  = "wkgsf_drive_folder_id";
 
 let tokenClient  = null;
 let cachedToken  = null;
@@ -80,6 +81,29 @@ export async function preAuthorize() {
   });
 }
 
+// Gets the app folder ID from localStorage, or creates it in Drive if missing.
+async function getOrCreateFolder(token) {
+  const cached = localStorage.getItem(FOLDER_KEY);
+  if (cached) return cached;
+
+  // Create the folder (drive.file scope allows creating folders)
+  const res = await fetch(
+    "https://www.googleapis.com/drive/v3/files?fields=id",
+    {
+      method:  "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        name:     FOLDER_NAME,
+        mimeType: "application/vnd.google-apps.folder",
+      }),
+    }
+  );
+  if (!res.ok) throw new Error(`Could not create Drive folder (${res.status}).`);
+  const { id } = await res.json();
+  localStorage.setItem(FOLDER_KEY, id);
+  return id;
+}
+
 // Upload a File object to Google Drive.
 // onProgress(0-100) is called during the upload.
 // Returns { fileId, name, url, mimeType, size }
@@ -89,8 +113,9 @@ export async function uploadToDrive(file, onProgress) {
   }
 
   const token    = await getToken();
+  const folderId = await getOrCreateFolder(token);
   const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._\- ]/g, "_")}`;
-  const metadata = { name: safeName };
+  const metadata = { name: safeName, parents: [folderId] };
 
   const form = new FormData();
   form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));

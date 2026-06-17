@@ -49,7 +49,7 @@ export async function sendEmailNotification({ toEmails, subject, body }) {
   const templateId = process.env.REACT_APP_EMAILJS_TEMPLATE_ID;
   const publicKey  = process.env.REACT_APP_EMAILJS_PUBLIC_KEY;
   if (!serviceId || !templateId || !publicKey) {
-    return { ok: false, error: "EmailJS not configured" };
+    return { ok: false, error: `EmailJS not configured — service=${serviceId || "MISSING"} template=${templateId || "MISSING"} key=${publicKey ? "SET" : "MISSING"}` };
   }
 
   const recipients = Array.isArray(toEmails) ? toEmails : [toEmails];

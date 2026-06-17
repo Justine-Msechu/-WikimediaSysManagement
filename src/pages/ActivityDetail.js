@@ -5,7 +5,7 @@ import { getProgramById } from "../services/programService";
 import { addEvidenceLink, removeEvidenceLink, EVIDENCE_TYPES } from "../services/storageService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { addComment, listenComments, ROLE_COLOR } from "../services/commentService";
-import { uploadToDrive, deleteFromDrive, fileIcon } from "../services/driveService";
+import { uploadToDrive, deleteFromDrive, fileIcon, preAuthorize } from "../services/driveService";
 import { listenActivityFiles, addActivityFile, removeActivityFile } from "../services/activityFilesService";
 import logo from "../assets/logo.png";
 
@@ -180,7 +180,18 @@ function FileUploadPanel({ activityId, canEdit, profile }) {
         <div style={{ fontWeight: 600, fontSize: 13, color: "#555" }}>Uploaded files (Google Drive)</div>
         {canEdit && (
           <>
-            <button className="btn btn-sm btn-primary" onClick={() => inputRef.current?.click()} disabled={busy}>
+            <button
+              className="btn btn-sm btn-primary"
+              disabled={busy}
+              onClick={async () => {
+                try {
+                  await preAuthorize();       // opens Google popup directly from click
+                  inputRef.current?.click();  // only opens file picker after auth succeeds
+                } catch (err) {
+                  alert(err.message || "Could not connect to Google Drive.");
+                }
+              }}
+            >
               {busy ? `Uploading ${progress ?? 0}%…` : "+ Upload to Drive"}
             </button>
             <input ref={inputRef} type="file" style={{ display: "none" }} onChange={handleFile} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" />

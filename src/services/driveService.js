@@ -36,8 +36,19 @@ async function getToken() {
       "Google Drive is not configured. Add REACT_APP_GOOGLE_CLIENT_ID to your .env file."
     );
   }
+  if (cachedToken && Date.now() < tokenExpiry - 60_000) return cachedToken;
+  // Token not cached — caller must use preAuthorize() from a direct user click first
+  throw new Error("Not authorised. Click the upload button to connect to Google Drive.");
+}
 
-  // Return cached token if still valid (with 60-second buffer)
+// Call this DIRECTLY from a button onClick handler so the browser allows the popup.
+// After this resolves the token is cached and uploadToDrive() can be called freely.
+export async function preAuthorize() {
+  if (!CLIENT_ID) {
+    throw new Error(
+      "Google Drive is not configured. Add REACT_APP_GOOGLE_CLIENT_ID to your .env file."
+    );
+  }
   if (cachedToken && Date.now() < tokenExpiry - 60_000) return cachedToken;
 
   await loadGIS();
@@ -45,7 +56,7 @@ async function getToken() {
   return new Promise((resolve, reject) => {
     const callback = (resp) => {
       if (resp.error) {
-        reject(new Error(`Google authorisation failed: ${resp.error}`));
+        reject(new Error(`Google sign-in failed: ${resp.error}`));
         return;
       }
       cachedToken = resp.access_token;
@@ -64,8 +75,8 @@ async function getToken() {
       tokenClient.callback = callback;
     }
 
-    // Prompt-less attempt first; a popup appears only when consent is needed
-    tokenClient.requestAccessToken({ prompt: "" });
+    // prompt:"consent" opens the popup immediately — must be called from a user gesture
+    tokenClient.requestAccessToken({ prompt: "consent" });
   });
 }
 

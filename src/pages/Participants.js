@@ -4,7 +4,7 @@ import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { fetchEventParticipants, parseODCSV } from "../utils/wikiImport";
 import { listenSettings } from "../services/settingsService";
 import { listenPrograms } from "../services/programService";
-import { getForms } from "../services/registrationService";
+import { getForms, getAllRegistrations } from "../services/registrationService";
 import logo from "../assets/logo.png";
 
 const GENDERS  = ["Female", "Male", "Non-binary", "Prefer not to say"];
@@ -242,24 +242,50 @@ export default function Participants({ profile }) {
     return true;
   });
 
-  // Auto-sync: fix participants who have registeredViaForm but no programId
+  // Auto-sync: match each participant to a program via the registrations collection
   const syncProgramsFromForms = async () => {
-    const forms = await getForms();
+    showToast("Syncing…");
+    const [forms, allRegistrations] = await Promise.all([getForms(), getAllRegistrations()]);
+
+    // form ID → program ID
     const formProgramMap = {};
     forms.forEach(f => { if (f.programId) formProgramMap[f.id] = f.programId; });
 
-    const toFix = participants.filter(p =>
-      p.registeredViaForm && !p.programId && formProgramMap[p.registeredViaForm]
-    );
-    if (!toFix.length) { showToast("All participants already have programs set."); return; }
+    // Build lookup tables from registrations: email → programId, name → programId
+    const byEmail = {};
+    const byName  = {};
+    allRegistrations.forEach(r => {
+      const pid = formProgramMap[r.formId];
+      if (!pid) return;
+      if (r.email) byEmail[r.email.toLowerCase().trim()] = pid;
+      if (r.name)  byName[r.name.toLowerCase().trim()]   = pid;
+    });
 
+    const toFix = participants.filter(p => !p.programId);
+    if (!toFix.length) { showToast("All participants already have a program set."); return; }
+
+    let fixed = 0;
     for (const p of toFix) {
-      await updateParticipant(p.id, { ...p, programId: formProgramMap[p.registeredViaForm] });
+      // Try in order: registeredViaForm field → email match → name match
+      const programId =
+        (p.registeredViaForm && formProgramMap[p.registeredViaForm]) ||
+        (p.email && byEmail[p.email.toLowerCase().trim()]) ||
+        (p.name  && byName[p.name.toLowerCase().trim()]);
+
+      if (programId) {
+        await updateParticipant(p.id, { ...p, programId });
+        fixed++;
+      }
+    }
+
+    if (!fixed) {
+      showToast(`No matches found for ${toFix.length} unassigned participants. Check that registration forms are linked to a program.`);
+      return;
     }
     await addAudit(profile, AUDIT_ACTIONS.UPDATE, "participants", {
-      details: `Auto-synced programId for ${toFix.length} participants from their registration forms`,
+      details: `Auto-synced programId for ${fixed} of ${toFix.length} participants from registration records`,
     });
-    showToast(`Fixed ${toFix.length} participants — programs now assigned from their registration form.`);
+    showToast(`Done — ${fixed} participant(s) linked to their program.`);
   };
 
   const printAttendance = () => {

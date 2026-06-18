@@ -66,8 +66,10 @@ export async function submitRegistration(formId, regData) {
       phone:             regData.phone || "",
       gender:            regData.gender || "",
       region:            "",
+      isNew:             regData.isNew || false,
       source:            "self-registered",
       registeredViaForm: formId,
+      formId,
     });
   }
 

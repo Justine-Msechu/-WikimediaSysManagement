@@ -32,27 +32,42 @@ import Deadlines     from "./pages/Deadlines";
 import logo from "./assets/logo.png";
 import "./App.css";
 
-const NAV = [
-  { id: "dashboard",    label: "Dashboard",     icon: "⊞", roles: null },
-  { id: "grant",        label: "Grant",          icon: "◇", roles: null },
-  { id: "programs",     label: "Programs",       icon: "◈", roles: null },
-  { id: "activities",   label: "Activities",     icon: "◉", roles: null },
-  { id: "timeline",     label: "Timeline",       icon: "◷", roles: null },
-  { id: "budget",       label: "Budget",         icon: "◎", roles: null },
-  { id: "review",       label: "Review",         icon: "✓", roles: null },
-  { id: "metrics",      label: "Metrics",        icon: "◑", roles: null },
-  { id: "participants", label: "Participants",    icon: "◐", roles: ["admin", "coordinator"] },
-  { id: "risks",        label: "Risk register",  icon: "◬", roles: ["admin", "coordinator", "finance_officer"] },
-  { id: "donor",        label: "Donor report",   icon: "◌", roles: ["admin", "finance_officer"] },
-  { id: "report",       label: "Final report",   icon: "▤", roles: null },
-  { id: "audit",        label: "Audit log",      icon: "☰", roles: ["admin"] },
-  { id: "users",        label: "Users",          icon: "◯", roles: ["admin"] },
-  { id: "volunteers",   label: "Volunteers",     icon: "◎", roles: ["admin", "coordinator"] },
-  { id: "register",     label: "Reg. forms",     icon: "◫", roles: ["admin", "coordinator"] },
-  { id: "announcements",label: "Announcements",  icon: "📢", roles: null },
-  { id: "deadlines",   label: "Deadlines",      icon: "⏰", roles: null },
-  { id: "settings",    label: "Settings",       icon: "⚙", roles: null },
-  { id: "mytasks",     label: "My tasks",       icon: "✓", roles: ["volunteer"] },
+// Flat lookup — used for role filtering and rendering detail
+const NAV_ITEMS = {
+  dashboard:    { label: "Dashboard",    icon: "⊞", roles: null },
+  announcements:{ label: "Announcements",icon: "📢", roles: null },
+  deadlines:    { label: "Deadlines",    icon: "⏰", roles: null },
+  grant:        { label: "Grant",        icon: "◇", roles: null },
+  programs:     { label: "Programs",     icon: "◈", roles: null },
+  timeline:     { label: "Timeline",     icon: "◷", roles: null },
+  metrics:      { label: "Metrics",      icon: "◑", roles: null },
+  activities:   { label: "Activities",   icon: "◉", roles: null },
+  participants: { label: "Participants", icon: "◐", roles: ["admin", "coordinator"] },
+  volunteers:   { label: "Volunteers",   icon: "◎", roles: ["admin", "coordinator"] },
+  register:     { label: "Reg. forms",   icon: "◫", roles: ["admin", "coordinator"] },
+  budget:       { label: "Budget",       icon: "◎", roles: null },
+  review:       { label: "Review",       icon: "✓", roles: null },
+  report:       { label: "Final report", icon: "▤", roles: null },
+  donor:        { label: "Donor report", icon: "◌", roles: ["admin", "finance_officer"] },
+  risks:        { label: "Risk register",icon: "◬", roles: ["admin", "coordinator", "finance_officer"] },
+  audit:        { label: "Audit log",    icon: "☰", roles: ["admin"] },
+  users:        { label: "Users",        icon: "◯", roles: ["admin"] },
+  settings:     { label: "Settings",     icon: "⚙", roles: null },
+  mytasks:      { label: "My tasks",     icon: "✓", roles: ["volunteer"] },
+};
+
+// Grouped modules for the sidebar
+const NAV_GROUPS = [
+  { label: "Overview",         ids: ["dashboard", "announcements", "deadlines"] },
+  { label: "Grant & planning", ids: ["grant", "programs", "timeline", "metrics"] },
+  { label: "Activities",       ids: ["activities", "participants", "volunteers", "register"] },
+  { label: "Finance",          ids: ["budget", "review"] },
+  { label: "Reports",          ids: ["report", "donor", "risks"] },
+  { label: "Admin",            ids: ["audit", "users", "settings"] },
+];
+
+const VOLUNTEER_GROUPS = [
+  { label: "My portal", ids: ["mytasks", "announcements", "deadlines"] },
 ];
 
 function getPublicFormId() {
@@ -147,11 +162,17 @@ function AppShell() {
     }
   };
 
-  // Volunteers see: My tasks, Announcements, Deadlines
-  const volunteerPages = new Set(["mytasks", "announcements", "deadlines"]);
-  const visibleNav = isVolunteer
-    ? NAV.filter(n => volunteerPages.has(n.id))
-    : NAV.filter(n => n.id !== "mytasks" && (!n.roles || n.roles.includes(role)));
+  // Build visible grouped nav
+  const visibleGroups = (isVolunteer ? VOLUNTEER_GROUPS : NAV_GROUPS).map(group => ({
+    ...group,
+    items: group.ids
+      .filter(id => {
+        const item = NAV_ITEMS[id];
+        if (!item) return false;
+        return !item.roles || item.roles.includes(role);
+      })
+      .map(id => ({ id, ...NAV_ITEMS[id] })),
+  })).filter(g => g.items.length > 0);
 
   const effectivePage = isVolunteer ? "mytasks" : page;
   const activePage    = selectedActivityId ? null : effectivePage;
@@ -215,18 +236,24 @@ function AppShell() {
         </div>
 
         <nav className="sidebar-nav">
-          {visibleNav.map(n => (
-            <button
-              key={n.id}
-              className={`nav-item ${activePage === n.id ? "active" : ""}`}
-              onClick={() => goPage(n.id)}
-            >
-              <span className="nav-icon">{n.icon}</span>
-              <span>{n.label}</span>
-              {n.id === "review" && reviewBadge > 0 && (
-                <span style={{ marginLeft: "auto", background: "#d97706", color: "#fff", borderRadius: 10, padding: "1px 7px", fontSize: 10, fontWeight: 700 }}>{reviewBadge}</span>
-              )}
-            </button>
+          {visibleGroups.map((group, gi) => (
+            <React.Fragment key={group.label}>
+              {gi > 0 && <div className="nav-divider" />}
+              <span className="nav-section-label">{group.label}</span>
+              {group.items.map(n => (
+                <button
+                  key={n.id}
+                  className={`nav-item ${activePage === n.id ? "active" : ""}`}
+                  onClick={() => goPage(n.id)}
+                >
+                  <span className="nav-icon">{n.icon}</span>
+                  <span>{n.label}</span>
+                  {n.id === "review" && reviewBadge > 0 && (
+                    <span style={{ marginLeft: "auto", background: "#d97706", color: "#fff", borderRadius: 10, padding: "1px 7px", fontSize: 10, fontWeight: 700 }}>{reviewBadge}</span>
+                  )}
+                </button>
+              ))}
+            </React.Fragment>
           ))}
         </nav>
 

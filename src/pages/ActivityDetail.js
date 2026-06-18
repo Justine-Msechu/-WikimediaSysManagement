@@ -9,6 +9,8 @@ import { uploadToDrive, deleteFromDrive, fileIcon, preAuthorize } from "../servi
 import { listenActivityFiles, addActivityFile, removeActivityFile } from "../services/activityFilesService";
 import logo from "../assets/logo.png";
 
+function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
 function buildReport(a, programName) {
   const lines = [
     `ACTIVITY REPORT: ${(a.name || "").toUpperCase()}`,
@@ -414,7 +416,7 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
                   <button className="btn btn-sm" onClick={() => { navigator.clipboard.writeText(qrUrl); }}>Copy link</button>
                   <button className="btn btn-sm btn-primary" onClick={() => {
                     const w = window.open("", "_blank", "width=500,height=600");
-                    w.document.write(`<!DOCTYPE html><html><head><title>QR — ${activity.name}</title>
+                    w.document.write(`<!DOCTYPE html><html><head><title>QR — ${esc(activity.name)}</title>
                     <style>body{font-family:sans-serif;text-align:center;padding:40px;background:#fff}
                     h2{font-size:18px;color:#1c2b1e;margin-bottom:4px}
                     p{font-size:13px;color:#666;margin:0 0 24px}
@@ -422,8 +424,8 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
                     .no-print button{padding:8px 20px;background:#2d7a4f;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px}
                     @media print{.no-print{display:none}}</style></head><body>
                     <div class="no-print"><button onclick="window.print()">Print QR code</button></div>
-                    <h2>${activity.name}</h2>
-                    <p>${activity.date}${activity.location ? " · " + activity.location : ""}</p>
+                    <h2>${esc(activity.name)}</h2>
+                    <p>${esc(activity.date)}${activity.location ? " · " + esc(activity.location) : ""}</p>
                     <img src="https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(qrUrl)}" alt="QR code" style="width:280px;height:280px" />
                     <p style="margin-top:16px;font-size:12px;color:#aaa">Scan to register your attendance</p>
                     </body></html>`);

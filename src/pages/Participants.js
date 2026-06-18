@@ -7,6 +7,8 @@ import { listenSettings } from "../services/settingsService";
 const GENDERS  = ["Female", "Male", "Non-binary", "Prefer not to say"];
 const REGIONS  = ["Kilimanjaro", "Arusha", "Dar es Salaam", "Mwanza", "Dodoma", "Other"];
 
+function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
 function emptyParticipant() {
   return { name: "", wikimediaUsername: "", email: "", phone: "", gender: "", region: "", isNew: false, notes: "" };
 }
@@ -162,7 +164,7 @@ export default function Participants({ profile }) {
   const printCertificate = (p) => {
     const orgName = settings?.orgName || "Wikimedians of Kilimanjaro";
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-    <title>Certificate — ${p.name}</title>
+    <title>Certificate — ${esc(p.name)}</title>
     <style>
       @page { size: A4 landscape; margin: 0; }
       body { font-family: 'Segoe UI', Georgia, serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #fff; }
@@ -181,15 +183,15 @@ export default function Participants({ profile }) {
     </style></head><body>
     <div class="no-print"><button onclick="window.print()">Print / Save PDF</button></div>
     <div class="cert">
-      <div class="org">${orgName}</div>
+      <div class="org">${esc(orgName)}</div>
       <h1>Certificate of Participation</h1>
       <div class="presented">This is to certify that</div>
-      <div class="name">${p.name}</div>
+      <div class="name">${esc(p.name)}</div>
       <div class="body">
         has actively participated in Wikimedia community activities<br>
-        organised by <strong>${orgName}</strong><br>
+        organised by <strong>${esc(orgName)}</strong><br>
         and has contributed to the growth of free knowledge.
-        ${p.wikimediaUsername ? `<br><br>Wikipedia username: <strong>${p.wikimediaUsername}</strong>` : ""}
+        ${p.wikimediaUsername ? `<br><br>Wikipedia username: <strong>${esc(p.wikimediaUsername)}</strong>` : ""}
       </div>
       <div class="footer">
         <div class="sig"><span>Coordinator signature</span></div>

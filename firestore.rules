@@ -90,10 +90,14 @@ service cloud.firestore {
 
     // ── /participants ───────────────────────────────────────────────────────
     // Public registration auto-writes here (create only, no auth).
-    // Coordinators manage the full registry.
+    // Field validation prevents spam: name must be a non-empty string and
+    // formId must be present so orphan documents can't be injected.
     match /participants/{docId} {
       allow read:   if isAnyStaff();
-      allow create: if true;   // public registration pathway
+      allow create: if request.resource.data.name is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() <= 300
+                    && request.resource.data.formId is string;
       allow update: if isCoordinator();
       allow delete: if isCoordinator();
     }
@@ -111,8 +115,12 @@ service cloud.firestore {
 
     // ── /registrations ─────────────────────────────────────────────────────
     // Public submits registrations (no auth). Staff reads and marks attendance.
+    // Field validation: name + formId required to block spam injection.
     match /registrations/{docId} {
-      allow create: if true;          // unauthenticated public submission
+      allow create: if request.resource.data.name is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() <= 300
+                    && request.resource.data.formId is string;
       allow read:   if isAnyStaff();
       allow update: if isCoordinator();  // attendance marking
       allow delete: if isAdmin();
@@ -182,12 +190,15 @@ service cloud.firestore {
     // ── /volunteerTasks ────────────────────────────────────────────────────────
     match /volunteerTasks/{docId} {
       // Coordinators/admins manage all tasks.
-      // Volunteers: list is allowed (the client query filters by their volunteerId,
-      //   so only their own tasks are returned). get() calls are not supported in
-      //   list rules, so we cannot do per-document volunteerId checks here.
-      // For single-document get and update, we DO check volunteerId via get().
+      // Volunteers: list is restricted to their own volunteerId in the query.
+      //   Firestore cannot enforce per-document filtering in list rules without
+      //   get() (which is disallowed in list context), so the rule allows list
+      //   for volunteers and the client always queries with the volunteerId filter.
+      // For single-document get and update, we check volunteerId via get().
       allow list:   if isAnyStaff() || isVolunteer();
-      allow get:    if isAnyStaff() || (isVolunteer() && resource.data.volunteerId == myVolunteerId());
+      allow get:    if isAnyStaff()
+                    || (isVolunteer() && resource.data.volunteerId == myVolunteerId())
+                    || (isVolunteer() && myVolunteerId() in resource.data.volunteerIds);
       allow create: if isCoordinator();
       // Support both old single-field (volunteerId) and new array (volunteerIds) format
       allow update: if isCoordinator()

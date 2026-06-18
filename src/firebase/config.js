@@ -2,6 +2,7 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 export const firebaseConfig = {
   apiKey:            process.env.REACT_APP_FIREBASE_API_KEY,
@@ -13,6 +14,19 @@ export const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
+// App Check — blocks requests that don't come from the real deployed app.
+// In development, prints a debug token to the console; add it in Firebase Console
+// → App Check → Apps → Manage debug tokens.
+if (process.env.NODE_ENV === "development") {
+  window.self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+}
+if (process.env.REACT_APP_RECAPTCHA_SITE_KEY) {
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider(process.env.REACT_APP_RECAPTCHA_SITE_KEY),
+    isTokenAutoRefreshEnabled: true,
+  });
+}
 
 export const auth    = getAuth(app);
 export const db      = getFirestore(app);

@@ -5,6 +5,7 @@ import { listenParticipants } from "../services/participantService";
 
 function fmt(n) { return (n || 0).toLocaleString(); }
 function pct(r, t) { if (!t) return 0; return Math.min(999, Math.round((r / t) * 100)); }
+function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
 const METRIC_ROWS = [
   { key: "participants",    label: "All participants" },
@@ -135,7 +136,7 @@ export default function Metrics({ profile }) {
       const p2 = pct(v.result, v.target);
       const color = p2 >= 100 ? "#2d7a4f" : p2 >= 60 ? "#d97706" : "#888";
       return `<tr>
-        <td>${label}</td><td style="text-align:right">${fmt(v.target)}</td>
+        <td>${esc(label)}</td><td style="text-align:right">${fmt(v.target)}</td>
         <td style="text-align:right">${fmt(v.result)}</td>
         <td style="text-align:right;color:${color};font-weight:700">${p2}%</td>
       </tr>`;
@@ -146,7 +147,7 @@ export default function Metrics({ profile }) {
       const overall = Math.round((pc + pi) / 2);
       const color = overall >= 100 ? "#2d7a4f" : overall >= 60 ? "#d97706" : "#888";
       return `<tr>
-        <td>${p.name}</td>
+        <td>${esc(p.name)}</td>
         <td style="text-align:right">${fmt(p.tCreated)}</td><td style="text-align:right">${fmt(p.tImproved)}</td>
         <td style="text-align:right">${fmt(p.rCreated)}</td><td style="text-align:right">${fmt(p.rImproved)}</td>
         <td style="text-align:right;color:${color};font-weight:700">${overall}%</td>

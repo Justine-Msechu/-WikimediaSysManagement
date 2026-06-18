@@ -10,18 +10,21 @@ function sanitizeName(v) {
 
 function sanitizeWikiUsername(v) {
   let s = v.trim();
-  // Strip full URLs
-  s = s.replace(/^https?:\/\/[a-z]+\.wikipedia\.org\/wiki\/User:/i, "");
-  s = s.replace(/^https?:\/\/[a-z]+\.wikipedia\.org\/wiki\//i, "");
-  s = s.replace(/^https?:\/\/\S+/i, "");
-  // Strip User: namespace prefix
-  s = s.replace(/^User:/i, "");
-  // Decode URI encoding
+  // Strip full Wikipedia URLs (any language: en, sw, fr, de, …)
+  const urlMatch = s.match(/^https?:\/\/[a-z\-]+\.wikipedia\.org\/wiki\//i);
+  if (urlMatch) {
+    s = s.slice(urlMatch[0].length); // leaves e.g. "Mtumiaji:JustineMsechu"
+  } else {
+    s = s.replace(/^https?:\/\/\S+/i, "");
+  }
+  // Strip any namespace prefix (User:, Mtumiaji:, Utilisateur:, Benutzer:, …)
+  // A namespace is a single word (no spaces) followed by a colon.
+  s = s.replace(/^\w+:/, "");
+  // Decode URI encoding (e.g. %20 → space, underscores stay as underscores)
   try { s = decodeURIComponent(s); } catch (_) {}
-  // Replace underscores with spaces; trimStart only so trailing spaces aren't
-  // eaten while the user is still typing (e.g. "Justine Msechu")
-  s = s.replace(/_/g, " ").trimStart();
-  return s;
+  // Trim whitespace — do NOT replace underscores with spaces;
+  // Wikipedia treats them as equivalent but we preserve what the user typed.
+  return s.trim();
 }
 
 function sanitizeEmail(v) {

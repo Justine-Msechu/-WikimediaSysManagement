@@ -93,6 +93,11 @@ export default function Settings({ profile }) {
           <div className="field"><label>Contact email</label><input type="email" value={form.org?.contactEmail || ""} onChange={e => setF("org.contactEmail", e.target.value)} disabled={!isAdmin} /></div>
           <div className="field"><label>Website</label><input value={form.org?.website || ""} onChange={e => setF("org.website", e.target.value)} disabled={!isAdmin} placeholder="https://…" /></div>
           <div className="field" style={{ gridColumn: "1 / -1" }}><label>Meta-Wiki grant page</label><input value={form.org?.metaPage || ""} onChange={e => setF("org.metaPage", e.target.value)} disabled={!isAdmin} placeholder="https://meta.wikimedia.org/…" /></div>
+          <div className="field" style={{ gridColumn: "1 / -1" }}>
+            <label>Outreach Dashboard campaign URL</label>
+            <input value={form.grant?.odCampaignUrl || ""} onChange={e => setF("grant.odCampaignUrl", e.target.value)} disabled={!isAdmin} placeholder="https://outreachdashboard.wmflabs.org/campaigns/wikimedia_community_kilimanjaro_20252026_programs" />
+            <div style={{ fontSize: 11, color: "#888", marginTop: 3 }}>Used by Metrics → "Fetch from Outreach Dashboard" to pull live campaign stats.</div>
+          </div>
         </div>
         {isAdmin && (
           <div className="btn-row">

@@ -328,8 +328,8 @@ export default function Metrics({ profile }) {
                   return (
                     <tr key={key}>
                       <td style={{ fontWeight: 500 }}>{label}</td>
-                      <td><input type="number" min="0" defaultValue={val.target} onBlur={e => setIndicator(key, "target", e.target.value)} style={{ width: 90 }} /></td>
-                      <td><input type="number" min="0" defaultValue={val.result} onBlur={e => setIndicator(key, "result", e.target.value)} style={{ width: 90 }} /></td>
+                      <td><input key={`${key}-t-${val.target}`} type="number" min="0" defaultValue={val.target} onBlur={e => setIndicator(key, "target", e.target.value)} style={{ width: 90 }} /></td>
+                      <td><input key={`${key}-r-${val.result}`} type="number" min="0" defaultValue={val.result} onBlur={e => setIndicator(key, "result", e.target.value)} style={{ width: 90 }} /></td>
                       <td><span className={`badge ${cls}`}>{p}%</span></td>
                     </tr>
                   );
@@ -353,10 +353,10 @@ export default function Metrics({ profile }) {
                   return (
                     <tr key={p.name}>
                       <td style={{ fontWeight: 500 }}>{p.name}</td>
-                      <td><input type="number" min="0" defaultValue={p.tCreated}  onBlur={e => setProject(p.name, "tCreated",  e.target.value)} style={{ width: 80 }} /></td>
-                      <td><input type="number" min="0" defaultValue={p.tImproved} onBlur={e => setProject(p.name, "tImproved", e.target.value)} style={{ width: 80 }} /></td>
-                      <td><input type="number" min="0" defaultValue={p.rCreated}  onBlur={e => setProject(p.name, "rCreated",  e.target.value)} style={{ width: 80 }} /></td>
-                      <td><input type="number" min="0" defaultValue={p.rImproved} onBlur={e => setProject(p.name, "rImproved", e.target.value)} style={{ width: 80 }} /></td>
+                      <td><input key={`${p.name}-tc-${p.tCreated}`}  type="number" min="0" defaultValue={p.tCreated}  onBlur={e => setProject(p.name, "tCreated",  e.target.value)} style={{ width: 80 }} /></td>
+                      <td><input key={`${p.name}-ti-${p.tImproved}`} type="number" min="0" defaultValue={p.tImproved} onBlur={e => setProject(p.name, "tImproved", e.target.value)} style={{ width: 80 }} /></td>
+                      <td><input key={`${p.name}-rc-${p.rCreated}`}  type="number" min="0" defaultValue={p.rCreated}  onBlur={e => setProject(p.name, "rCreated",  e.target.value)} style={{ width: 80 }} /></td>
+                      <td><input key={`${p.name}-ri-${p.rImproved}`} type="number" min="0" defaultValue={p.rImproved} onBlur={e => setProject(p.name, "rImproved", e.target.value)} style={{ width: 80 }} /></td>
                       <td><span className={`badge ${cls}`}>{overall}%</span></td>
                     </tr>
                   );

@@ -31,9 +31,10 @@ export default function Participants({ profile }) {
   const [wepLoading,setWepLoading]= useState(false);
   const [wepPreview,setWepPreview]= useState(null);
   const [wikiStats, setWikiStats] = useState({});
-  const [settings,  setSettings]  = useState(null);
-  const [forms,     setForms]     = useState([]);
-  const [expenseType, setExpenseType] = useState("Transport");
+  const [settings,      setSettings]      = useState(null);
+  const [forms,         setForms]         = useState([]);
+  const [allRegs,       setAllRegs]       = useState([]);
+  const [expenseType,   setExpenseType]   = useState("Transport");
   const csvRef = useRef();
   const EXPENSE_TYPES = ["Transport", "Food & refreshments", "Stipend / allowance", "Venue hire", "Merchandise & prizes", "Other"];
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
@@ -43,6 +44,8 @@ export default function Participants({ profile }) {
     const u2 = listenSettings(setSettings);
     const u3 = listenPrograms(setPrograms);
     const u4 = listenForms(setForms);
+    // Load all registrations once — used to resolve participant → program
+    getAllRegistrations().then(setAllRegs).catch(() => {});
     return () => { u1(); u2(); u3(); u4(); };
   }, []);
 
@@ -238,66 +241,55 @@ export default function Participants({ profile }) {
     return `https://wa.me/${digits}?text=${msg}`;
   };
 
-  // Map form ID → programId so we can match participants who came through a form
-  const formProgramIndex = {};
-  forms.forEach(f => { if (f.id && f.programId) formProgramIndex[f.id] = f.programId; });
+  // Build a single lookup: participant id → resolved programId
+  // Priority: (1) programId stored on participant, (2) form the participant came through,
+  // (3) match by email in registrations, (4) match by name in registrations
+  const resolvedProgramId = (() => {
+    // form id → programId
+    const formMap = {};
+    forms.forEach(f => { if (f.id && f.programId) formMap[f.id] = f.programId; });
 
-  const participantProgram = (p) =>
-    p.programId ||
-    (p.registeredViaForm && formProgramIndex[p.registeredViaForm]) ||
-    (p.formId && formProgramIndex[p.formId]) ||
-    "";
-
-  const filtered = participants.filter(p => {
-    if (programFilter && participantProgram(p) !== programFilter) return false;
-    if (search && ![p.name, p.wikimediaUsername, p.email, p.region].join(" ").toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
-
-  // Auto-sync: match each participant to a program via the registrations collection
-  const syncProgramsFromForms = async () => {
-    showToast("Syncing…");
-    const [forms, allRegistrations] = await Promise.all([getForms(), getAllRegistrations()]);
-
-    // form ID → program ID
-    const formProgramMap = {};
-    forms.forEach(f => { if (f.programId) formProgramMap[f.id] = f.programId; });
-
-    // Build lookup tables from registrations: email → programId, name → programId
+    // registrations: email → programId, name → programId
     const byEmail = {};
     const byName  = {};
-    allRegistrations.forEach(r => {
-      const pid = formProgramMap[r.formId];
+    allRegs.forEach(r => {
+      const pid = formMap[r.formId];
       if (!pid) return;
       if (r.email) byEmail[r.email.toLowerCase().trim()] = pid;
       if (r.name)  byName[r.name.toLowerCase().trim()]   = pid;
     });
 
-    const toFix = participants.filter(p => !p.programId);
-    if (!toFix.length) { showToast("All participants already have a program set."); return; }
+    const map = {};
+    participants.forEach(p => {
+      map[p.id] =
+        p.programId ||
+        (p.registeredViaForm ? formMap[p.registeredViaForm] : null) ||
+        (p.formId ? formMap[p.formId] : null) ||
+        (p.email  ? byEmail[p.email.toLowerCase().trim()] : null) ||
+        (p.name   ? byName[p.name.toLowerCase().trim()]   : null) ||
+        "";
+    });
+    return map;
+  })();
 
-    let fixed = 0;
+  const filtered = participants.filter(p => {
+    if (programFilter && resolvedProgramId[p.id] !== programFilter) return false;
+    if (search && ![p.name, p.wikimediaUsername, p.email, p.region].join(" ").toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  // Sync: write the resolved programId back to Firestore for participants that don't have it stored
+  const syncProgramsFromForms = async () => {
+    const toFix = participants.filter(p => !p.programId && resolvedProgramId[p.id]);
+    if (!toFix.length) { showToast("Nothing to sync — participants are already linked or cannot be matched."); return; }
+    showToast(`Syncing ${toFix.length} participants…`);
     for (const p of toFix) {
-      // Try in order: registeredViaForm field → email match → name match
-      const programId =
-        (p.registeredViaForm && formProgramMap[p.registeredViaForm]) ||
-        (p.email && byEmail[p.email.toLowerCase().trim()]) ||
-        (p.name  && byName[p.name.toLowerCase().trim()]);
-
-      if (programId) {
-        await updateParticipant(p.id, { ...p, programId });
-        fixed++;
-      }
-    }
-
-    if (!fixed) {
-      showToast(`No matches found for ${toFix.length} unassigned participants. Check that registration forms are linked to a program.`);
-      return;
+      await updateParticipant(p.id, { programId: resolvedProgramId[p.id] });
     }
     await addAudit(profile, AUDIT_ACTIONS.UPDATE, "participants", {
-      details: `Auto-synced programId for ${fixed} of ${toFix.length} participants from registration records`,
+      details: `Synced programId for ${toFix.length} participants from registration/form data`,
     });
-    showToast(`Done — ${fixed} participant(s) linked to their program.`);
+    showToast(`Done — ${toFix.length} participant(s) updated.`);
   };
 
   const printAttendance = () => {
@@ -545,7 +537,7 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
                   return (
                     <tr key={p.id}>
                       <td style={{ fontWeight: 500 }}>{p.name}</td>
-                      <td style={{ fontSize: 11, color: "#888" }}>{programs.find(pr => pr.id === participantProgram(p))?.name || ""}</td>
+                      <td style={{ fontSize: 11, color: "#888" }}>{programs.find(pr => pr.id === resolvedProgramId[p.id])?.name || ""}</td>
                       <td>
                         {p.wikimediaUsername
                           ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(p.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{p.wikimediaUsername}</a>

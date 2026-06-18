@@ -176,19 +176,21 @@ export default function ImportPanel({
       {tab === "wiki" && (
         <div>
           <div style={{ fontSize: 12, color: "#666", marginBottom: 10, lineHeight: 1.6 }}>
-            Paste the URL of your Wikipedia Event page. We'll extract all usernames linked on that page
-            (organisers + participants who signed up by editing the page).
-            <br />
-            <span style={{ color: "#d97706" }}>
-              ⚠ Participants who clicked the on-page "Register" button without editing the page cannot be fetched. Wikipedia doesn't expose that data publicly.
-            </span>
+            Paste the <strong>EventDetails URL</strong> for accurate participant data (recommended), or the Event page URL as a fallback.
+          </div>
+          <div style={{ background: "#f0faf4", border: "1px solid #b7e0c8", borderRadius: 7, padding: "10px 14px", fontSize: 12, marginBottom: 12, lineHeight: 1.7 }}>
+            <strong style={{ color: "#2d7a4f" }}>How to get the EventDetails URL:</strong><br />
+            1. Open your event page on Swahili Wikipedia (e.g. <code>sw.wikipedia.org/wiki/Event:…</code>)<br />
+            2. In the left sidebar, click <strong>"Maelezo ya tukio"</strong> (Event details)<br />
+            3. Copy the URL — it looks like <code>…/wiki/Maalum:EventDetails/<strong>2936</strong></code><br />
+            <span style={{ color: "#d97706" }}>⚠ Using the plain Event:… URL may return organizers instead of participants.</span>
           </div>
 
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             <input
               value={wikiUrl}
               onChange={e => { setWikiUrl(e.target.value); setPreview(null); setFetchErr(""); }}
-              placeholder="https://sw.wikipedia.org/wiki/Event:..."
+              placeholder="https://sw.wikipedia.org/wiki/Maalum:EventDetails/2936  or  Event:..."
               style={{ flex: 1, fontFamily: "monospace", fontSize: 12 }}
               onKeyDown={e => e.key === "Enter" && fetchWiki()}
             />
@@ -203,9 +205,18 @@ export default function ImportPanel({
 
           {preview && (
             <div>
-              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10, color: "#1c2b1e" }}>
+              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: "#1c2b1e" }}>
                 Found {preview.participants.length} user{preview.participants.length !== 1 ? "s" : ""} on: <span style={{ fontWeight: 400, color: "#555" }}>{preview.pageTitle}</span>
               </div>
+              {!preview.wikitextFallback ? (
+                <div style={{ background: "#e8f5ec", border: "1px solid #b7e0c8", borderRadius: 6, padding: "6px 12px", fontSize: 12, color: "#2d7a4f", marginBottom: 10 }}>
+                  ✓ Fetched from Campaign Events API — these are actual registered participants.
+                </div>
+              ) : (
+                <div style={{ background: "#fff8e8", border: "1px solid #f0c060", borderRadius: 6, padding: "6px 12px", fontSize: 12, color: "#92600a", marginBottom: 10 }}>
+                  ⚠ Wikitext fallback — list may include organizers. Paste the <strong>Maalum:EventDetails/…</strong> URL for accurate participant data.
+                </div>
+              )}
 
               {preview.participants.length === 0 ? (
                 <div style={{ fontSize: 13, color: "#888", padding: "10px 0" }}>

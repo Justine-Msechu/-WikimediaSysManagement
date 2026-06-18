@@ -1,20 +1,36 @@
 /**
  * Utilities for importing participant data from:
- * 1. Wikipedia Event Platform pages (via MediaWiki API, CORS-safe)
- * 2. Outreach Dashboard CSV exports
+ * 1. Wikipedia Campaign Events REST API (accurate — requires EventDetails URL)
+ * 2. Wikipedia Event page wikitext (fallback — may include organizers)
+ * 3. Outreach Dashboard CSV exports
  */
 
+// ── URL helpers ───────────────────────────────────────────────────────────────
+
 /**
- * Parse a Wikipedia event page URL into { apiBase, pageTitle }.
- * Handles both:
- *   https://sw.wikipedia.org/wiki/Event:Foo_Bar
- *   https://en.wikipedia.org/w/index.php?title=Event:Foo_Bar
+ * Detect an EventDetails URL and extract the event registration ID.
+ * Supports any language prefix (Maalum, Special, Especial, Speciale …).
+ *
+ * Example: https://sw.wikipedia.org/wiki/Maalum:EventDetails/2936 → { eventId: "2936", origin: "https://sw.wikipedia.org" }
+ */
+function parseEventDetailsId(url) {
+  const m = url.match(/(?:Special|Maalum|Speciale|Speciaal|Especial|Spesial|Especial|特別):EventDetails\/(\d+)/i);
+  if (!m) return null;
+  try {
+    return { eventId: m[1], origin: new URL(url).origin };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse a Wikipedia Event page URL into { apiBase, pageTitle, origin }.
+ * Works for both Event:Title and Maalum:EventDetails/ID URLs.
  */
 export function parseWikiEventUrl(url) {
   try {
     const u = new URL(url);
     const apiBase = `${u.origin}/w/api.php`;
-
     let title = "";
     if (u.pathname.startsWith("/wiki/")) {
       title = decodeURIComponent(u.pathname.replace("/wiki/", "")).replace(/_/g, " ");
@@ -28,25 +44,54 @@ export function parseWikiEventUrl(url) {
   }
 }
 
+// ── Campaign Events REST API ──────────────────────────────────────────────────
+
 /**
- * Fetch participants from a Wikipedia Event page.
- *
- * Strategy:
- * 1. Fetch raw wikitext and parse [[User:...]] / [[Mtumiaji:...]] patterns
- *    — catches participants who sign up by editing the page (most common)
- * 2. Also fetch namespace-2 links via API (authoritative)
- * 3. Merge both lists, deduplicate by username
- *
- * Limitation: Participants who clicked the WEP "Register" button but did NOT
- * edit the page are stored in the MediaWiki database and require auth to read.
- * We cannot access those without a logged-in session.
+ * Fetch actual registered participants via the Campaign Events REST API.
+ * Handles pagination automatically (limit=500 per request).
+ * Returns array of { username, displayName, source, registeredAt } or null on failure.
  */
-export async function fetchEventParticipants(eventUrl) {
-  const { apiBase, title } = parseWikiEventUrl(eventUrl);
+async function fetchCampaignEventParticipants(origin, eventId) {
+  const results = [];
+  let lastId = null;
 
+  for (;;) {
+    let url = `${origin}/w/rest.php/campaignevents/v0/event_registration/${eventId}/participants?include_private=false&limit=500`;
+    if (lastId) url += `&last_participant_id=${lastId}`;
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      if (results.length === 0) return null;
+      break;
+    }
+    const page = await res.json();
+    if (!Array.isArray(page) || page.length === 0) break;
+
+    page.forEach(p => {
+      results.push({
+        username:     p.user_name,
+        displayName:  p.user_name,
+        source:       "campaign-events-api",
+        registeredAt: p.user_registered_at_formatted || "",
+      });
+    });
+
+    if (page.length < 500) break;
+    lastId = page[page.length - 1].participant_id;
+  }
+
+  return results.length > 0 ? results : null;
+}
+
+// ── Wikitext fallback ─────────────────────────────────────────────────────────
+
+/**
+ * Fetch user links from an Event page's wikitext and namespace-2 links.
+ * NOTE: This catches users who *edited* the page (often organizers) rather
+ * than registered participants. Use the Campaign Events API when possible.
+ */
+async function fetchWikitextParticipants(apiBase, title) {
   const base = `${apiBase}?format=json&origin=*`;
-
-  // Fetch both in parallel: raw wikitext + ns-2 links
   const [textRes, linksRes] = await Promise.all([
     fetch(`${base}&action=query&prop=revisions&rvprop=content&rvslots=main&titles=${encodeURIComponent(title)}`),
     fetch(`${base}&action=query&prop=links&plnamespace=2&pllimit=500&titles=${encodeURIComponent(title)}`),
@@ -55,67 +100,95 @@ export async function fetchEventParticipants(eventUrl) {
   if (!textRes.ok || !linksRes.ok) throw new Error("Wikipedia API request failed.");
 
   const [textData, linksData] = await Promise.all([textRes.json(), linksRes.json()]);
+  const participants = new Map();
 
-  const participants = new Map(); // username (lowercased) → { username, displayName, source }
-
-  // ── 1. Parse wikitext for [[User:...]] / [[Mtumiaji:...]] patterns ──
+  // Parse [[User:...]] / [[Mtumiaji:...]] from wikitext
   const pages = Object.values(textData?.query?.pages || {});
   if (pages.length > 0) {
-    const page = pages[0];
-    const wikitext = page.revisions?.[0]?.slots?.main?.["*"]
-      || page.revisions?.[0]?.["*"]
+    const wikitext = pages[0].revisions?.[0]?.slots?.main?.["*"]
+      || pages[0].revisions?.[0]?.["*"]
       || "";
-
-    // Match [[Namespace:Username|Display]] or [[Namespace:Username]]
-    // Swahili: Mtumiaji, English: User, French: Utilisateur, etc.
     const userLinkRe = /\[\[(?:User|Mtumiaji|Utilisateur|Benutzer|Usuario|Utumiaji):([^\]|#]+)(?:\|([^\]]+))?\]\]/gi;
     let match;
     while ((match = userLinkRe.exec(wikitext)) !== null) {
-      const raw  = match[1].trim();
+      const raw     = match[1].trim();
       const display = (match[2] || raw).trim();
-      const key  = raw.toLowerCase();
+      const key     = raw.toLowerCase();
       if (!participants.has(key)) {
         participants.set(key, { username: raw, displayName: display, source: "wikitext" });
       }
     }
   }
 
-  // ── 2. API namespace-2 links (more authoritative) ──
+  // API namespace-2 links
   const linkPages = Object.values(linksData?.query?.pages || {});
   (linkPages[0]?.links || []).forEach(link => {
-    // title is e.g. "Mtumiaji:Justine Msechu" — strip the namespace prefix
     const colonIdx = link.title.indexOf(":");
     if (colonIdx < 0) return;
     const raw = link.title.slice(colonIdx + 1).trim();
     const key = raw.toLowerCase();
     if (!participants.has(key)) {
-      participants.set(key, { username: raw, displayName: raw, source: "api-links" });
+      participants.set(key, { username: raw, displayName: raw, source: "wikitext" });
     } else {
-      // Upgrade source
-      participants.get(key).source = "api-links";
+      participants.get(key).source = "wikitext";
     }
   });
 
+  return Array.from(participants.values());
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
+
+/**
+ * Fetch participants from a Wikipedia Event or EventDetails URL.
+ *
+ * Strategy (in order):
+ * 1. If the URL contains an EventDetails ID → use Campaign Events REST API
+ *    → returns only actual registered participants, no organizers
+ * 2. Otherwise → fall back to wikitext parsing
+ *    → catches users who edited the page (may include organizers)
+ *    → `wikitextFallback: true` is set on the result so the UI can warn the user
+ *
+ * Returns { pageTitle, participants[], wikitextFallback, eventId? }
+ */
+export async function fetchEventParticipants(eventUrl) {
+  // ── Path 1: EventDetails URL → Campaign Events REST API ──────────────────
+  const details = parseEventDetailsId(eventUrl);
+  if (details) {
+    const { eventId, origin } = details;
+    const apiParticipants = await fetchCampaignEventParticipants(origin, eventId);
+    if (apiParticipants) {
+      return {
+        pageTitle:        `Event registration #${eventId}`,
+        participants:     apiParticipants,
+        wikitextFallback: false,
+        eventId,
+      };
+    }
+    // REST API failed — fall through to wikitext
+  }
+
+  // ── Path 2: Event:Title URL → wikitext fallback ───────────────────────────
+  const { apiBase, title } = parseWikiEventUrl(eventUrl);
+  const participants = await fetchWikitextParticipants(apiBase, title);
   return {
-    pageTitle: title,
-    participants: Array.from(participants.values()),
+    pageTitle:        title,
+    participants,
+    wikitextFallback: true,
+    eventId:          null,
   };
 }
 
+// ── Outreach Dashboard CSV ────────────────────────────────────────────────────
+
 /**
  * Parse an Outreach Dashboard CSV export.
- *
- * OD exports participant CSVs with columns:
- * Username, Real Name, Assigned Articles, Created Articles, Edited Articles,
- * Main Namespace Bytes Added, References Added, Uploaded Files
- *
- * Returns array of { username, realName, articlesCreated, articlesEdited, filesUploaded }
+ * Returns array of { username, realName, articlesCreated, articlesEdited, filesUploaded, … }
  */
 export function parseODCSV(csvText) {
   const lines = csvText.trim().split(/\r?\n/);
   if (lines.length < 2) throw new Error("CSV has no data rows.");
 
-  // Detect delimiter (comma or tab)
   const delim = lines[0].includes("\t") ? "\t" : ",";
 
   const parseRow = (line) => {
@@ -132,7 +205,6 @@ export function parseODCSV(csvText) {
   };
 
   const headers = parseRow(lines[0]).map(h => h.toLowerCase().trim());
-
   const idx = (names) => {
     for (const n of names) {
       const i = headers.findIndex(h => h.includes(n));
@@ -141,14 +213,14 @@ export function parseODCSV(csvText) {
     return -1;
   };
 
-  const iUsername     = idx(["username"]);
-  const iRealName     = idx(["real name", "name"]);
-  const iCreated      = idx(["created articles", "articles created"]);
-  const iEdited       = idx(["edited articles", "articles edited"]);
-  const iFiles        = idx(["uploaded files", "files uploaded", "uploads"]);
-  const iRefsAdded    = idx(["references added"]);
-  const iBytesAdded   = idx(["bytes added"]);
-  const iEdits        = idx(["total edits", "edits"]);
+  const iUsername  = idx(["username"]);
+  const iRealName  = idx(["real name", "name"]);
+  const iCreated   = idx(["created articles", "articles created"]);
+  const iEdited    = idx(["edited articles", "articles edited"]);
+  const iFiles     = idx(["uploaded files", "files uploaded", "uploads"]);
+  const iRefs      = idx(["references added"]);
+  const iBytes     = idx(["bytes added"]);
+  const iEdits     = idx(["total edits", "edits"]);
 
   if (iUsername < 0) throw new Error("Could not find 'Username' column in CSV. Are you sure this is an Outreach Dashboard export?");
 
@@ -158,13 +230,13 @@ export function parseODCSV(csvText) {
     if (!row[iUsername]) continue;
     results.push({
       username:        row[iUsername] || "",
-      realName:        iRealName   >= 0 ? row[iRealName]   : "",
-      articlesCreated: iCreated    >= 0 ? Number(row[iCreated])    || 0 : 0,
-      articlesEdited:  iEdited     >= 0 ? Number(row[iEdited])     || 0 : 0,
-      filesUploaded:   iFiles      >= 0 ? Number(row[iFiles])      || 0 : 0,
-      refsAdded:       iRefsAdded  >= 0 ? Number(row[iRefsAdded])  || 0 : 0,
-      bytesAdded:      iBytesAdded >= 0 ? Number(row[iBytesAdded]) || 0 : 0,
-      totalEdits:      iEdits      >= 0 ? Number(row[iEdits])      || 0 : 0,
+      realName:        iRealName >= 0 ? row[iRealName]  : "",
+      articlesCreated: iCreated  >= 0 ? Number(row[iCreated])  || 0 : 0,
+      articlesEdited:  iEdited   >= 0 ? Number(row[iEdited])   || 0 : 0,
+      filesUploaded:   iFiles    >= 0 ? Number(row[iFiles])    || 0 : 0,
+      refsAdded:       iRefs     >= 0 ? Number(row[iRefs])     || 0 : 0,
+      bytesAdded:      iBytes    >= 0 ? Number(row[iBytes])    || 0 : 0,
+      totalEdits:      iEdits    >= 0 ? Number(row[iEdits])    || 0 : 0,
     });
   }
 

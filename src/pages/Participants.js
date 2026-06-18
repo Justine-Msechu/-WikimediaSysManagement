@@ -4,6 +4,7 @@ import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { fetchEventParticipants, parseODCSV } from "../utils/wikiImport";
 import { listenSettings } from "../services/settingsService";
 import { listenPrograms } from "../services/programService";
+import logo from "../assets/logo.png";
 
 const GENDERS  = ["Female", "Male", "Non-binary", "Prefer not to say"];
 const REGIONS  = ["Kilimanjaro", "Arusha", "Dar es Salaam", "Mwanza", "Dodoma", "Other"];
@@ -186,6 +187,7 @@ export default function Participants({ profile }) {
       @page { size: A4 landscape; margin: 0; }
       body { font-family: 'Segoe UI', Georgia, serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #fff; }
       .cert { width: 90%; max-width: 720px; text-align: center; border: 8px double #2d7a4f; padding: 48px 56px; }
+      .logo { width: 72px; height: 72px; object-fit: contain; margin-bottom: 12px; }
       .org { font-size: 13px; color: #888; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
       h1 { font-size: 36px; font-weight: 300; color: #2d7a4f; margin: 0 0 24px; }
       .presented { font-size: 14px; color: #555; margin-bottom: 12px; }
@@ -200,6 +202,7 @@ export default function Participants({ profile }) {
     </style></head><body>
     <div class="no-print"><button onclick="window.print()">Print / Save PDF</button></div>
     <div class="cert">
+      <img src="${logo}" class="logo" alt="logo" />
       <div class="org">${esc(orgName)}</div>
       <h1>Certificate of Participation</h1>
       <div class="presented">This is to certify that</div>

@@ -60,10 +60,21 @@ async function fetchCampaignEventParticipants(origin, eventId) {
     if (lastId) url += `&last_participant_id=${lastId}`;
 
     const res = await fetch(url);
+
     if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      // MediaWiki blocks anonymous cross-origin requests to the Campaign Events REST API.
+      // This cannot be worked around client-side — a backend proxy would be required.
+      if (body.error === "rest-cross-origin-anon-write" || res.status === 403) {
+        throw new Error(
+          "CROSS_ORIGIN_BLOCKED: Wikipedia's Campaign Events API does not allow direct browser access. " +
+          "Use the Outreach Dashboard CSV export instead: go to your OD program → Editors table → Download CSV."
+        );
+      }
       if (results.length === 0) return null;
       break;
     }
+
     const page = await res.json();
     if (!Array.isArray(page) || page.length === 0) break;
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { listenMetrics, updateMetrics, DEFAULT_METRICS } from "../services/metricsService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { listenParticipants } from "../services/participantService";
+import { listenSettings } from "../services/settingsService";
 
 function fmt(n) { return (n || 0).toLocaleString(); }
 function pct(r, t) { if (!t) return 0; return Math.min(999, Math.round((r / t) * 100)); }
@@ -21,8 +22,10 @@ const PROJECT_FIELDS = ["Wikipedia", "Wikimedia Commons", "Wikidata", "Wiktionar
 export default function Metrics({ profile }) {
   const [metrics,      setMetrics]      = useState(DEFAULT_METRICS);
   const [participants, setParticipants] = useState([]);
+  const [settings,     setSettings]     = useState(null);
   const [wikiStats,    setWikiStats]    = useState({});
   const [fetchingAll,  setFetchingAll]  = useState(false);
+  const [fetchingOD,   setFetchingOD]   = useState(false);
   const [suggestion,   setSuggestion]   = useState(null);
   const [saved,        setSaved]        = useState(false);
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
@@ -30,7 +33,8 @@ export default function Metrics({ profile }) {
   useEffect(() => {
     const u1 = listenMetrics(setMetrics);
     const u2 = listenParticipants(setParticipants);
-    return () => { u1(); u2(); };
+    const u3 = listenSettings(setSettings);
+    return () => { u1(); u2(); u3(); };
   }, []);
 
   const save = async (patch) => {
@@ -104,6 +108,62 @@ export default function Metrics({ profile }) {
       patch.allEditors = { ...(metrics.allEditors || {}), result: suggestion.allEditors };
     if (suggestion.newEditors > 0)
       patch.newEditors = { ...(metrics.newEditors || {}), result: suggestion.newEditors };
+    await save(patch);
+    setSuggestion(null);
+  };
+
+  const fetchFromOD = async () => {
+    const campaignUrl = (settings?.grant?.odCampaignUrl || "").replace(/\/programs\/?$/, "").trim();
+    if (!campaignUrl) {
+      alert("No Outreach Dashboard campaign URL set. Go to Settings → Grant configuration and paste your campaign URL.");
+      return;
+    }
+    setFetchingOD(true);
+    try {
+      const res  = await fetch(`${campaignUrl}.json`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const c    = data.campaign || data;
+
+      const parseHuman = (s) => {
+        if (!s) return 0;
+        const n = parseFloat(String(s).replace(/,/g, ""));
+        if (String(s).toLowerCase().includes("k")) return Math.round(n * 1000);
+        if (String(s).toLowerCase().includes("m")) return Math.round(n * 1000000);
+        return Math.round(n) || 0;
+      };
+
+      setSuggestion({
+        source:          "outreach-dashboard",
+        programs:        c.courses_count          || 0,
+        allEditors:      c.user_count             || 0,
+        articlesCreated: parseHuman(c.new_article_count_human),
+        articlesEdited:  parseHuman(c.article_count_human),
+        wordsAdded:      parseHuman(c.word_count_human),
+        refsAdded:       parseHuman(c.references_count_human),
+        commonsUploads:  parseHuman(c.upload_count_human),
+      });
+    } catch (err) {
+      alert("Could not fetch from Outreach Dashboard: " + err.message);
+    } finally {
+      setFetchingOD(false);
+    }
+  };
+
+  const applyODSuggestion = async () => {
+    if (!suggestion || suggestion.source !== "outreach-dashboard") return;
+    const patch = {};
+    if (suggestion.allEditors > 0)
+      patch.allEditors = { ...(metrics.allEditors || {}), result: suggestion.allEditors };
+    // Map article contributions to Wikipedia project row
+    const updatedProjects = (metrics.projects || []).map(p =>
+      p.name === "Wikipedia"
+        ? { ...p, rCreated: suggestion.articlesCreated || p.rCreated, rImproved: suggestion.articlesEdited || p.rImproved }
+        : p.name === "Wikimedia Commons"
+        ? { ...p, rCreated: suggestion.commonsUploads || p.rCreated }
+        : p
+    );
+    if (updatedProjects.length) patch.projects = updatedProjects;
     await save(patch);
     setSuggestion(null);
   };
@@ -193,11 +253,14 @@ export default function Metrics({ profile }) {
         <button className="btn btn-sm btn-primary" onClick={fetchAndSuggest} disabled={fetchingAll}>
           {fetchingAll ? "Fetching from Wikimedia…" : "Fetch from Wikimedia API"}
         </button>
+        <button className="btn btn-sm" onClick={fetchFromOD} disabled={fetchingOD}>
+          {fetchingOD ? "Fetching from OD…" : "Fetch from Outreach Dashboard"}
+        </button>
         <button className="btn btn-sm" onClick={exportCSV}>Export CSV</button>
         <button className="btn btn-sm" onClick={printPDF}>Print / PDF report</button>
       </div>
 
-      {suggestion && (
+      {suggestion && suggestion.source !== "outreach-dashboard" && (
         <div className="panel" style={{ marginBottom: 16, background: "#f0f8f3", border: "1px solid #b7e0c8" }}>
           <div className="panel-title" style={{ color: "#2d7a4f", marginBottom: 8 }}>Wikimedia API results — suggested updates</div>
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, marginBottom: 12 }}>
@@ -210,6 +273,28 @@ export default function Metrics({ profile }) {
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {canEdit && <button className="btn btn-sm btn-primary" onClick={applySuggestion}>Apply to metrics results</button>}
+            <button className="btn btn-sm" onClick={() => setSuggestion(null)}>Dismiss</button>
+          </div>
+        </div>
+      )}
+
+      {suggestion && suggestion.source === "outreach-dashboard" && (
+        <div className="panel" style={{ marginBottom: 16, background: "#f0f8f3", border: "1px solid #b7e0c8" }}>
+          <div className="panel-title" style={{ color: "#2d7a4f", marginBottom: 8 }}>Outreach Dashboard — live campaign stats</div>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, marginBottom: 12 }}>
+            <div><span style={{ color: "#888" }}>Programs:</span> <strong>{suggestion.programs}</strong></div>
+            <div><span style={{ color: "#888" }}>All editors:</span> <strong style={{ color: "#2d7a4f" }}>{fmt(suggestion.allEditors)}</strong></div>
+            <div><span style={{ color: "#888" }}>Articles created:</span> <strong>{fmt(suggestion.articlesCreated)}</strong></div>
+            <div><span style={{ color: "#888" }}>Articles edited:</span> <strong>{fmt(suggestion.articlesEdited)}</strong></div>
+            <div><span style={{ color: "#888" }}>Words added:</span> <strong>{fmt(suggestion.wordsAdded)}</strong></div>
+            <div><span style={{ color: "#888" }}>References added:</span> <strong>{fmt(suggestion.refsAdded)}</strong></div>
+            <div><span style={{ color: "#888" }}>Commons uploads:</span> <strong>{fmt(suggestion.commonsUploads)}</strong></div>
+          </div>
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>
+            Applies: All editors → result. Wikipedia articles created/edited → result columns. Commons uploads → result created.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {canEdit && <button className="btn btn-sm btn-primary" onClick={applyODSuggestion}>Apply to metrics results</button>}
             <button className="btn btn-sm" onClick={() => setSuggestion(null)}>Dismiss</button>
           </div>
         </div>

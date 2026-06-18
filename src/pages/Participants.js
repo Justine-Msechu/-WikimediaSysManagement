@@ -64,16 +64,22 @@ export default function Participants({ profile }) {
   };
 
   // WEP import
-  const [wepResult, setWepResult] = useState(null); // full result { participants, wikitextFallback }
+  const [wepResult,  setWepResult]  = useState(null);
+  const [wepError,   setWepError]   = useState(null);
   const importFromWep = async () => {
     if (!wepUrl.trim()) { alert("Paste the EventDetails or Event page URL."); return; }
-    setWepLoading(true);
+    setWepLoading(true); setWepError(null); setWepPreview(null); setWepResult(null);
     try {
       const result = await fetchEventParticipants(wepUrl);
       setWepResult(result);
       setWepPreview(result.participants);
     } catch (err) {
-      alert("Failed to fetch: " + (err.message || err));
+      const msg = err.message || "";
+      if (msg.startsWith("CROSS_ORIGIN_BLOCKED")) {
+        setWepError("cross-origin");
+      } else {
+        setWepError(msg || "Failed to fetch.");
+      }
     } finally {
       setWepLoading(false);
     }
@@ -278,6 +284,24 @@ export default function Participants({ profile }) {
                 </div>
               </div>
               <button className="btn btn-primary" onClick={importFromWep} disabled={wepLoading}>{wepLoading ? "Fetching…" : "Fetch participants"}</button>
+              {wepError === "cross-origin" && (
+                <div style={{ marginTop: 12, background: "#fff3cd", border: "1px solid #f0c060", borderRadius: 8, padding: "12px 16px", fontSize: 13 }}>
+                  <strong style={{ color: "#856404" }}>Wikipedia blocks direct browser access to participant lists.</strong>
+                  <div style={{ color: "#856404", marginTop: 6, lineHeight: 1.6 }}>
+                    This is a Wikipedia security restriction — it cannot be bypassed from a web app.<br />
+                    <strong>Use the Outreach Dashboard CSV instead:</strong>
+                    <ol style={{ margin: "6px 0 0 16px", padding: 0 }}>
+                      <li>Open your OD program page</li>
+                      <li>Scroll to the <strong>Editors</strong> table</li>
+                      <li>Click <strong>Download CSV</strong></li>
+                      <li>Switch to the <strong>Outreach Dashboard CSV</strong> tab above and upload the file</li>
+                    </ol>
+                  </div>
+                </div>
+              )}
+              {wepError && wepError !== "cross-origin" && (
+                <div style={{ marginTop: 10, color: "#c0392b", fontSize: 13, background: "#fdf0ee", padding: "8px 12px", borderRadius: 6 }}>{wepError}</div>
+              )}
               {wepPreview && (
                 <div style={{ marginTop: 12 }}>
                   {wepResult && !wepResult.wikitextFallback ? (

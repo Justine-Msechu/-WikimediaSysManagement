@@ -241,15 +241,15 @@ export default function Participants({ profile }) {
     return `https://wa.me/${digits}?text=${msg}`;
   };
 
-  // Build a single lookup: participant id → resolved programId
-  // Priority: (1) programId stored on participant, (2) form the participant came through,
-  // (3) match by email in registrations, (4) match by name in registrations
-  const resolvedProgramId = (() => {
-    // form id → programId
+  // For each participant: resolved programId using every available source
+  const getProgram = (p) => {
+    if (p.programId) return p.programId;
+    // form lookup via registeredViaForm / formId
     const formMap = {};
     forms.forEach(f => { if (f.id && f.programId) formMap[f.id] = f.programId; });
-
-    // registrations: email → programId, name → programId
+    if (p.registeredViaForm && formMap[p.registeredViaForm]) return formMap[p.registeredViaForm];
+    if (p.formId && formMap[p.formId]) return formMap[p.formId];
+    // registration lookup via email / name
     const byEmail = {};
     const byName  = {};
     allRegs.forEach(r => {
@@ -258,36 +258,32 @@ export default function Participants({ profile }) {
       if (r.email) byEmail[r.email.toLowerCase().trim()] = pid;
       if (r.name)  byName[r.name.toLowerCase().trim()]   = pid;
     });
-
-    const map = {};
-    participants.forEach(p => {
-      map[p.id] =
-        p.programId ||
-        (p.registeredViaForm ? formMap[p.registeredViaForm] : null) ||
-        (p.formId ? formMap[p.formId] : null) ||
-        (p.email  ? byEmail[p.email.toLowerCase().trim()] : null) ||
-        (p.name   ? byName[p.name.toLowerCase().trim()]   : null) ||
-        "";
-    });
-    return map;
-  })();
+    if (p.email && byEmail[p.email.toLowerCase().trim()]) return byEmail[p.email.toLowerCase().trim()];
+    if (p.name  && byName[p.name.toLowerCase().trim()])  return byName[p.name.toLowerCase().trim()];
+    return "";
+  };
 
   const filtered = participants.filter(p => {
-    if (programFilter && resolvedProgramId[p.id] !== programFilter) return false;
+    if (programFilter && getProgram(p) !== programFilter) return false;
     if (search && ![p.name, p.wikimediaUsername, p.email, p.region].join(" ").toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
-  // Sync: write the resolved programId back to Firestore for participants that don't have it stored
+  const assignProgram = async (p, newProgramId) => {
+    await updateParticipant(p.id, { programId: newProgramId });
+    showToast(`Program updated for ${p.name}.`);
+  };
+
+  // Sync: write the resolved programId back to Firestore for participants that lack it
   const syncProgramsFromForms = async () => {
-    const toFix = participants.filter(p => !p.programId && resolvedProgramId[p.id]);
-    if (!toFix.length) { showToast("Nothing to sync — participants are already linked or cannot be matched."); return; }
+    const toFix = participants.filter(p => !p.programId && getProgram(p));
+    if (!toFix.length) { showToast("Nothing to sync — check that registration forms are linked to a program."); return; }
     showToast(`Syncing ${toFix.length} participants…`);
     for (const p of toFix) {
-      await updateParticipant(p.id, { programId: resolvedProgramId[p.id] });
+      await updateParticipant(p.id, { programId: getProgram(p) });
     }
     await addAudit(profile, AUDIT_ACTIONS.UPDATE, "participants", {
-      details: `Synced programId for ${toFix.length} participants from registration/form data`,
+      details: `Synced programId for ${toFix.length} participants`,
     });
     showToast(`Done — ${toFix.length} participant(s) updated.`);
   };
@@ -525,6 +521,13 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
         </div>
       )}
 
+      {programFilter && filtered.length === 0 && participants.length > 0 && (
+        <div className="panel" style={{ marginBottom: 12, background: "#fffdf0", border: "1.5px solid #f0c060", fontSize: 13, color: "#92600a" }}>
+          No participants are linked to this program yet.
+          Select <strong>"All programs"</strong> to see all participants, then use the <strong>Program column dropdown</strong> on each row to assign them here.
+        </div>
+      )}
+
       <div className="panel" style={{ padding: 0 }}>
         {filtered.length === 0 ? <div className="empty">{participants.length === 0 ? "No participants yet. Add manually, import from WEP, or share the registration form." : "No participants match your search."}</div> : (
           <div style={{ overflowX: "auto" }}>
@@ -537,7 +540,20 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
                   return (
                     <tr key={p.id}>
                       <td style={{ fontWeight: 500 }}>{p.name}</td>
-                      <td style={{ fontSize: 11, color: "#888" }}>{programs.find(pr => pr.id === resolvedProgramId[p.id])?.name || ""}</td>
+                      <td style={{ fontSize: 11 }}>
+                        {canEdit ? (
+                          <select
+                            value={p.programId || ""}
+                            onChange={e => assignProgram(p, e.target.value)}
+                            style={{ fontSize: 11, maxWidth: 140, border: p.programId ? "1px solid #ccc" : "1.5px solid #f0c060", borderRadius: 4, background: p.programId ? "#fff" : "#fffdf0" }}
+                          >
+                            <option value="">— assign —</option>
+                            {programs.map(pr => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
+                          </select>
+                        ) : (
+                          <span style={{ color: "#888" }}>{programs.find(pr => pr.id === p.programId)?.name || ""}</span>
+                        )}
+                      </td>
                       <td>
                         {p.wikimediaUsername
                           ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(p.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{p.wikimediaUsername}</a>

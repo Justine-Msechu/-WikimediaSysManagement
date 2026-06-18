@@ -180,7 +180,8 @@ export default function Participants({ profile }) {
   };
 
   const printCertificate = (p) => {
-    const orgName = settings?.orgName || "Wikimedians of Kilimanjaro";
+    const orgName = settings?.org?.name || "Wikimedians of Kilimanjaro";
+    const logoUrl = window.location.origin + logo;
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
     <title>Certificate — ${esc(p.name)}</title>
     <style>
@@ -202,7 +203,7 @@ export default function Participants({ profile }) {
     </style></head><body>
     <div class="no-print"><button onclick="window.print()">Print / Save PDF</button></div>
     <div class="cert">
-      <img src="${logo}" class="logo" alt="logo" />
+      <img src="${logoUrl}" class="logo" alt="logo" />
       <div class="org">${esc(orgName)}</div>
       <h1>Certificate of Participation</h1>
       <div class="presented">This is to certify that</div>
@@ -242,38 +243,70 @@ export default function Participants({ profile }) {
     const prog = programs.find(p => p.id === programFilter);
     const orgName = esc(settings?.org?.name || "Wikimedians of Kilimanjaro");
     const progName = esc(prog?.name || "All participants");
-    const MIN_ROWS = Math.max(20, filtered.length);
+    const logoUrl = window.location.origin + logo;
+    const MIN_ROWS = Math.max(30, filtered.length);
     const rows = [...filtered];
     while (rows.length < MIN_ROWS) rows.push(null);
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Attendance — ${progName}</title>
-    <style>
-      body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#111;padding:24px 32px;max-width:900px;margin:0 auto}
-      h2{font-size:15px;margin:0 0 2px} h3{font-size:13px;color:#555;margin:0 0 16px;font-weight:400}
-      table{width:100%;border-collapse:collapse;margin-top:8px}
-      th{background:#1c2b1e;color:#fff;padding:7px 8px;text-align:left;font-size:11px}
-      td{padding:7px 8px;border-bottom:1px solid #ddd;height:28px}
-      .sig{border-bottom:1px solid #999;min-width:120px}
-      @media print{button{display:none}}
-    </style></head><body>
-    <button onclick="window.print()" style="margin-bottom:16px;padding:8px 20px;background:#2d7a4f;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Print / Save PDF</button>
-    <h2>${orgName} — Attendance List</h2>
-    <h3>${progName} &nbsp;|&nbsp; Date: _________________ &nbsp;|&nbsp; Location: _________________</h3>
-    <table>
-      <thead><tr><th>#</th><th>Full name</th><th>Wikipedia username</th><th>Phone</th><th>Gender</th><th>New editor</th><th>Signature</th></tr></thead>
-      <tbody>
-        ${rows.map((p, i) => `<tr>
-          <td style="color:#888;width:30px">${i + 1}</td>
-          <td>${p ? esc(p.name) : ""}</td>
-          <td style="color:#4a9e6b">${p ? esc(p.wikimediaUsername || "") : ""}</td>
-          <td>${p ? esc(p.phone || "") : ""}</td>
-          <td>${p ? esc(p.gender || "") : ""}</td>
-          <td style="text-align:center">${p?.isNew ? "✓" : ""}</td>
-          <td class="sig"></td>
-        </tr>`).join("")}
-      </tbody>
-    </table>
-    <div style="margin-top:24px;font-size:11px;color:#888">Total registered: ${filtered.length} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</div>
-    </body></html>`;
+    const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Attendance — ${progName}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#1c2b1e;padding:24px}
+.no-print{margin-bottom:18px}
+.btn{padding:8px 22px;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:700;margin-right:8px;background:#2d7a4f;color:#fff}
+.hdr{display:flex;align-items:center;gap:16px;margin-bottom:18px;padding-bottom:14px;border-bottom:3px solid #1c2b1e}
+.hdr img{width:60px;height:60px;object-fit:contain}
+.hdr h1{font-size:17px;font-weight:700;margin-bottom:2px}
+.hdr p{font-size:11px;color:#555}
+.info{margin-bottom:18px;border-collapse:collapse}
+.info td{padding:4px 8px;font-size:12px;border-bottom:1px dotted #ddd}
+.info td:first-child{font-weight:700;width:160px;color:#333}
+table.att{width:100%;border-collapse:collapse}
+table.att th{background:#1c2b1e;color:#fff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.4px}
+table.att th.c{text-align:center;width:36px}
+table.att th.n{width:110px}
+table.att th.s{width:140px}
+table.att td{border:1px solid #bbb;padding:5px 10px;height:30px;font-size:12px}
+table.att td.c{text-align:center;background:#f5f5f3;color:#777;font-weight:600}
+table.att tr:nth-child(even) td{background:#fafaf8}
+table.att tr:nth-child(even) td.c{background:#f0f0ee}
+.footer{margin-top:36px;display:flex;gap:80px}
+.fl{display:flex;flex-direction:column;gap:6px}
+.fl span{font-weight:700;font-size:12px}
+.fl div{border-bottom:1px solid #444;width:220px;margin-top:18px}
+@media print{.no-print{display:none!important}body{padding:12px}}
+</style></head><body>
+<div class="no-print"><button class="btn" onclick="window.print()">&#128424; Print / Save PDF</button></div>
+<div class="hdr">
+  <img src="${logoUrl}" alt="logo"/>
+  <div><h1>${orgName}</h1><p>Participants Attendance List</p></div>
+</div>
+<table class="info">
+  <tr><td>Program</td><td>${progName}</td></tr>
+  <tr><td>Date</td><td>${prog?.date ? esc(prog.date) : "_______________________"}</td></tr>
+  <tr><td>Location</td><td>_______________________</td></tr>
+  <tr><td>Total participants</td><td>${filtered.length}</td></tr>
+</table>
+<table class="att">
+  <thead><tr><th class="c">#</th><th>Full Name</th><th>Wikipedia Username</th><th class="n">Phone</th><th class="c">Gender</th><th class="c">New</th><th class="s">Signature</th></tr></thead>
+  <tbody>
+    ${rows.map((p, i) => `<tr>
+      <td class="c">${i + 1}</td>
+      <td>${p ? esc(p.name) : ""}</td>
+      <td style="color:#4a9e6b">${p ? esc(p.wikimediaUsername || "") : ""}</td>
+      <td class="n">${p ? esc(p.phone || "") : ""}</td>
+      <td class="c">${p ? esc(p.gender ? p.gender[0] : "") : ""}</td>
+      <td class="c">${p?.isNew ? "&#10003;" : ""}</td>
+      <td class="s"></td>
+    </tr>`).join("")}
+  </tbody>
+</table>
+<div class="footer">
+  <div class="fl"><span>Organiser name</span><div></div></div>
+  <div class="fl"><span>Signature</span><div></div></div>
+</div>
+<div style="margin-top:18px;font-size:11px;color:#888">Generated: ${new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</div>
+</body></html>`;
     const w = window.open("", "_blank", "width=900,height=700");
     w.document.write(html);
     w.document.close();

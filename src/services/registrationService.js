@@ -58,21 +58,19 @@ export async function submitRegistration(formId, regData) {
   });
 
   // Auto-add to participants (no auth required — dedup handled by coordinators)
-  if (regData.email) {
-    await addParticipant({
-      name:              regData.name,
-      wikimediaUsername: regData.wikimediaUsername || "",
-      email:             regData.email,
-      phone:             regData.phone || "",
-      gender:            regData.gender || "",
-      region:            "",
-      isNew:             regData.isNew || false,
-      programId:         regData.programId || "",
-      source:            "self-registered",
-      registeredViaForm: formId,
-      formId,
-    });
-  }
+  await addParticipant({
+    name:              regData.name,
+    wikimediaUsername: regData.wikimediaUsername || "",
+    email:             regData.email || "",
+    phone:             regData.phone || "",
+    gender:            regData.gender || "",
+    region:            "",
+    isNew:             regData.isNew || false,
+    programId:         regData.programId || "",
+    source:            "self-registered",
+    registeredViaForm: formId,
+    formId,
+  });
 
   return regId;
 }

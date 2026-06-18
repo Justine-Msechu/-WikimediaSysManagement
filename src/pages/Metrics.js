@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { listenMetrics, updateMetrics, DEFAULT_METRICS } from "../services/metricsService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import { listenParticipants } from "../services/participantService";
 
 function fmt(n) { return (n || 0).toLocaleString(); }
 function pct(r, t) { if (!t) return 0; return Math.min(999, Math.round((r / t) * 100)); }
@@ -17,11 +18,19 @@ const METRIC_ROWS = [
 const PROJECT_FIELDS = ["Wikipedia", "Wikimedia Commons", "Wikidata", "Wiktionary", "Wikisource"];
 
 export default function Metrics({ profile }) {
-  const [metrics, setMetrics] = useState(DEFAULT_METRICS);
-  const [saved,   setSaved]   = useState(false);
+  const [metrics,      setMetrics]      = useState(DEFAULT_METRICS);
+  const [participants, setParticipants] = useState([]);
+  const [wikiStats,    setWikiStats]    = useState({});
+  const [fetchingAll,  setFetchingAll]  = useState(false);
+  const [suggestion,   setSuggestion]   = useState(null);
+  const [saved,        setSaved]        = useState(false);
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
 
-  useEffect(() => { return listenMetrics(setMetrics); }, []);
+  useEffect(() => {
+    const u1 = listenMetrics(setMetrics);
+    const u2 = listenParticipants(setParticipants);
+    return () => { u1(); u2(); };
+  }, []);
 
   const save = async (patch) => {
     const merged = { ...metrics, ...patch };
@@ -41,6 +50,62 @@ export default function Metrics({ profile }) {
   };
 
   const projects = metrics.projects || PROJECT_FIELDS.map(p => ({ name: p, tCreated: 0, tImproved: 0, rCreated: 0, rImproved: 0 }));
+
+  const fetchAndSuggest = async () => {
+    const withUsername = participants.filter(p => p.wikimediaUsername);
+    if (!withUsername.length) {
+      alert("No participants have a Wikipedia username. Add participants with usernames first.");
+      return;
+    }
+    setFetchingAll(true);
+    const stats = {};
+    const BATCH = 50;
+    try {
+      for (let i = 0; i < withUsername.length; i += BATCH) {
+        const batch = withUsername.slice(i, i + BATCH);
+        const names = batch.map(p => p.wikimediaUsername).join("|");
+        const url = `https://en.wikipedia.org/w/api.php?action=query&list=users&ususers=${encodeURIComponent(names)}&usprop=editcount&format=json&origin=*`;
+        const res  = await fetch(url);
+        const json = await res.json();
+        (json?.query?.users || []).forEach(u => {
+          if (!u.missing && u.editcount != null) stats[u.name] = u.editcount;
+        });
+      }
+    } catch (err) {
+      alert("Wikimedia API error: " + (err.message || "Could not fetch data."));
+      setFetchingAll(false);
+      return;
+    }
+    setWikiStats(stats);
+
+    const activeEditors   = Object.values(stats).filter(v => v > 0).length;
+    const allEditors      = Object.keys(stats).length;
+    const newEditorCount  = participants.filter(p => p.isNew && p.wikimediaUsername && stats[p.wikimediaUsername] != null).length;
+    const totalParticipants = participants.length;
+
+    setSuggestion({
+      participants: totalParticipants,
+      allEditors,
+      newEditors: newEditorCount,
+      activeEditors,
+      fetchedCount: allEditors,
+      totalUsernames: withUsername.length,
+    });
+    setFetchingAll(false);
+  };
+
+  const applySuggestion = async () => {
+    if (!suggestion) return;
+    const patch = {};
+    if (suggestion.participants > 0)
+      patch.participants = { ...(metrics.participants || {}), result: suggestion.participants };
+    if (suggestion.allEditors > 0)
+      patch.allEditors = { ...(metrics.allEditors || {}), result: suggestion.allEditors };
+    if (suggestion.newEditors > 0)
+      patch.newEditors = { ...(metrics.newEditors || {}), result: suggestion.newEditors };
+    await save(patch);
+    setSuggestion(null);
+  };
 
   const exportCSV = () => {
     const rows = [
@@ -123,10 +188,31 @@ export default function Metrics({ profile }) {
       <div className="page-title">Metrics</div>
       <div style={{ fontSize: 13, color: "#888", marginBottom: 20 }}>Set targets when applying. Update results throughout the grant year.</div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+        <button className="btn btn-sm btn-primary" onClick={fetchAndSuggest} disabled={fetchingAll}>
+          {fetchingAll ? "Fetching from Wikimedia…" : "Fetch from Wikimedia API"}
+        </button>
         <button className="btn btn-sm" onClick={exportCSV}>Export CSV</button>
         <button className="btn btn-sm" onClick={printPDF}>Print / PDF report</button>
       </div>
+
+      {suggestion && (
+        <div className="panel" style={{ marginBottom: 16, background: "#f0f8f3", border: "1px solid #b7e0c8" }}>
+          <div className="panel-title" style={{ color: "#2d7a4f", marginBottom: 8 }}>Wikimedia API results — suggested updates</div>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, marginBottom: 12 }}>
+            <div><span style={{ color: "#888" }}>Total participants in registry:</span> <strong>{suggestion.participants}</strong></div>
+            <div><span style={{ color: "#888" }}>All editors (have Wikipedia username):</span> <strong style={{ color: "#2d7a4f" }}>{suggestion.allEditors}</strong> / {suggestion.totalUsernames} checked</div>
+            <div><span style={{ color: "#888" }}>New editors (marked as new):</span> <strong style={{ color: "#2563eb" }}>{suggestion.newEditors}</strong></div>
+          </div>
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>
+            Apply these counts as result values for Participants, All editors, and New editors metrics.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {canEdit && <button className="btn btn-sm btn-primary" onClick={applySuggestion}>Apply to metrics results</button>}
+            <button className="btn btn-sm" onClick={() => setSuggestion(null)}>Dismiss</button>
+          </div>
+        </div>
+      )}
 
       {saved && <div style={{ background: "#e6f4ec", border: "1px solid #b7e0c8", borderRadius: 8, padding: "8px 14px", fontSize: 13, marginBottom: 16, color: "#2d7a4f" }}>✓ Metrics saved.</div>}
 

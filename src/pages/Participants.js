@@ -122,11 +122,40 @@ export default function Participants({ profile }) {
       const user = json?.query?.users?.[0];
       if (user && !user.missing && user.editcount != null) {
         setWikiStats(s => ({ ...s, [username]: user.editcount }));
+        return user.editcount;
       } else {
         setWikiStats(s => ({ ...s, [username]: "not found" }));
       }
     } catch {
       setWikiStats(s => ({ ...s, [username]: "error" }));
+    }
+    return null;
+  };
+
+  const fetchAllEditCounts = async () => {
+    const withUsername = participants.filter(p => p.wikimediaUsername);
+    if (!withUsername.length) { alert("No participants have a Wikipedia username."); return; }
+    // Batch up to 50 at a time using the ususers multi-value API
+    const BATCH = 50;
+    for (let i = 0; i < withUsername.length; i += BATCH) {
+      const batch = withUsername.slice(i, i + BATCH);
+      const names = batch.map(p => p.wikimediaUsername).join("|");
+      batch.forEach(p => setWikiStats(s => ({ ...s, [p.wikimediaUsername]: "loading" })));
+      try {
+        const url = `https://en.wikipedia.org/w/api.php?action=query&list=users&ususers=${encodeURIComponent(names)}&usprop=editcount&format=json&origin=*`;
+        const res  = await fetch(url);
+        const json = await res.json();
+        const users = json?.query?.users || [];
+        users.forEach(u => {
+          if (!u.missing && u.editcount != null) {
+            setWikiStats(s => ({ ...s, [u.name]: u.editcount }));
+          } else {
+            setWikiStats(s => ({ ...s, [u.name]: "not found" }));
+          }
+        });
+      } catch {
+        batch.forEach(p => setWikiStats(s => ({ ...s, [p.wikimediaUsername]: "error" })));
+      }
     }
   };
 
@@ -191,12 +220,38 @@ export default function Participants({ profile }) {
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search participants…" style={{ flex: 1, minWidth: 200, fontSize: 13 }} />
         <span style={{ fontSize: 12, color: "#888" }}>{filtered.length} / {participants.length} participants</span>
+        <button className="btn btn-sm" title="Fetch Wikipedia edit counts for all participants with a username" onClick={fetchAllEditCounts}>
+          Fetch all edit counts
+        </button>
         {canEdit && <>
           <button className="btn" onClick={() => setShowImport(s => !s)}>Import</button>
           <button className="btn" onClick={exportCSV}>Export CSV</button>
           <button className="btn btn-primary" onClick={openCreate}>+ Add participant</button>
         </>}
       </div>
+
+      {/* Metrics suggestion panel — shown after edit counts are fetched */}
+      {Object.keys(wikiStats).length > 0 && (() => {
+        const fetched      = Object.entries(wikiStats).filter(([, v]) => typeof v === "number");
+        const totalEditors = fetched.length;
+        const newEditors   = participants.filter(p => p.isNew && p.wikimediaUsername && typeof wikiStats[p.wikimediaUsername] === "number").length;
+        const totalEdits   = fetched.reduce((s, [, v]) => s + v, 0);
+        return (
+          <div className="panel" style={{ marginBottom: 16, background: "#f0f8f3", border: "1px solid #b7e0c8" }}>
+            <div className="panel-title" style={{ color: "#2d7a4f", marginBottom: 8 }}>Wikimedia API results</div>
+            <div style={{ display: "flex", gap: 24, flexWrap: "wrap", fontSize: 13 }}>
+              <div><span style={{ color: "#888" }}>Participants with username:</span> <strong>{fetched.length + Object.entries(wikiStats).filter(([,v]) => v === "not found").length}</strong></div>
+              <div><span style={{ color: "#888" }}>Active editors (have edits):</span> <strong style={{ color: "#2d7a4f" }}>{totalEditors}</strong></div>
+              <div><span style={{ color: "#888" }}>New editors (marked as new):</span> <strong style={{ color: "#2563eb" }}>{newEditors}</strong></div>
+              <div><span style={{ color: "#888" }}>Total Wikipedia edits:</span> <strong>{totalEdits.toLocaleString()}</strong></div>
+            </div>
+            <div style={{ fontSize: 12, color: "#555", marginTop: 10 }}>
+              Use these numbers to update your targets and results in the <strong>Metrics</strong> page.
+              Total participants in registry: <strong>{participants.length}</strong>.
+            </div>
+          </div>
+        );
+      })()}
 
       {showImport && (
         <div className="panel" style={{ border: "2px solid #4a9e6b", marginBottom: 20 }}>

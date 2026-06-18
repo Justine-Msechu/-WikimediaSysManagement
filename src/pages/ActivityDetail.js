@@ -398,6 +398,49 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
         </div>
       </div>
 
+      {/* QR code attendance — shown only when a registration form is linked */}
+      {activity.linkedFormId && (() => {
+        const qrUrl = `${window.location.origin}${window.location.pathname}?form=${activity.linkedFormId}`;
+        return (
+          <div className="panel" style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <div className="panel-title" style={{ marginBottom: 4 }}>QR code attendance</div>
+                <div style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>
+                  Print or display this QR code at the venue. Participants scan it to self-register without a coordinator present.
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <input readOnly value={qrUrl} style={{ fontSize: 11, background: "#f9f9f7", border: "1px solid #e8e8e4", borderRadius: 5, padding: "5px 8px", width: 320 }} onFocus={e => e.target.select()} />
+                  <button className="btn btn-sm" onClick={() => { navigator.clipboard.writeText(qrUrl); }}>Copy link</button>
+                  <button className="btn btn-sm btn-primary" onClick={() => {
+                    const w = window.open("", "_blank", "width=500,height=600");
+                    w.document.write(`<!DOCTYPE html><html><head><title>QR — ${activity.name}</title>
+                    <style>body{font-family:sans-serif;text-align:center;padding:40px;background:#fff}
+                    h2{font-size:18px;color:#1c2b1e;margin-bottom:4px}
+                    p{font-size:13px;color:#666;margin:0 0 24px}
+                    .no-print{margin-bottom:20px}
+                    .no-print button{padding:8px 20px;background:#2d7a4f;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px}
+                    @media print{.no-print{display:none}}</style></head><body>
+                    <div class="no-print"><button onclick="window.print()">Print QR code</button></div>
+                    <h2>${activity.name}</h2>
+                    <p>${activity.date}${activity.location ? " · " + activity.location : ""}</p>
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(qrUrl)}" alt="QR code" style="width:280px;height:280px" />
+                    <p style="margin-top:16px;font-size:12px;color:#aaa">Scan to register your attendance</p>
+                    </body></html>`);
+                    w.document.close();
+                  }}>Print QR sheet</button>
+                </div>
+              </div>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrUrl)}`}
+                alt="Activity QR code"
+                style={{ width: 120, height: 120, borderRadius: 8, border: "1px solid #e8e8e4" }}
+              />
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Stats + Narrative */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 20, marginBottom: 20 }}>
         <div className="panel">

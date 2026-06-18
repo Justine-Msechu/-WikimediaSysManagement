@@ -6,6 +6,7 @@ import { listenUsers } from "../services/userService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { notifyAssignment } from "../services/notificationService";
 import { listenTemplates, addTemplate, deleteTemplate } from "../services/activityTemplateService";
+import { listenForms } from "../services/registrationService";
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
@@ -17,7 +18,7 @@ function emptyActivity(programs) {
     participants: "", women: "", newEditors: "", youth: "", pwd: "",
     created: "", improved: "", commons: "", wikidata: "",
     summary: "", challenges: "", lessons: "", stories: "", nextSteps: "",
-    sessionType: SESSION_TYPES[0], link: "", wikiEventUrl: "",
+    sessionType: SESSION_TYPES[0], link: "", wikiEventUrl: "", linkedFormId: "",
   };
 }
 
@@ -27,6 +28,7 @@ export default function Activities({ profile, goPage }) {
   const [settings,     setSettings]     = useState(null);
   const [users,        setUsers]        = useState([]);
   const [templates,    setTemplates]    = useState([]);
+  const [forms,        setForms]        = useState([]);
   const [showForm,     setShowForm]     = useState(false);
   const [showTpls,     setShowTpls]     = useState(false);
   const [editId,       setEditId]       = useState(null);
@@ -43,7 +45,8 @@ export default function Activities({ profile, goPage }) {
     const u3 = listenSettings(setSettings);
     const u4 = listenUsers(setUsers);
     const u5 = listenTemplates(setTemplates);
-    return () => { u1(); u2(); u3(); u4(); u5(); };
+    const u6 = listenForms(setForms);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
@@ -71,7 +74,7 @@ export default function Activities({ profile, goPage }) {
       commons: a.commons ?? "", wikidata: a.wikidata ?? "", summary: a.summary || "",
       challenges: a.challenges || "", lessons: a.lessons || "", stories: a.stories || "",
       nextSteps: a.nextSteps || "", sessionType: a.sessionType || SESSION_TYPES[0],
-      link: a.link || "", wikiEventUrl: a.wikiEventUrl || "",
+      link: a.link || "", wikiEventUrl: a.wikiEventUrl || "", linkedFormId: a.linkedFormId || "",
     });
     setEditVersion(a.updatedAt);
     setEditId(a.id);
@@ -300,6 +303,13 @@ export default function Activities({ profile, goPage }) {
             <div className="field">
               <label>WEP event URL</label>
               <input value={form.wikiEventUrl || ""} onChange={e => setF("wikiEventUrl", e.target.value)} placeholder="Wikipedia Event Platform URL" />
+            </div>
+            <div className="field">
+              <label>Registration form (QR attendance)</label>
+              <select value={form.linkedFormId || ""} onChange={e => setF("linkedFormId", e.target.value)}>
+                <option value="">(None — no QR attendance)</option>
+                {forms.map(f => <option key={f.id} value={f.id}>{f.title || f.id}</option>)}
+              </select>
             </div>
           </div>
 

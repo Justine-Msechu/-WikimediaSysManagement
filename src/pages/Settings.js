@@ -111,8 +111,8 @@ export default function Settings({ profile }) {
           <div className="field" style={{ gridColumn: "1 / -1" }}><label>Meta-Wiki grant page</label><input value={form.org?.metaPage || ""} onChange={e => setF("org.metaPage", e.target.value)} disabled={!isAdmin} placeholder="https://meta.wikimedia.org/…" /></div>
           <div className="field" style={{ gridColumn: "1 / -1" }}>
             <label>Outreach Dashboard campaign URL</label>
-            <input value={form.grant?.odCampaignUrl || ""} onChange={e => setF("grant.odCampaignUrl", e.target.value)} disabled={!isAdmin} placeholder="https://outreachdashboard.wmflabs.org/campaigns/wikimedia_community_kilimanjaro_20252026_programs" />
-            <div style={{ fontSize: 11, color: "#888", marginTop: 3 }}>Used by Metrics → "Fetch from Outreach Dashboard" to pull live campaign stats.</div>
+            <input value={form.grant?.odCampaignUrl || ""} onChange={e => setF("grant.odCampaignUrl", e.target.value)} disabled={!isAdmin} placeholder="https://outreachdashboard.wmflabs.org/campaigns/your_campaign_name/overview" />
+            <div style={{ fontSize: 11, color: "#888", marginTop: 3 }}>Paste any page from your OD campaign (overview, programs, etc.). Used by Metrics → "Fetch from Outreach Dashboard".</div>
           </div>
         </div>
         {isAdmin && (

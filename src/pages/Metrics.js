@@ -118,13 +118,22 @@ export default function Metrics({ profile }) {
       alert("No Outreach Dashboard campaign URL set. Go to Settings → Grant configuration and paste your campaign URL.");
       return;
     }
-    // Strip trailing slash, then any trailing /programs path segment
-    const campaignUrl = raw.replace(/\/+$/, "").replace(/\/programs$/, "");
-    const fetchUrl = `${campaignUrl}.json`;
+    // Parse the URL and reconstruct just the campaign base:
+    // https://outreachdashboard.wmflabs.org/campaigns/{slug}/anything → /campaigns/{slug}.json
+    let fetchUrl;
+    try {
+      const u = new URL(raw);
+      const parts = u.pathname.split("/").filter(Boolean); // ["campaigns", "slug", "overview"]
+      if (parts.length < 2 || parts[0] !== "campaigns") throw new Error();
+      fetchUrl = `${u.origin}/campaigns/${parts[1]}.json`;
+    } catch {
+      alert("Invalid Outreach Dashboard URL. Paste any page from your campaign, e.g. the /overview or /programs tab.");
+      return;
+    }
     setFetchingOD(true);
     try {
       const res  = await fetch(fetchUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status} — fetched: ${fetchUrl}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const c    = data.campaign || data;
 

@@ -31,7 +31,9 @@ export default function Participants({ profile }) {
   const [wepPreview,setWepPreview]= useState(null);
   const [wikiStats, setWikiStats] = useState({});
   const [settings,  setSettings]  = useState(null);
+  const [expenseType, setExpenseType] = useState("Transport");
   const csvRef = useRef();
+  const EXPENSE_TYPES = ["Transport", "Food & refreshments", "Stipend / allowance", "Venue hire", "Merchandise & prizes", "Other"];
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
 
   useEffect(() => {
@@ -240,72 +242,77 @@ export default function Participants({ profile }) {
   });
 
   const printAttendance = () => {
+    if (!programFilter) { alert("Please select a program from the dropdown first."); return; }
     const prog = programs.find(p => p.id === programFilter);
     const orgName = esc(settings?.org?.name || "Wikimedians of Kilimanjaro");
-    const progName = esc(prog?.name || "All participants");
+    const progName = esc(prog?.name || "");
     const logoUrl = window.location.origin + logo;
     const MIN_ROWS = Math.max(30, filtered.length);
     const rows = [...filtered];
     while (rows.length < MIN_ROWS) rows.push(null);
     const html = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>Attendance — ${progName}</title>
+<html lang="en"><head><meta charset="utf-8"><title>Participants List — ${progName}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#1c2b1e;padding:24px}
-.no-print{margin-bottom:18px}
-.btn{padding:8px 22px;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:700;margin-right:8px;background:#2d7a4f;color:#fff}
-.hdr{display:flex;align-items:center;gap:16px;margin-bottom:18px;padding-bottom:14px;border-bottom:3px solid #1c2b1e}
-.hdr img{width:60px;height:60px;object-fit:contain}
-.hdr h1{font-size:17px;font-weight:700;margin-bottom:2px}
-.hdr p{font-size:11px;color:#555}
-.info{margin-bottom:18px;border-collapse:collapse}
-.info td{padding:4px 8px;font-size:12px;border-bottom:1px dotted #ddd}
-.info td:first-child{font-weight:700;width:160px;color:#333}
-table.att{width:100%;border-collapse:collapse}
-table.att th{background:#1c2b1e;color:#fff;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.4px}
+body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#1c2b1e;padding:28px 32px}
+.no-print{margin-bottom:16px}
+.btn{padding:8px 22px;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:700;background:#2d7a4f;color:#fff}
+.top{display:flex;align-items:flex-start;gap:16px;margin-bottom:14px}
+.top img{width:64px;height:64px;object-fit:contain;flex-shrink:0}
+table.meta{border-collapse:collapse;font-size:12px;width:100%}
+table.meta td{padding:3px 10px;border:1px solid #bbb;vertical-align:top}
+table.meta td.label{font-weight:700;background:#f0f0ee;width:140px;white-space:nowrap}
+table.meta td.val{background:#fff}
+table.meta .total-row td{background:#1c2b1e;color:#fff;font-weight:700;text-align:right}
+table.att{width:100%;border-collapse:collapse;margin-top:14px}
+table.att th{background:#1c2b1e;color:#fff;padding:7px 10px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.4px;border:1px solid #1c2b1e}
 table.att th.c{text-align:center;width:36px}
-table.att th.n{width:110px}
-table.att th.s{width:140px}
+table.att th.v{width:120px;text-align:right}
+table.att th.s{width:150px}
 table.att td{border:1px solid #bbb;padding:5px 10px;height:30px;font-size:12px}
-table.att td.c{text-align:center;background:#f5f5f3;color:#777;font-weight:600}
+table.att td.c{text-align:center;background:#f5f5f3;color:#555;font-weight:700;border:1px solid #bbb}
+table.att td.v{text-align:right}
 table.att tr:nth-child(even) td{background:#fafaf8}
-table.att tr:nth-child(even) td.c{background:#f0f0ee}
-.footer{margin-top:36px;display:flex;gap:80px}
-.fl{display:flex;flex-direction:column;gap:6px}
-.fl span{font-weight:700;font-size:12px}
-.fl div{border-bottom:1px solid #444;width:220px;margin-top:18px}
-@media print{.no-print{display:none!important}body{padding:12px}}
+table.att tr:nth-child(even) td.c{background:#ededeb}
+.footer{margin-top:40px;display:flex;gap:80px}
+.sig-block{display:flex;flex-direction:column;gap:4px}
+.sig-block .label{font-weight:700;font-size:12px}
+.sig-block .line{border-bottom:1px solid #444;width:220px;margin-top:22px}
+@media print{.no-print{display:none!important}body{padding:14px 18px}}
 </style></head><body>
 <div class="no-print"><button class="btn" onclick="window.print()">&#128424; Print / Save PDF</button></div>
-<div class="hdr">
+<div class="top">
   <img src="${logoUrl}" alt="logo"/>
-  <div><h1>${orgName}</h1><p>Participants Attendance List</p></div>
+  <table class="meta">
+    <tr><td class="label">User Group</td><td class="val">${orgName}</td></tr>
+    <tr><td class="label">Event</td><td class="val">${progName}</td></tr>
+    <tr><td class="label">Date</td><td class="val">${prog?.date ? esc(prog.date) : ""}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td><td class="label" style="width:80px">Currency</td><td class="val" style="width:60px">TZS</td></tr>
+    <tr><td class="label">Type of expense</td><td class="val" colspan="3">${esc(expenseType)}</td></tr>
+    <tr class="total-row"><td colspan="2"></td><td style="width:80px">Total</td><td style="width:60px"></td></tr>
+  </table>
 </div>
-<table class="info">
-  <tr><td>Program</td><td>${progName}</td></tr>
-  <tr><td>Date</td><td>${prog?.date ? esc(prog.date) : "_______________________"}</td></tr>
-  <tr><td>Location</td><td>_______________________</td></tr>
-  <tr><td>Total participants</td><td>${filtered.length}</td></tr>
-</table>
 <table class="att">
-  <thead><tr><th class="c">#</th><th>Full Name</th><th>Wikipedia Username</th><th class="n">Phone</th><th class="c">Gender</th><th class="c">New</th><th class="s">Signature</th></tr></thead>
+  <thead>
+    <tr>
+      <th class="c">#</th>
+      <th>Full Name</th>
+      <th class="v">Value (TZS)</th>
+      <th class="s">Signature</th>
+    </tr>
+  </thead>
   <tbody>
     ${rows.map((p, i) => `<tr>
       <td class="c">${i + 1}</td>
       <td>${p ? esc(p.name) : ""}</td>
-      <td style="color:#4a9e6b">${p ? esc(p.wikimediaUsername || "") : ""}</td>
-      <td class="n">${p ? esc(p.phone || "") : ""}</td>
-      <td class="c">${p ? esc(p.gender ? p.gender[0] : "") : ""}</td>
-      <td class="c">${p?.isNew ? "&#10003;" : ""}</td>
+      <td class="v"></td>
       <td class="s"></td>
     </tr>`).join("")}
   </tbody>
 </table>
 <div class="footer">
-  <div class="fl"><span>Organiser name</span><div></div></div>
-  <div class="fl"><span>Signature</span><div></div></div>
+  <div class="sig-block"><span class="label">Organiser</span><div class="line"></div></div>
+  <div class="sig-block"><span class="label">Signature</span><div class="line"></div></div>
 </div>
-<div style="margin-top:18px;font-size:11px;color:#888">Generated: ${new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</div>
 </body></html>`;
     const w = window.open("", "_blank", "width=900,height=700");
     w.document.write(html);
@@ -326,7 +333,12 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
         <span style={{ fontSize: 12, color: "#888" }}>{filtered.length} / {participants.length}</span>
         <button className="btn btn-sm" onClick={fetchAllEditCounts}>Fetch edit counts</button>
         {canEdit && <>
-          <button className="btn btn-sm" onClick={printAttendance}>🖨 Attendance sheet</button>
+          {programFilter && <>
+            <select value={expenseType} onChange={e => setExpenseType(e.target.value)} style={{ fontSize: 12 }}>
+              {EXPENSE_TYPES.map(t => <option key={t}>{t}</option>)}
+            </select>
+            <button className="btn btn-sm btn-primary" onClick={printAttendance}>🖨 Participants list</button>
+          </>}
           <button className="btn" onClick={() => setShowImport(s => !s)}>Import</button>
           <button className="btn" onClick={exportCSV}>Export CSV</button>
           <button className="btn btn-primary" onClick={openCreate}>+ Add participant</button>

@@ -64,12 +64,14 @@ export default function Participants({ profile }) {
   };
 
   // WEP import
+  const [wepResult, setWepResult] = useState(null); // full result { participants, wikitextFallback }
   const importFromWep = async () => {
-    if (!wepUrl.trim()) { alert("Paste the Wikipedia Event Platform page URL."); return; }
+    if (!wepUrl.trim()) { alert("Paste the EventDetails or Event page URL."); return; }
     setWepLoading(true);
     try {
-      const records = await fetchEventParticipants(wepUrl);
-      setWepPreview(records);
+      const result = await fetchEventParticipants(wepUrl);
+      setWepResult(result);
+      setWepPreview(result.participants);
     } catch (err) {
       alert("Failed to fetch: " + (err.message || err));
     } finally {
@@ -79,11 +81,16 @@ export default function Participants({ profile }) {
 
   const confirmWepImport = async () => {
     if (!wepPreview) return;
+    const normalized = wepPreview.map(r => ({
+      name:             r.displayName || r.name || r.username || "",
+      wikimediaUsername:r.username    || r.wikimediaUsername  || "",
+      email: "", phone: "", gender: "", region: "", isNew: false, notes: "",
+    }));
     const existingEmails = participants.map(p => (p.email || "").toLowerCase()).filter(Boolean);
-    const added = await batchAddParticipants(wepPreview, existingEmails);
+    const added = await batchAddParticipants(normalized, existingEmails);
     await addAudit(profile, AUDIT_ACTIONS.IMPORT, "participants", { details: `WEP import: ${added} new participants added` });
     showToast(`${added} participants imported.`);
-    setWepPreview(null); setWepUrl(""); setShowImport(false);
+    setWepPreview(null); setWepResult(null); setWepUrl(""); setShowImport(false);
   };
 
   // CSV import
@@ -263,18 +270,33 @@ export default function Participants({ profile }) {
           </div>
           {importTab === "wep" ? (
             <div>
-              <div className="field"><label>Wikipedia Event Platform page URL</label><input value={wepUrl} onChange={e => setWepUrl(e.target.value)} placeholder="https://www.mediawiki.org/wiki/Wikipedia_Education_Program/…" /></div>
+              <div className="field">
+                <label>EventDetails URL (recommended) or Event page URL</label>
+                <input value={wepUrl} onChange={e => setWepUrl(e.target.value)} placeholder="https://sw.wikipedia.org/wiki/Maalum:EventDetails/2936" />
+                <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
+                  On your event page, click <strong>"Maelezo ya tukio"</strong> in the sidebar to get the EventDetails URL.
+                </div>
+              </div>
               <button className="btn btn-primary" onClick={importFromWep} disabled={wepLoading}>{wepLoading ? "Fetching…" : "Fetch participants"}</button>
               {wepPreview && (
                 <div style={{ marginTop: 12 }}>
+                  {wepResult && !wepResult.wikitextFallback ? (
+                    <div style={{ background: "#e8f5ec", border: "1px solid #b7e0c8", borderRadius: 6, padding: "5px 10px", fontSize: 12, color: "#2d7a4f", marginBottom: 8 }}>
+                      ✓ Campaign Events API — actual registered participants
+                    </div>
+                  ) : (
+                    <div style={{ background: "#fff8e8", border: "1px solid #f0c060", borderRadius: 6, padding: "5px 10px", fontSize: 12, color: "#92600a", marginBottom: 8 }}>
+                      ⚠ Wikitext fallback — may include organizers. Use the EventDetails URL for accurate data.
+                    </div>
+                  )}
                   <div style={{ fontSize: 13, marginBottom: 8 }}><strong>{wepPreview.length}</strong> participants found. Click confirm to add new ones.</div>
                   <div style={{ maxHeight: 160, overflowY: "auto", background: "#f5f4f0", borderRadius: 6, padding: 10, fontSize: 12 }}>
-                    {wepPreview.slice(0, 20).map((r, i) => <div key={i}>{r.name}{r.wikimediaUsername ? ` (@${r.wikimediaUsername})` : ""}</div>)}
+                    {wepPreview.slice(0, 20).map((r, i) => <div key={i}>{r.displayName || r.name}{r.username ? ` (@${r.username})` : r.wikimediaUsername ? ` (@${r.wikimediaUsername})` : ""}</div>)}
                     {wepPreview.length > 20 && <div style={{ color: "#888" }}>…and {wepPreview.length - 20} more</div>}
                   </div>
                   <div className="btn-row">
                     <button className="btn btn-primary" onClick={confirmWepImport}>Confirm import</button>
-                    <button className="btn" onClick={() => setWepPreview(null)}>Cancel</button>
+                    <button className="btn" onClick={() => { setWepPreview(null); setWepResult(null); }}>Cancel</button>
                   </div>
                 </div>
               )}

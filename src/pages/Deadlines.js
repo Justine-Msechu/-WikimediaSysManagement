@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { listenDeadlines, addDeadline, updateDeadline, deleteDeadline, DEADLINE_TYPES } from "../services/deadlineService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import { listenSettings } from "../services/settingsService";
+import { listenVolunteers } from "../services/volunteerService";
+import { sendSMSBulk } from "../services/smsService";
 
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 
@@ -24,16 +27,24 @@ function emptyDeadline() {
 }
 
 export default function Deadlines({ profile }) {
-  const [deadlines, setDeadlines] = useState([]);
-  const [showForm,  setShowForm]  = useState(false);
-  const [editId,    setEditId]    = useState(null);
-  const [form,      setForm]      = useState(emptyDeadline());
-  const [filter,    setFilter]    = useState("upcoming");
-  const [toast,     setToast]     = useState("");
+  const [deadlines,   setDeadlines]   = useState([]);
+  const [showForm,    setShowForm]    = useState(false);
+  const [editId,      setEditId]      = useState(null);
+  const [form,        setForm]        = useState(emptyDeadline());
+  const [filter,      setFilter]      = useState("upcoming");
+  const [toast,       setToast]       = useState("");
+  const [settings,    setSettings]    = useState(null);
+  const [volunteers,  setVolunteers]  = useState([]);
+  const [smsSending,  setSmsSending]  = useState(null);
 
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
 
-  useEffect(() => listenDeadlines(setDeadlines), []);
+  useEffect(() => {
+    const u1 = listenDeadlines(setDeadlines);
+    const u2 = listenSettings(setSettings);
+    const u3 = listenVolunteers(setVolunteers);
+    return () => { u1(); u2(); u3(); };
+  }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -68,6 +79,27 @@ export default function Deadlines({ profile }) {
     if (!window.confirm(`Delete "${d.title}"?`)) return;
     await deleteDeadline(d.id);
     showToast("Deleted.");
+  };
+
+  const sendReminder = async (d) => {
+    if (!settings?.sms?.enabled) {
+      alert("SMS is not configured. Go to Settings → SMS notifications to enable it.");
+      return;
+    }
+    const phones = volunteers.filter(v => v.phone && v.isActive !== false).map(v => ({
+      to: v.phone,
+      message: `WikiKili reminder: "${d.title}" is due on ${d.date}. ${d.description ? d.description.slice(0, 60) : ""}`.trim(),
+    }));
+    if (!phones.length) { alert("No volunteers with phone numbers found."); return; }
+    setSmsSending(d.id);
+    try {
+      await sendSMSBulk(settings.sms, phones);
+      showToast(`Reminder SMS sent to ${phones.length} volunteer${phones.length > 1 ? "s" : ""}.`);
+    } catch (err) {
+      alert("SMS failed: " + (err.message || "Unknown error"));
+    } finally {
+      setSmsSending(null);
+    }
   };
 
   const today = todayStr();
@@ -157,7 +189,17 @@ export default function Deadlines({ profile }) {
                     {d.description && <div style={{ fontSize: 12, color: "#666", marginTop: 6, lineHeight: 1.5 }}>{d.description}</div>}
                   </div>
                   {canEdit && (
-                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
+                      {!d.done && (
+                        <button
+                          className="btn btn-sm"
+                          disabled={smsSending === d.id}
+                          title="Send SMS reminder to all active volunteers"
+                          onClick={() => sendReminder(d)}
+                        >
+                          {smsSending === d.id ? "Sending…" : "SMS reminder"}
+                        </button>
+                      )}
                       <button className="btn btn-sm" onClick={() => toggleDone(d)}>{d.done ? "Reopen" : "Mark done"}</button>
                       <button className="btn btn-sm" onClick={() => openEdit(d)}>Edit</button>
                       <button className="btn btn-sm btn-danger" onClick={() => del(d)}>✕</button>

@@ -8,6 +8,8 @@ import {
 import { listenPrograms } from "../services/programService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { sendEmailNotification } from "../services/notificationService";
+import { listenSettings } from "../services/settingsService";
+import { sendSMSBulk } from "../services/smsService";
 import TaskComments from "./TaskComments";
 
 function today() { return new Date().toISOString().slice(0, 10); }
@@ -288,6 +290,20 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
         showToast(`Task assigned. Email sent to ${sent.join(", ")}.`);
       } else {
         showToast("Task assigned. (No emails — volunteers have no email addresses.)");
+      }
+
+      // SMS notifications via Africa's Talking (if configured)
+      if (settings?.sms?.enabled) {
+        const smsRecipients = form.volunteerIds
+          .map(vid => volunteers.find(v => v.id === vid))
+          .filter(v => v?.phone)
+          .map(v => ({
+            to: v.phone,
+            message: `WikiKili: New task "${form.title}"${form.dueDate ? `, due ${form.dueDate}` : ""}. Log in to GSF Manager.`,
+          }));
+        if (smsRecipients.length) {
+          sendSMSBulk(settings.sms, smsRecipients).catch(() => {});
+        }
       }
     } else {
       await updateTask(editId, data);
@@ -628,13 +644,15 @@ export default function Volunteers({ profile }) {
   const [volunteers, setVolunteers] = useState([]);
   const [programs,   setPrograms]   = useState([]);
   const [tasks,      setTasks]      = useState([]);
+  const [settings,   setSettings]   = useState(null);
   const [toast,      setToast]      = useState("");
 
   useEffect(() => {
     const u1 = listenVolunteers(setVolunteers);
     const u2 = listenPrograms(setPrograms);
     const u3 = listenTasks(setTasks);
-    return () => { u1(); u2(); u3(); };
+    const u4 = listenSettings(setSettings);
+    return () => { u1(); u2(); u3(); u4(); };
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };

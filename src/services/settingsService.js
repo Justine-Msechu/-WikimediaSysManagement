@@ -35,6 +35,13 @@ export const DEFAULT_SETTINGS = {
     status: "active",
   },
   team: [],
+  sms: {
+    enabled: false,
+    sandbox: true,
+    atUsername: "",
+    atApiKey: "",
+    atSenderId: "",
+  },
   reportAnswers: {
     q1: "", q2: "", q3: "", q4: "", q5: "",
     q6_1: "", q6_2: "", q6_3: "",

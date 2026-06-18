@@ -42,10 +42,91 @@ export default function Metrics({ profile }) {
 
   const projects = metrics.projects || PROJECT_FIELDS.map(p => ({ name: p, tCreated: 0, tImproved: 0, rCreated: 0, rImproved: 0 }));
 
+  const exportCSV = () => {
+    const rows = [
+      ["Metric", "Target", "Result", "% Achieved"],
+      ...METRIC_ROWS.map(({ key, label }) => {
+        const v = metrics[key] || { target: 0, result: 0 };
+        return [label, v.target, v.result, pct(v.result, v.target) + "%"];
+      }),
+      [],
+      ["Project", "Target created", "Target improved", "Result created", "Result improved", "% Overall"],
+      ...projects.map(p => [
+        p.name, p.tCreated, p.tImproved, p.rCreated, p.rImproved,
+        Math.round((pct(p.rCreated, p.tCreated) + pct(p.rImproved, p.tImproved)) / 2) + "%",
+      ]),
+    ];
+    const csv  = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url; a.download = `metrics-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const printPDF = () => {
+    const indicatorRows = METRIC_ROWS.map(({ key, label }) => {
+      const v = metrics[key] || { target: 0, result: 0 };
+      const p2 = pct(v.result, v.target);
+      const color = p2 >= 100 ? "#2d7a4f" : p2 >= 60 ? "#d97706" : "#888";
+      return `<tr>
+        <td>${label}</td><td style="text-align:right">${fmt(v.target)}</td>
+        <td style="text-align:right">${fmt(v.result)}</td>
+        <td style="text-align:right;color:${color};font-weight:700">${p2}%</td>
+      </tr>`;
+    }).join("");
+    const projectRows = projects.map(p => {
+      const pc = pct(p.rCreated, p.tCreated);
+      const pi = pct(p.rImproved, p.tImproved);
+      const overall = Math.round((pc + pi) / 2);
+      const color = overall >= 100 ? "#2d7a4f" : overall >= 60 ? "#d97706" : "#888";
+      return `<tr>
+        <td>${p.name}</td>
+        <td style="text-align:right">${fmt(p.tCreated)}</td><td style="text-align:right">${fmt(p.tImproved)}</td>
+        <td style="text-align:right">${fmt(p.rCreated)}</td><td style="text-align:right">${fmt(p.rImproved)}</td>
+        <td style="text-align:right;color:${color};font-weight:700">${overall}%</td>
+      </tr>`;
+    }).join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Metrics Report</title>
+    <style>
+      body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1c2b1e;padding:32px;max-width:860px;margin:0 auto}
+      h1{font-size:20px;color:#1c2b1e;border-bottom:2px solid #2d7a4f;padding-bottom:10px;margin-bottom:20px}
+      h2{font-size:14px;color:#2d7a4f;margin:24px 0 10px}
+      table{width:100%;border-collapse:collapse;margin-bottom:24px}
+      th{background:#1c2b1e;color:#fff;padding:7px 10px;text-align:left;font-size:11px}
+      td{padding:6px 10px;border-bottom:1px solid #e8e8e4}
+      tr:nth-child(even)td{background:#f9f9f7}
+      .no-print{text-align:center;margin-bottom:20px}
+      .no-print button{padding:8px 24px;background:#2d7a4f;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;margin:0 6px}
+      @media print{.no-print{display:none}}
+    </style></head><body>
+    <div class="no-print">
+      <button onclick="window.print()">Print / Save PDF</button>
+      <button onclick="window.close()" style="background:#f5f4f0;color:#333;border:1px solid #ccc">Close</button>
+    </div>
+    <h1>Metrics Report — Wikimedians of Kilimanjaro</h1>
+    <p style="font-size:12px;color:#888">Generated: ${new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</p>
+    <h2>Participants &amp; editors</h2>
+    <table><thead><tr><th>Metric</th><th style="text-align:right">Target</th><th style="text-align:right">Result</th><th style="text-align:right">Achieved</th></tr></thead>
+    <tbody>${indicatorRows}</tbody></table>
+    <h2>Wikimedia project contributions</h2>
+    <table><thead><tr><th>Project</th><th style="text-align:right">Target created</th><th style="text-align:right">Target improved</th><th style="text-align:right">Result created</th><th style="text-align:right">Result improved</th><th style="text-align:right">%</th></tr></thead>
+    <tbody>${projectRows}</tbody></table>
+    </body></html>`;
+    const w = window.open("", "_blank", "width=900,height=700");
+    w.document.write(html);
+    w.document.close();
+  };
+
   return (
     <div>
       <div className="page-title">Metrics</div>
       <div style={{ fontSize: 13, color: "#888", marginBottom: 20 }}>Set targets when applying. Update results throughout the grant year.</div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button className="btn btn-sm" onClick={exportCSV}>Export CSV</button>
+        <button className="btn btn-sm" onClick={printPDF}>Print / PDF report</button>
+      </div>
 
       {saved && <div style={{ background: "#e6f4ec", border: "1px solid #b7e0c8", borderRadius: 8, padding: "8px 14px", fontSize: 13, marginBottom: 16, color: "#2d7a4f" }}>✓ Metrics saved.</div>}
 

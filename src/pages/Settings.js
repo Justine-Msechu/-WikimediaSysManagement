@@ -145,6 +145,45 @@ export default function Settings({ profile }) {
         <button className="btn btn-primary" onClick={changePwd}>Change password</button>
       </div>
 
+      {/* SMS Notifications — Africa's Talking */}
+      {isAdmin && (
+        <div className="panel" style={{ marginBottom: 20 }}>
+          <div className="panel-title">SMS notifications (Africa's Talking)</div>
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 14, lineHeight: 1.6 }}>
+            Configure Africa's Talking to send SMS alerts for task assignments and deadline reminders.
+            Get credentials at <strong>africastalking.com</strong>. Use Sandbox mode for testing.
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <input type="checkbox" id="smsEnabled" checked={form.sms?.enabled || false} onChange={e => setF("sms.enabled", e.target.checked)} />
+            <label htmlFor="smsEnabled" style={{ fontSize: 13 }}>Enable SMS notifications</label>
+          </div>
+          <div className="form-grid">
+            <div className="field">
+              <label>AT Username</label>
+              <input value={form.sms?.atUsername || ""} onChange={e => setF("sms.atUsername", e.target.value)} placeholder="e.g. wikikilimanjaro" />
+            </div>
+            <div className="field">
+              <label>AT API Key</label>
+              <input type="password" value={form.sms?.atApiKey || ""} onChange={e => setF("sms.atApiKey", e.target.value)} placeholder="Your Africa's Talking API key" />
+            </div>
+            <div className="field">
+              <label>Sender ID (optional)</label>
+              <input value={form.sms?.atSenderId || ""} onChange={e => setF("sms.atSenderId", e.target.value)} placeholder="e.g. WikiKili (max 11 chars)" />
+            </div>
+            <div className="field">
+              <label>Mode</label>
+              <select value={form.sms?.sandbox ? "sandbox" : "live"} onChange={e => setF("sms.sandbox", e.target.value === "sandbox")}>
+                <option value="sandbox">Sandbox (testing)</option>
+                <option value="live">Live (production)</option>
+              </select>
+            </div>
+          </div>
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={save}>Save SMS settings</button>
+          </div>
+        </div>
+      )}
+
       {/* Data export — admin only */}
       {isAdmin && (
         <div className="panel">

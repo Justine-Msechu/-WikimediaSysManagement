@@ -4,7 +4,7 @@ import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { fetchEventParticipants, parseODCSV } from "../utils/wikiImport";
 import { listenSettings } from "../services/settingsService";
 import { listenPrograms } from "../services/programService";
-import { getForms, getAllRegistrations } from "../services/registrationService";
+import { getForms, getAllRegistrations, listenForms } from "../services/registrationService";
 import logo from "../assets/logo.png";
 
 const GENDERS  = ["Female", "Male", "Non-binary", "Prefer not to say"];
@@ -32,6 +32,7 @@ export default function Participants({ profile }) {
   const [wepPreview,setWepPreview]= useState(null);
   const [wikiStats, setWikiStats] = useState({});
   const [settings,  setSettings]  = useState(null);
+  const [forms,     setForms]     = useState([]);
   const [expenseType, setExpenseType] = useState("Transport");
   const csvRef = useRef();
   const EXPENSE_TYPES = ["Transport", "Food & refreshments", "Stipend / allowance", "Venue hire", "Merchandise & prizes", "Other"];
@@ -41,7 +42,8 @@ export default function Participants({ profile }) {
     const u1 = listenParticipants(setParticipants);
     const u2 = listenSettings(setSettings);
     const u3 = listenPrograms(setPrograms);
-    return () => { u1(); u2(); u3(); };
+    const u4 = listenForms(setForms);
+    return () => { u1(); u2(); u3(); u4(); };
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
@@ -236,8 +238,18 @@ export default function Participants({ profile }) {
     return `https://wa.me/${digits}?text=${msg}`;
   };
 
+  // Map form ID → programId so we can match participants who came through a form
+  const formProgramIndex = {};
+  forms.forEach(f => { if (f.id && f.programId) formProgramIndex[f.id] = f.programId; });
+
+  const participantProgram = (p) =>
+    p.programId ||
+    (p.registeredViaForm && formProgramIndex[p.registeredViaForm]) ||
+    (p.formId && formProgramIndex[p.formId]) ||
+    "";
+
   const filtered = participants.filter(p => {
-    if (programFilter && (p.programId || "") !== programFilter) return false;
+    if (programFilter && participantProgram(p) !== programFilter) return false;
     if (search && ![p.name, p.wikimediaUsername, p.email, p.region].join(" ").toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -533,7 +545,7 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
                   return (
                     <tr key={p.id}>
                       <td style={{ fontWeight: 500 }}>{p.name}</td>
-                      <td style={{ fontSize: 11, color: "#888" }}>{programs.find(pr => pr.id === p.programId)?.name || ""}</td>
+                      <td style={{ fontSize: 11, color: "#888" }}>{programs.find(pr => pr.id === participantProgram(p))?.name || ""}</td>
                       <td>
                         {p.wikimediaUsername
                           ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(p.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{p.wikimediaUsername}</a>

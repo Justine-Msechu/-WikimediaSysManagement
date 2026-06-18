@@ -3,6 +3,7 @@ import { listenMetrics, updateMetrics, DEFAULT_METRICS } from "../services/metri
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { listenParticipants } from "../services/participantService";
 import { listenSettings } from "../services/settingsService";
+import { listenActivities } from "../services/activityService";
 
 function fmt(n) { return (n || 0).toLocaleString(); }
 function pct(r, t) { if (!t) return 0; return Math.min(999, Math.round((r / t) * 100)); }
@@ -22,6 +23,7 @@ const PROJECT_FIELDS = ["Wikipedia", "Wikimedia Commons", "Wikidata", "Wiktionar
 export default function Metrics({ profile }) {
   const [metrics,      setMetrics]      = useState(DEFAULT_METRICS);
   const [participants, setParticipants] = useState([]);
+  const [activities,   setActivities]   = useState([]);
   const [settings,     setSettings]     = useState(null);
   const [wikiStats,    setWikiStats]    = useState({});
   const [fetchingAll,  setFetchingAll]  = useState(false);
@@ -34,7 +36,8 @@ export default function Metrics({ profile }) {
     const u1 = listenMetrics(setMetrics);
     const u2 = listenParticipants(setParticipants);
     const u3 = listenSettings(setSettings);
-    return () => { u1(); u2(); u3(); };
+    const u4 = listenActivities(setActivities);
+    return () => { u1(); u2(); u3(); u4(); };
   }, []);
 
   const save = async (patch) => {
@@ -61,6 +64,48 @@ export default function Metrics({ profile }) {
     allEditors:      participants.filter(p => p.wikimediaUsername).length,
     newEditors:      participants.filter(p => p.isNew).length,
     retainedEditors: participants.filter(p => !p.isNew && p.wikimediaUsername).length,
+  };
+
+  const sum = (field) => activities.reduce((acc, a) => acc + (Number(a[field]) || 0), 0);
+
+  const activityRollup = activities.length === 0 ? null : {
+    participants:      sum("participants"),
+    newEditors:        sum("newEditors"),
+    retainedEditors:   sum("retainedEditors"),
+    allEditors:        sum("newEditors") + sum("retainedEditors"),
+    organizers:        sum("organizers"),
+    newOrganizers:     sum("newOrganizers"),
+    createdSwahili:    sum("created"),
+    improvedSwahili:   sum("improved"),
+    createdEnglish:    sum("createdEnglish"),
+    improvedEnglish:   sum("improvedEnglish"),
+    commons:           sum("commons"),
+    wikidata:          sum("wikidata"),
+  };
+
+  const applyActivityRollup = async () => {
+    if (!activityRollup) return;
+    const updatedProjects = (metrics.projects || []).map(p => {
+      const name = p.name.toLowerCase();
+      if (name.includes("wikipedia") && name.includes("swahili"))
+        return { ...p, rCreated: activityRollup.createdSwahili, rImproved: activityRollup.improvedSwahili };
+      if (name.includes("wikipedia") && name.includes("english"))
+        return { ...p, rCreated: activityRollup.createdEnglish, rImproved: activityRollup.improvedEnglish };
+      if (name.includes("commons"))
+        return { ...p, rCreated: activityRollup.commons };
+      if (name.includes("wikidata"))
+        return { ...p, rCreated: activityRollup.wikidata };
+      return p;
+    });
+    await save({
+      participants:    { ...(metrics.participants    || {}), result: activityRollup.participants },
+      allEditors:      { ...(metrics.allEditors      || {}), result: activityRollup.allEditors },
+      newEditors:      { ...(metrics.newEditors      || {}), result: activityRollup.newEditors },
+      retainedEditors: { ...(metrics.retainedEditors || {}), result: activityRollup.retainedEditors },
+      allOrganizers:   { ...(metrics.allOrganizers   || {}), result: activityRollup.organizers },
+      newOrganizers:   { ...(metrics.newOrganizers   || {}), result: activityRollup.newOrganizers },
+      projects: updatedProjects,
+    });
   };
 
   const applyRegistryCounts = async () => {
@@ -313,6 +358,29 @@ export default function Metrics({ profile }) {
         </div>
       )}
 
+      {activityRollup && (
+        <div className="panel" style={{ marginBottom: 16, background: "#fff8f0", border: "1px solid #f0d5b0" }}>
+          <div className="panel-title" style={{ color: "#b45309", marginBottom: 8 }}>Activity rollup — totals from {activities.length} logged activities</div>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, marginBottom: 12 }}>
+            <div><span style={{ color: "#888" }}>Participants:</span> <strong>{fmt(activityRollup.participants)}</strong></div>
+            <div><span style={{ color: "#888" }}>New editors:</span> <strong>{fmt(activityRollup.newEditors)}</strong></div>
+            <div><span style={{ color: "#888" }}>Retained editors:</span> <strong>{fmt(activityRollup.retainedEditors)}</strong></div>
+            <div><span style={{ color: "#888" }}>All organisers:</span> <strong>{fmt(activityRollup.organizers)}</strong></div>
+            <div><span style={{ color: "#888" }}>New organisers:</span> <strong>{fmt(activityRollup.newOrganizers)}</strong></div>
+            <div><span style={{ color: "#888" }}>Swahili Wikipedia created:</span> <strong>{fmt(activityRollup.createdSwahili)}</strong></div>
+            <div><span style={{ color: "#888" }}>Swahili Wikipedia improved:</span> <strong>{fmt(activityRollup.improvedSwahili)}</strong></div>
+            <div><span style={{ color: "#888" }}>English Wikipedia created:</span> <strong>{fmt(activityRollup.createdEnglish)}</strong></div>
+            <div><span style={{ color: "#888" }}>English Wikipedia improved:</span> <strong>{fmt(activityRollup.improvedEnglish)}</strong></div>
+            <div><span style={{ color: "#888" }}>Commons uploads:</span> <strong>{fmt(activityRollup.commons)}</strong></div>
+            <div><span style={{ color: "#888" }}>Wikidata items:</span> <strong>{fmt(activityRollup.wikidata)}</strong></div>
+          </div>
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
+            Note: these are activity-level sums — a participant in 3 events is counted 3 times. Use as a cross-check, not as unique counts.
+          </div>
+          {canEdit && <button className="btn btn-sm btn-primary" style={{ background: "#b45309" }} onClick={applyActivityRollup}>Apply all to metrics results</button>}
+        </div>
+      )}
+
       {participants.length > 0 && (
         <div className="panel" style={{ marginBottom: 16, background: "#f5f8ff", border: "1px solid #c5d5f0" }}>
           <div className="panel-title" style={{ color: "#2563eb", marginBottom: 8 }}>Registry summary — from your participants list</div>
@@ -342,7 +410,7 @@ export default function Metrics({ profile }) {
             <div><span style={{ color: "#888" }}>Commons uploads:</span> <strong>{fmt(suggestion.commonsUploads)}</strong></div>
           </div>
           <div style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>
-            Applies: All editors → result. Wikipedia articles created/edited → result columns. Commons uploads → result created.
+            Applies: All editors → result. Articles → Swahili Wikipedia result columns. Commons uploads → Commons result. English Wikipedia must be entered manually.
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {canEdit && <button className="btn btn-sm btn-primary" onClick={applyODSuggestion}>Apply to metrics results</button>}

@@ -15,8 +15,9 @@ function emptyActivity(programs) {
     programId: programs[0]?.id || "",
     name: "", type: ACTIVITY_TYPES[0], date: today(), location: "", reportedBy: "",
     assignedTo: "",
-    participants: "", women: "", newEditors: "", youth: "", pwd: "",
-    created: "", improved: "", commons: "", wikidata: "",
+    participants: "", women: "", newEditors: "", retainedEditors: "", youth: "", pwd: "",
+    organizers: "", newOrganizers: "",
+    created: "", improved: "", createdEnglish: "", improvedEnglish: "", commons: "", wikidata: "",
     summary: "", challenges: "", lessons: "", stories: "", nextSteps: "",
     sessionType: SESSION_TYPES[0], link: "", wikiEventUrl: "", linkedFormId: "",
   };
@@ -70,7 +71,10 @@ export default function Activities({ profile, goPage }) {
       location: a.location || "", reportedBy: a.reportedBy || "",
       assignedTo: a.assignedTo || "",
       participants: a.participants ?? "", women: a.women ?? "", newEditors: a.newEditors ?? "",
-      youth: a.youth ?? "", pwd: a.pwd ?? "", created: a.created ?? "", improved: a.improved ?? "",
+      retainedEditors: a.retainedEditors ?? "", youth: a.youth ?? "", pwd: a.pwd ?? "",
+      organizers: a.organizers ?? "", newOrganizers: a.newOrganizers ?? "",
+      created: a.created ?? "", improved: a.improved ?? "",
+      createdEnglish: a.createdEnglish ?? "", improvedEnglish: a.improvedEnglish ?? "",
       commons: a.commons ?? "", wikidata: a.wikidata ?? "", summary: a.summary || "",
       challenges: a.challenges || "", lessons: a.lessons || "", stories: a.stories || "",
       nextSteps: a.nextSteps || "", sessionType: a.sessionType || SESSION_TYPES[0],
@@ -103,8 +107,11 @@ export default function Activities({ profile, goPage }) {
     const data = {
       ...form,
       participants: n(form.participants), women: n(form.women), newEditors: n(form.newEditors),
-      youth: n(form.youth), pwd: n(form.pwd), created: n(form.created),
-      improved: n(form.improved), commons: n(form.commons), wikidata: n(form.wikidata),
+      retainedEditors: n(form.retainedEditors), youth: n(form.youth), pwd: n(form.pwd),
+      organizers: n(form.organizers), newOrganizers: n(form.newOrganizers),
+      created: n(form.created), improved: n(form.improved),
+      createdEnglish: n(form.createdEnglish), improvedEnglish: n(form.improvedEnglish),
+      commons: n(form.commons), wikidata: n(form.wikidata),
       lastEditedBy: profile?.name || "",
     };
 
@@ -315,7 +322,24 @@ export default function Activities({ profile, goPage }) {
 
           <div className="section-label" style={{ margin: "16px 0 8px" }}>Participation</div>
           <div className="form-grid">
-            {[["participants","Total participants"],["women","Women"],["newEditors","New editors"],["youth","Youth (≤25)"],["pwd","Persons with disabilities"]].map(([k, label]) => (
+            {[
+              ["participants","Total participants"],
+              ["women","Women"],
+              ["newEditors","New editors"],
+              ["retainedEditors","Retained editors"],
+              ["youth","Youth (≤25)"],
+              ["pwd","Persons with disabilities"],
+            ].map(([k, label]) => (
+              <div key={k} className="field">
+                <label>{label}</label>
+                <input type="number" min="0" value={form[k] ?? ""} onChange={e => setF(k, e.target.value)} placeholder="0" />
+              </div>
+            ))}
+          </div>
+
+          <div className="section-label" style={{ margin: "16px 0 8px" }}>Organisers</div>
+          <div className="form-grid">
+            {[["organizers","All organisers"],["newOrganizers","New organisers"]].map(([k, label]) => (
               <div key={k} className="field">
                 <label>{label}</label>
                 <input type="number" min="0" value={form[k] ?? ""} onChange={e => setF(k, e.target.value)} placeholder="0" />
@@ -325,7 +349,14 @@ export default function Activities({ profile, goPage }) {
 
           <div className="section-label" style={{ margin: "16px 0 8px" }}>Content contributions</div>
           <div className="form-grid">
-            {[["created","Articles created"],["improved","Articles improved"],["commons","Commons uploads"],["wikidata","Wikidata items"]].map(([k, label]) => (
+            {[
+              ["created","Swahili Wikipedia — created"],
+              ["improved","Swahili Wikipedia — improved"],
+              ["createdEnglish","English Wikipedia — created"],
+              ["improvedEnglish","English Wikipedia — improved"],
+              ["commons","Commons uploads"],
+              ["wikidata","Wikidata items"],
+            ].map(([k, label]) => (
               <div key={k} className="field">
                 <label>{label}</label>
                 <input type="number" min="0" value={form[k] ?? ""} onChange={e => setF(k, e.target.value)} placeholder="0" />

@@ -241,6 +241,26 @@ export default function Participants({ profile }) {
     return true;
   });
 
+  // Participants with no program assigned — shown as an assignment panel when a program is selected
+  const unassigned = programFilter
+    ? participants.filter(p => !p.programId && (!search || [p.name, p.wikimediaUsername, p.email].join(" ").toLowerCase().includes(search.toLowerCase())))
+    : [];
+
+  const assignToProgram = async (p) => {
+    await updateParticipant(p.id, { ...p, programId: programFilter });
+    await addAudit(profile, AUDIT_ACTIONS.UPDATE, "participants", { targetId: p.id, recordTitle: p.name, details: `Assigned to program ${programFilter}` });
+    showToast(`${p.name} assigned to program.`);
+  };
+
+  const assignAllUnassigned = async () => {
+    if (!window.confirm(`Assign all ${unassigned.length} unassigned participant(s) to this program?`)) return;
+    for (const p of unassigned) {
+      await updateParticipant(p.id, { ...p, programId: programFilter });
+    }
+    await addAudit(profile, AUDIT_ACTIONS.UPDATE, "participants", { details: `Bulk assigned ${unassigned.length} participants to program ${programFilter}` });
+    showToast(`${unassigned.length} participants assigned.`);
+  };
+
   const printAttendance = () => {
     if (!programFilter) { alert("Please select a program from the dropdown first."); return; }
     const prog = programs.find(p => p.id === programFilter);
@@ -527,6 +547,43 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
           </div>
         )}
       </div>
+
+      {/* Unassigned participants panel — shown when a program is selected */}
+      {programFilter && unassigned.length > 0 && canEdit && (
+        <div className="panel" style={{ marginTop: 16, border: "1.5px dashed #f0c060", background: "#fffdf0" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div>
+              <span style={{ fontWeight: 600, fontSize: 14, color: "#92600a" }}>Unassigned participants ({unassigned.length})</span>
+              <span style={{ fontSize: 12, color: "#888", marginLeft: 8 }}>— not yet linked to any program</span>
+            </div>
+            <button className="btn btn-sm" style={{ background: "#f0c060", color: "#1c2b1e" }} onClick={assignAllUnassigned}>
+              Assign all to this program
+            </button>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table>
+              <thead><tr><th>Name</th><th>Wikipedia username</th><th>Email</th><th>Phone</th><th>New editor</th><th>Action</th></tr></thead>
+              <tbody>
+                {unassigned.map(p => (
+                  <tr key={p.id}>
+                    <td style={{ fontWeight: 500 }}>{p.name}</td>
+                    <td style={{ fontSize: 12, color: "#4a9e6b" }}>{p.wikimediaUsername || ""}</td>
+                    <td style={{ fontSize: 12 }}>{p.email || ""}</td>
+                    <td style={{ fontSize: 12 }}>{p.phone || ""}</td>
+                    <td>{p.isNew ? <span className="badge badge-green">New</span> : ""}</td>
+                    <td>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button className="btn btn-sm btn-primary" onClick={() => assignToProgram(p)}>Assign</button>
+                        <button className="btn btn-sm" onClick={() => openEdit(p)}>Edit</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

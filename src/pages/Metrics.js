@@ -113,15 +113,18 @@ export default function Metrics({ profile }) {
   };
 
   const fetchFromOD = async () => {
-    const campaignUrl = (settings?.grant?.odCampaignUrl || "").replace(/\/programs\/?$/, "").trim();
-    if (!campaignUrl) {
+    const raw = (settings?.grant?.odCampaignUrl || "").trim();
+    if (!raw) {
       alert("No Outreach Dashboard campaign URL set. Go to Settings → Grant configuration and paste your campaign URL.");
       return;
     }
+    // Strip trailing slash, then any trailing /programs path segment
+    const campaignUrl = raw.replace(/\/+$/, "").replace(/\/programs$/, "");
+    const fetchUrl = `${campaignUrl}.json`;
     setFetchingOD(true);
     try {
-      const res  = await fetch(`${campaignUrl}.json`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const res  = await fetch(fetchUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status} — fetched: ${fetchUrl}`);
       const data = await res.json();
       const c    = data.campaign || data;
 

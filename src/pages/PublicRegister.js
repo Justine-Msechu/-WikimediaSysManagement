@@ -87,7 +87,7 @@ export default function PublicRegister({ formId }) {
   const [errors,    setErrors]    = useState({});
 
   const [vals, setVals] = useState({
-    name: "", wikimediaUsername: "", email: "", phone: "", age: "", skills: "",
+    name: "", wikimediaUsername: "", email: "", phone: "", age: "", skills: "", wikistatus: "",
   });
 
   useEffect(() => {
@@ -101,7 +101,7 @@ export default function PublicRegister({ formId }) {
   }, [formId]);
 
   const setV = (key, raw) => {
-    const sanitizers = { name: sanitizeName, wikimediaUsername: sanitizeWikiUsername, email: sanitizeEmail, phone: sanitizePhone, age: v => v.replace(/\D/g, ""), skills: sanitizeText };
+    const sanitizers = { name: sanitizeName, wikimediaUsername: sanitizeWikiUsername, email: sanitizeEmail, phone: sanitizePhone, age: v => v.replace(/\D/g, ""), skills: sanitizeText, wikistatus: v => v };
     const val = (sanitizers[key] || (v => v))(raw);
     setVals(v => ({ ...v, [key]: val }));
     setErrors(e => ({ ...e, [key]: null }));
@@ -116,6 +116,7 @@ export default function PublicRegister({ formId }) {
     const newErrors = {
       name:              validateName(vals.name),
       wikimediaUsername: validateWikiUsername(cleanUsername),
+      wikistatus:        vals.wikistatus ? null : "Please select one.",
       email:             validateEmail(vals.email),
       phone:             validatePhone(vals.phone),
       age:               validateAge(vals.age),
@@ -136,6 +137,7 @@ export default function PublicRegister({ formId }) {
         phone:             vals.phone.trim(),
         age:               vals.age ? Number(vals.age) : null,
         skills:            vals.skills.trim(),
+        isNew:             vals.wikistatus === "no",
       });
       setSubmitted(true);
     } catch (err) {
@@ -226,6 +228,22 @@ export default function PublicRegister({ formId }) {
             <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>
               Enter your Wikipedia username only, without "User:" prefix. You can paste your full Wikipedia profile URL and it will be cleaned automatically. Leave blank if you don't have an account yet.
             </div>
+          </div>
+
+          <div style={fieldStyle}>
+            <label style={labelStyle}>Have you edited Wikipedia before? <span style={reqStyle}>*</span></label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
+              {[
+                { value: "no",  label: "No — this will be my first time editing Wikipedia" },
+                { value: "yes", label: "Yes — I have edited Wikipedia before" },
+              ].map(opt => (
+                <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 14, padding: "10px 14px", border: `1.5px solid ${vals.wikistatus === opt.value ? "#2d7a4f" : "#d0d0c8"}`, borderRadius: 8, background: vals.wikistatus === opt.value ? "#f0f8f3" : "#fff" }}>
+                  <input type="radio" name="wikistatus" value={opt.value} checked={vals.wikistatus === opt.value} onChange={e => setV("wikistatus", e.target.value)} style={{ accentColor: "#2d7a4f" }} />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+            {errors.wikistatus && <FieldError msg={errors.wikistatus} />}
           </div>
 
           <div style={fieldStyle}>

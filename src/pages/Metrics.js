@@ -56,6 +56,22 @@ export default function Metrics({ profile }) {
 
   const projects = metrics.projects || PROJECT_FIELDS.map(p => ({ name: p, tCreated: 0, tImproved: 0, rCreated: 0, rImproved: 0 }));
 
+  const registryCounts = {
+    participants:    participants.length,
+    allEditors:      participants.filter(p => p.wikimediaUsername).length,
+    newEditors:      participants.filter(p => p.isNew).length,
+    retainedEditors: participants.filter(p => !p.isNew && p.wikimediaUsername).length,
+  };
+
+  const applyRegistryCounts = async () => {
+    await save({
+      participants:    { ...(metrics.participants    || {}), result: registryCounts.participants },
+      allEditors:      { ...(metrics.allEditors      || {}), result: registryCounts.allEditors },
+      newEditors:      { ...(metrics.newEditors      || {}), result: registryCounts.newEditors },
+      retainedEditors: { ...(metrics.retainedEditors || {}), result: registryCounts.retainedEditors },
+    });
+  };
+
   const fetchAndSuggest = async () => {
     const withUsername = participants.filter(p => p.wikimediaUsername);
     if (!withUsername.length) {
@@ -168,13 +184,20 @@ export default function Metrics({ profile }) {
     if (suggestion.allEditors > 0)
       patch.allEditors = { ...(metrics.allEditors || {}), result: suggestion.allEditors };
     // Map article contributions to Wikipedia project row
-    const updatedProjects = (metrics.projects || []).map(p =>
-      p.name === "Wikipedia"
-        ? { ...p, rCreated: suggestion.articlesCreated || p.rCreated, rImproved: suggestion.articlesEdited || p.rImproved }
-        : p.name === "Wikimedia Commons"
-        ? { ...p, rCreated: suggestion.commonsUploads || p.rCreated }
-        : p
-    );
+    // OD gives campaign totals — apply articles to Swahili Wikipedia (primary project),
+    // Commons uploads to Wikimedia Commons. English Wikipedia must be entered manually.
+    let appliedWikipedia = false;
+    const updatedProjects = (metrics.projects || []).map(p => {
+      const name = p.name.toLowerCase();
+      if (!appliedWikipedia && name.includes("wikipedia") && name.includes("swahili")) {
+        appliedWikipedia = true;
+        return { ...p, rCreated: suggestion.articlesCreated || p.rCreated, rImproved: suggestion.articlesEdited || p.rImproved };
+      }
+      if (name.includes("commons")) {
+        return { ...p, rCreated: suggestion.commonsUploads || p.rCreated };
+      }
+      return p;
+    });
     if (updatedProjects.length) patch.projects = updatedProjects;
     await save(patch);
     setSuggestion(null);
@@ -287,6 +310,22 @@ export default function Metrics({ profile }) {
             {canEdit && <button className="btn btn-sm btn-primary" onClick={applySuggestion}>Apply to metrics results</button>}
             <button className="btn btn-sm" onClick={() => setSuggestion(null)}>Dismiss</button>
           </div>
+        </div>
+      )}
+
+      {participants.length > 0 && (
+        <div className="panel" style={{ marginBottom: 16, background: "#f5f8ff", border: "1px solid #c5d5f0" }}>
+          <div className="panel-title" style={{ color: "#2563eb", marginBottom: 8 }}>Registry summary — from your participants list</div>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, marginBottom: 12 }}>
+            <div><span style={{ color: "#888" }}>Total registered:</span> <strong>{registryCounts.participants}</strong></div>
+            <div><span style={{ color: "#888" }}>Have Wikipedia username:</span> <strong>{registryCounts.allEditors}</strong></div>
+            <div><span style={{ color: "#888" }}>New editors (first time):</span> <strong style={{ color: "#2563eb" }}>{registryCounts.newEditors}</strong></div>
+            <div><span style={{ color: "#888" }}>Retained editors (edited before):</span> <strong style={{ color: "#7c3aed" }}>{registryCounts.retainedEditors}</strong></div>
+          </div>
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
+            New/retained counts come from the "Have you edited Wikipedia before?" answer on registration forms. Participants added manually use the "New editor" checkbox.
+          </div>
+          {canEdit && <button className="btn btn-sm btn-primary" style={{ background: "#2563eb" }} onClick={applyRegistryCounts}>Apply counts to results</button>}
         </div>
       )}
 

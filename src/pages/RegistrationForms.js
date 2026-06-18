@@ -4,6 +4,7 @@ import {
   listenRegistrations, updateAttendance,
 } from "../services/registrationService";
 import { listenPrograms } from "../services/programService";
+import { batchAddParticipants, listenParticipants } from "../services/participantService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import logo from "../assets/logo.png";
 
@@ -39,6 +40,7 @@ export default function RegistrationForms({ profile }) {
   const [registrations,setRegistrations]= useState([]);
   const [showBuilder,  setShowBuilder]  = useState(false);
   const [editId,       setEditId]       = useState(null);
+  const [existingParticipants, setExistingParticipants] = useState([]);
   const [formData,     setFormData]     = useState(emptyForm());
   const [copiedLink,   setCopiedLink]   = useState(false);
   const [copiedUsernames, setCopiedUsernames] = useState(false);
@@ -53,7 +55,8 @@ export default function RegistrationForms({ profile }) {
   useEffect(() => {
     const u1 = listenForms(setForms);
     const u2 = listenPrograms(setPrograms);
-    return () => { u1(); u2(); };
+    const u3 = listenParticipants(setExistingParticipants);
+    return () => { u1(); u2(); u3(); };
   }, []);
 
   useEffect(() => {
@@ -123,6 +126,28 @@ export default function RegistrationForms({ profile }) {
     const a      = document.createElement("a");
     a.href = url; a.download = `registrations-${selectedForm.id}.csv`; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const importAttendedAsParticipants = async () => {
+    const attended = registrations.filter(r => r.attendance === "present");
+    if (!attended.length) { alert("No attendees marked as present yet. Mark attendance first."); return; }
+    const existingNames = new Set(existingParticipants.map(p => p.name?.toLowerCase().trim()));
+    const toAdd = attended.filter(r => !existingNames.has(r.name?.toLowerCase().trim()));
+    if (!toAdd.length) { alert("All present attendees are already in the participants registry."); return; }
+    if (!window.confirm(`Add ${toAdd.length} new participant(s) to the registry?`)) return;
+    const shaped = toAdd.map(r => ({
+      name: r.name || "",
+      wikimediaUsername: r.wikimediaUsername || "",
+      email: r.email || "",
+      phone: r.phone || "",
+      gender: "",
+      region: "",
+      isNew: r.isNew === true,
+      notes: "",
+    }));
+    await batchAddParticipants(shaped);
+    await addAudit(profile, AUDIT_ACTIONS.IMPORT, "participants", { details: `Imported ${toAdd.length} attendees from form "${selectedForm.title}"` });
+    showToast(`${toAdd.length} participants added to registry.`);
   };
 
   const withWiki = registrations.filter(r => r.wikimediaUsername).length;
@@ -362,6 +387,11 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
                   {EXPENSE_TYPES.map(t => <option key={t}>{t}</option>)}
                 </select>
                 <button className="btn btn-sm btn-primary" onClick={printSheet}>🖨 Print attendance sheet</button>
+                {canEdit && registrations.some(r => r.attendance === "present") && (
+                  <button className="btn btn-sm btn-primary" style={{ background: "#2563eb" }} onClick={importAttendedAsParticipants}>
+                    ↑ Import attended as participants
+                  </button>
+                )}
               </div>
             </div>
 

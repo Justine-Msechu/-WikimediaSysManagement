@@ -6,6 +6,19 @@ import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { db } from "../firebase/config";
 import { collection, getDocs, writeBatch } from "firebase/firestore";
 
+function deepMerge(defaults, overrides) {
+  const result = { ...defaults };
+  for (const key of Object.keys(overrides || {})) {
+    const val = overrides[key];
+    if (val !== null && typeof val === "object" && !Array.isArray(val)) {
+      result[key] = deepMerge(defaults[key] || {}, val);
+    } else {
+      result[key] = val;
+    }
+  }
+  return result;
+}
+
 export default function Settings({ profile }) {
   const [settings, setSettings] = useState(null);
   const [form,     setForm]     = useState(null);
@@ -19,7 +32,7 @@ export default function Settings({ profile }) {
 
   useEffect(() => {
     return listenSettings(s => {
-      const d = s || DEFAULT_SETTINGS;
+      const d = deepMerge(DEFAULT_SETTINGS, s || {});
       setSettings(d);
       setForm(JSON.parse(JSON.stringify(d)));
     });
@@ -31,7 +44,10 @@ export default function Settings({ profile }) {
       const c = JSON.parse(JSON.stringify(f));
       const keys = path.split(".");
       let obj = c;
-      keys.slice(0, -1).forEach(k => { obj = obj[k]; });
+      keys.slice(0, -1).forEach(k => {
+        if (obj[k] == null || typeof obj[k] !== "object") obj[k] = {};
+        obj = obj[k];
+      });
       obj[keys[keys.length - 1]] = val;
       return c;
     });

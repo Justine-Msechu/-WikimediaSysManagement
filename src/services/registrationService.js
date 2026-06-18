@@ -67,6 +67,7 @@ export async function submitRegistration(formId, regData) {
       gender:            regData.gender || "",
       region:            "",
       isNew:             regData.isNew || false,
+      programId:         regData.programId || "",
       source:            "self-registered",
       registeredViaForm: formId,
       formId,

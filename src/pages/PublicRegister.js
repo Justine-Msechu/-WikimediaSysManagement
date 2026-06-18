@@ -138,6 +138,7 @@ export default function PublicRegister({ formId }) {
         age:               vals.age ? Number(vals.age) : null,
         skills:            vals.skills.trim(),
         isNew:             vals.wikistatus === "no",
+        programId:         form?.programId || "",
       });
       setSubmitted(true);
     } catch (err) {

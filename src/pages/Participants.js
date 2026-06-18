@@ -3,18 +3,21 @@ import { listenParticipants, addParticipant, updateParticipant, deleteParticipan
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { fetchEventParticipants, parseODCSV } from "../utils/wikiImport";
 import { listenSettings } from "../services/settingsService";
+import { listenPrograms } from "../services/programService";
 
 const GENDERS  = ["Female", "Male", "Non-binary", "Prefer not to say"];
 const REGIONS  = ["Kilimanjaro", "Arusha", "Dar es Salaam", "Mwanza", "Dodoma", "Other"];
 
 function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
-function emptyParticipant() {
-  return { name: "", wikimediaUsername: "", email: "", phone: "", gender: "", region: "", isNew: false, notes: "" };
+function emptyParticipant(programId = "") {
+  return { name: "", wikimediaUsername: "", email: "", phone: "", gender: "", region: "", isNew: false, programId, notes: "" };
 }
 
 export default function Participants({ profile }) {
   const [participants, setParticipants] = useState([]);
+  const [programs,   setPrograms]    = useState([]);
+  const [programFilter, setProgramFilter] = useState("");
   const [showForm,  setShowForm]  = useState(false);
   const [editId,    setEditId]    = useState(null);
   const [form,      setForm]      = useState(emptyParticipant());
@@ -25,7 +28,7 @@ export default function Participants({ profile }) {
   const [wepUrl,    setWepUrl]    = useState("");
   const [wepLoading,setWepLoading]= useState(false);
   const [wepPreview,setWepPreview]= useState(null);
-  const [wikiStats, setWikiStats] = useState({});   // username -> editCount | "loading" | "error"
+  const [wikiStats, setWikiStats] = useState({});
   const [settings,  setSettings]  = useState(null);
   const csvRef = useRef();
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
@@ -33,14 +36,15 @@ export default function Participants({ profile }) {
   useEffect(() => {
     const u1 = listenParticipants(setParticipants);
     const u2 = listenSettings(setSettings);
-    return () => { u1(); u2(); };
+    const u3 = listenPrograms(setPrograms);
+    return () => { u1(); u2(); u3(); };
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const openCreate = () => { setForm(emptyParticipant()); setEditId(null); setShowForm(true); };
-  const openEdit   = (p) => { setForm({ name: p.name || "", wikimediaUsername: p.wikimediaUsername || "", email: p.email || "", phone: p.phone || "", gender: p.gender || "", region: p.region || "", isNew: p.isNew || false, notes: p.notes || "" }); setEditId(p.id); setShowForm(true); };
+  const openCreate = () => { setForm(emptyParticipant(programFilter)); setEditId(null); setShowForm(true); };
+  const openEdit   = (p) => { setForm({ name: p.name || "", wikimediaUsername: p.wikimediaUsername || "", email: p.email || "", phone: p.phone || "", gender: p.gender || "", region: p.region || "", isNew: p.isNew || false, programId: p.programId || "", notes: p.notes || "" }); setEditId(p.id); setShowForm(true); };
 
   const save = async () => {
     if (!form.name.trim()) { alert("Name is required."); return; }
@@ -225,7 +229,52 @@ export default function Participants({ profile }) {
     return `https://wa.me/${digits}?text=${msg}`;
   };
 
-  const filtered = participants.filter(p => !search || [p.name, p.wikimediaUsername, p.email, p.region].join(" ").toLowerCase().includes(search.toLowerCase()));
+  const filtered = participants.filter(p => {
+    if (programFilter && (p.programId || "") !== programFilter) return false;
+    if (search && ![p.name, p.wikimediaUsername, p.email, p.region].join(" ").toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const printAttendance = () => {
+    const prog = programs.find(p => p.id === programFilter);
+    const orgName = esc(settings?.org?.name || "Wikimedians of Kilimanjaro");
+    const progName = esc(prog?.name || "All participants");
+    const MIN_ROWS = Math.max(20, filtered.length);
+    const rows = [...filtered];
+    while (rows.length < MIN_ROWS) rows.push(null);
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Attendance — ${progName}</title>
+    <style>
+      body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#111;padding:24px 32px;max-width:900px;margin:0 auto}
+      h2{font-size:15px;margin:0 0 2px} h3{font-size:13px;color:#555;margin:0 0 16px;font-weight:400}
+      table{width:100%;border-collapse:collapse;margin-top:8px}
+      th{background:#1c2b1e;color:#fff;padding:7px 8px;text-align:left;font-size:11px}
+      td{padding:7px 8px;border-bottom:1px solid #ddd;height:28px}
+      .sig{border-bottom:1px solid #999;min-width:120px}
+      @media print{button{display:none}}
+    </style></head><body>
+    <button onclick="window.print()" style="margin-bottom:16px;padding:8px 20px;background:#2d7a4f;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Print / Save PDF</button>
+    <h2>${orgName} — Attendance List</h2>
+    <h3>${progName} &nbsp;|&nbsp; Date: _________________ &nbsp;|&nbsp; Location: _________________</h3>
+    <table>
+      <thead><tr><th>#</th><th>Full name</th><th>Wikipedia username</th><th>Phone</th><th>Gender</th><th>New editor</th><th>Signature</th></tr></thead>
+      <tbody>
+        ${rows.map((p, i) => `<tr>
+          <td style="color:#888;width:30px">${i + 1}</td>
+          <td>${p ? esc(p.name) : ""}</td>
+          <td style="color:#4a9e6b">${p ? esc(p.wikimediaUsername || "") : ""}</td>
+          <td>${p ? esc(p.phone || "") : ""}</td>
+          <td>${p ? esc(p.gender || "") : ""}</td>
+          <td style="text-align:center">${p?.isNew ? "✓" : ""}</td>
+          <td class="sig"></td>
+        </tr>`).join("")}
+      </tbody>
+    </table>
+    <div style="margin-top:24px;font-size:11px;color:#888">Total registered: ${filtered.length} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"})}</div>
+    </body></html>`;
+    const w = window.open("", "_blank", "width=900,height=700");
+    w.document.write(html);
+    w.document.close();
+  };
 
   return (
     <div>
@@ -233,12 +282,15 @@ export default function Participants({ profile }) {
       <div className="page-title">Participants registry</div>
 
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search participants…" style={{ flex: 1, minWidth: 200, fontSize: 13 }} />
-        <span style={{ fontSize: 12, color: "#888" }}>{filtered.length} / {participants.length} participants</span>
-        <button className="btn btn-sm" title="Fetch Wikipedia edit counts for all participants with a username" onClick={fetchAllEditCounts}>
-          Fetch all edit counts
-        </button>
+        <select value={programFilter} onChange={e => setProgramFilter(e.target.value)} style={{ fontSize: 13, minWidth: 180 }}>
+          <option value="">All programs</option>
+          {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search participants…" style={{ flex: 1, minWidth: 160, fontSize: 13 }} />
+        <span style={{ fontSize: 12, color: "#888" }}>{filtered.length} / {participants.length}</span>
+        <button className="btn btn-sm" onClick={fetchAllEditCounts}>Fetch edit counts</button>
         {canEdit && <>
+          <button className="btn btn-sm" onClick={printAttendance}>🖨 Attendance sheet</button>
           <button className="btn" onClick={() => setShowImport(s => !s)}>Import</button>
           <button className="btn" onClick={exportCSV}>Export CSV</button>
           <button className="btn btn-primary" onClick={openCreate}>+ Add participant</button>
@@ -355,6 +407,12 @@ export default function Participants({ profile }) {
               </select>
             </div>
           </div>
+          <div className="field"><label>Program</label>
+            <select value={form.programId || ""} onChange={e => setF("programId", e.target.value)}>
+              <option value="">(None / unassigned)</option>
+              {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
             <input type="checkbox" id="isnew" checked={form.isNew} onChange={e => setF("isNew", e.target.checked)} />
             <label htmlFor="isnew" style={{ fontSize: 13 }}>New editor (first Wikipedia contribution)</label>
@@ -371,7 +429,7 @@ export default function Participants({ profile }) {
         {filtered.length === 0 ? <div className="empty">{participants.length === 0 ? "No participants yet. Add manually, import from WEP, or share the registration form." : "No participants match your search."}</div> : (
           <div style={{ overflowX: "auto" }}>
             <table>
-              <thead><tr><th>Name</th><th>Wikipedia username</th><th>Edits</th><th>Email</th><th>Phone</th><th>Gender</th><th>Region</th><th>New editor</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Name</th><th>Program</th><th>Wikipedia username</th><th>Edits</th><th>Email</th><th>Phone</th><th>Gender</th><th>New editor</th><th>Actions</th></tr></thead>
               <tbody>
                 {filtered.map(p => {
                   const stat = p.wikimediaUsername ? wikiStats[p.wikimediaUsername] : undefined;
@@ -379,6 +437,7 @@ export default function Participants({ profile }) {
                   return (
                     <tr key={p.id}>
                       <td style={{ fontWeight: 500 }}>{p.name}</td>
+                      <td style={{ fontSize: 11, color: "#888" }}>{programs.find(pr => pr.id === p.programId)?.name || ""}</td>
                       <td>
                         {p.wikimediaUsername
                           ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(p.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{p.wikimediaUsername}</a>

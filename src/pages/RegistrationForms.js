@@ -143,6 +143,8 @@ export default function RegistrationForms({ profile }) {
       gender: "",
       region: "",
       isNew: r.isNew === true,
+      programId: selectedForm.programId || "",
+      formId: selectedForm.id,
       notes: "",
     }));
     await batchAddParticipants(shaped);

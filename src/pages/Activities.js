@@ -5,6 +5,7 @@ import { listenSettings } from "../services/settingsService";
 import { listenUsers } from "../services/userService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { notifyAssignment } from "../services/notificationService";
+import { listenTemplates, addTemplate, deleteTemplate } from "../services/activityTemplateService";
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
@@ -25,7 +26,9 @@ export default function Activities({ profile, goPage }) {
   const [programs,     setPrograms]     = useState([]);
   const [settings,     setSettings]     = useState(null);
   const [users,        setUsers]        = useState([]);
+  const [templates,    setTemplates]    = useState([]);
   const [showForm,     setShowForm]     = useState(false);
+  const [showTpls,     setShowTpls]     = useState(false);
   const [editId,       setEditId]       = useState(null);
   const [editVersion,  setEditVersion]  = useState(null);
   const [form,         setForm]         = useState({});
@@ -39,7 +42,8 @@ export default function Activities({ profile, goPage }) {
     const u2 = listenPrograms(setPrograms);
     const u3 = listenSettings(setSettings);
     const u4 = listenUsers(setUsers);
-    return () => { u1(); u2(); u3(); u4(); };
+    const u5 = listenTemplates(setTemplates);
+    return () => { u1(); u2(); u3(); u4(); u5(); };
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
@@ -129,6 +133,37 @@ export default function Activities({ profile, goPage }) {
     showToast("Activity deleted.");
   };
 
+  const saveAsTemplate = async () => {
+    const tplName = window.prompt("Template name:", form.name || "");
+    if (!tplName?.trim()) return;
+    await addTemplate({
+      name: tplName.trim(),
+      type: form.type, sessionType: form.sessionType,
+      location: form.location || "",
+      summary: form.summary || "", challenges: form.challenges || "",
+      lessons: form.lessons || "", stories: form.stories || "",
+      nextSteps: form.nextSteps || "",
+    });
+    showToast("Template saved.");
+  };
+
+  const applyTemplate = (tpl) => {
+    setForm(f => ({
+      ...f,
+      type: tpl.type || f.type,
+      sessionType: tpl.sessionType || f.sessionType,
+      location: tpl.location || f.location,
+      summary: tpl.summary || f.summary,
+      challenges: tpl.challenges || f.challenges,
+      lessons: tpl.lessons || f.lessons,
+      stories: tpl.stories || f.stories,
+      nextSteps: tpl.nextSteps || f.nextSteps,
+    }));
+    setShowTpls(false);
+    setShowForm(true);
+    showToast(`Template "${tpl.name}" applied.`);
+  };
+
   const filtered = activities.filter(a => {
     const matchSearch = !filter ||
       a.name?.toLowerCase().includes(filter.toLowerCase()) ||
@@ -174,6 +209,7 @@ export default function Activities({ profile, goPage }) {
       <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap" }}>
         <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Search activities…" style={{ flex: 1, minWidth: 200, fontSize: 13 }} />
         <button className="btn btn-sm" onClick={exportCSV} title="Export visible activities to CSV">Export CSV</button>
+        {canEdit && <button className="btn btn-sm" onClick={() => { setShowTpls(s => !s); setShowForm(false); }} title="Load or manage activity templates">Templates{templates.length > 0 ? ` (${templates.length})` : ""}</button>}
         <button
           className={`btn btn-sm ${myTasksOnly ? "btn-primary" : ""}`}
           onClick={() => setMyTasksOnly(v => !v)}
@@ -183,6 +219,31 @@ export default function Activities({ profile, goPage }) {
         </button>
         {canEdit && <button className="btn btn-primary" onClick={openCreate} disabled={!hasApproved} title={!hasApproved ? "No approved programs — approve a program first" : ""}>+ Log activity</button>}
       </div>
+
+      {showTpls && (
+        <div className="panel" style={{ border: "1px solid #e8e8e4", marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>Activity templates</div>
+            <button className="btn btn-sm" onClick={() => setShowTpls(false)}>Close</button>
+          </div>
+          {templates.length === 0 ? (
+            <div style={{ color: "#aaa", fontSize: 13 }}>No templates yet. Open the form, fill in the narrative or type/location fields, then click "Save as template".</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {templates.map(t => (
+                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "#f9f9f7", borderRadius: 7, border: "1px solid #e8e8e4" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{t.name}</div>
+                    <div style={{ fontSize: 11, color: "#888" }}>{[t.type, t.sessionType, t.location].filter(Boolean).join(" · ")}</div>
+                  </div>
+                  <button className="btn btn-sm btn-primary" onClick={() => { openCreate(); applyTemplate(t); }}>Use</button>
+                  <button className="btn btn-sm btn-danger" onClick={async () => { if (window.confirm(`Delete template "${t.name}"?`)) { await deleteTemplate(t.id); showToast("Template deleted."); } }}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {showForm && (
         <div className="panel" style={{ border: "2px solid #4a9e6b", marginBottom: 20 }}>
@@ -272,6 +333,7 @@ export default function Activities({ profile, goPage }) {
 
           <div className="btn-row">
             <button className="btn btn-primary" onClick={save}>Save</button>
+            <button className="btn" onClick={saveAsTemplate} title="Save current form values as a reusable template">Save as template</button>
             <button className="btn" onClick={() => setShowForm(false)}>Cancel</button>
           </div>
         </div>

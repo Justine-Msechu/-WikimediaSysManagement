@@ -12,6 +12,12 @@ import TaskComments from "./TaskComments";
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
+function whatsappLink(phone, name) {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, "");
+  return `https://wa.me/${digits}?text=${encodeURIComponent(`Hello ${name || ""},`)}`;
+}
+
 const TABS = ["Registry", "Tasks", "Report"];
 
 function emptyVolunteer() {
@@ -169,7 +175,10 @@ function Registry({ volunteers, programs, profile, showToast }) {
               {filtered.map(v => (
                 <tr key={v.id}>
                   <td style={{ fontWeight: 600 }}>{v.name}</td>
-                  <td style={{ fontSize: 12 }}>{v.phone || ""}</td>
+                  <td style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+                    {v.phone || ""}
+                    {whatsappLink(v.phone, v.name) && <a href={whatsappLink(v.phone, v.name)} target="_blank" rel="noreferrer" title="Open WhatsApp chat" style={{ marginLeft: 6, fontSize: 14, textDecoration: "none" }}>💬</a>}
+                  </td>
                   <td style={{ fontSize: 12 }}>{v.email || ""}</td>
                   <td style={{ fontSize: 11 }}>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
@@ -528,7 +537,14 @@ function Report({ volunteers, programs, tasks, profile }) {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>{volunteer.name}</div>
                 <div style={{ fontSize: 13, color: "#555", display: "flex", gap: 16, flexWrap: "wrap" }}>
-                  {volunteer.phone && <span>{volunteer.phone}</span>}
+                  {volunteer.phone && (
+                    <span>
+                      {volunteer.phone}
+                      {whatsappLink(volunteer.phone, volunteer.name) && (
+                        <a href={whatsappLink(volunteer.phone, volunteer.name)} target="_blank" rel="noreferrer" title="WhatsApp" style={{ marginLeft: 6, fontSize: 14, textDecoration: "none" }}>💬</a>
+                      )}
+                    </span>
+                  )}
                   {volunteer.email && <span>{volunteer.email}</span>}
                   {volunteer.availability && <span>Available: {volunteer.availability}</span>}
                 </div>

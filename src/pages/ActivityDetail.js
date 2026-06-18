@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { getActivity } from "../services/activityService";
+import { getActivity, updateActivity } from "../services/activityService";
 import { listenEvidence } from "../services/activityService";
 import { getProgramById } from "../services/programService";
 import { addEvidenceLink, removeEvidenceLink, EVIDENCE_TYPES } from "../services/storageService";
@@ -224,6 +224,82 @@ function FileUploadPanel({ activityId, canEdit, profile }) {
   );
 }
 
+function ChecklistPanel({ activity, canEdit }) {
+  const [items,    setItems]    = useState(activity.checklist || []);
+  const [newText,  setNewText]  = useState("");
+  const [saving,   setSaving]   = useState(false);
+
+  useEffect(() => { setItems(activity.checklist || []); }, [activity.checklist]);
+
+  const persist = async (updated) => {
+    setSaving(true);
+    try { await updateActivity(activity.id, { checklist: updated }); }
+    finally { setSaving(false); }
+  };
+
+  const toggle = (i) => {
+    const updated = items.map((it, idx) => idx === i ? { ...it, done: !it.done } : it);
+    setItems(updated);
+    persist(updated);
+  };
+
+  const add = async () => {
+    if (!newText.trim()) return;
+    const updated = [...items, { text: newText.trim(), done: false }];
+    setItems(updated);
+    setNewText("");
+    await persist(updated);
+  };
+
+  const remove = async (i) => {
+    const updated = items.filter((_, idx) => idx !== i);
+    setItems(updated);
+    await persist(updated);
+  };
+
+  const done  = items.filter(it => it.done).length;
+  const total = items.length;
+
+  return (
+    <div className="panel" style={{ marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div className="panel-title" style={{ marginBottom: 0 }}>Checklist {total > 0 && <span style={{ color: "#888", fontWeight: 400 }}>({done}/{total})</span>}</div>
+        {total > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ background: "#e8e8e4", borderRadius: 4, height: 6, width: 100, overflow: "hidden" }}>
+              <div style={{ width: `${total > 0 ? Math.round((done / total) * 100) : 0}%`, height: 6, background: "#4a9e6b", borderRadius: 4, transition: "width 0.3s" }} />
+            </div>
+            <span style={{ fontSize: 11, color: "#888" }}>{total > 0 ? Math.round((done / total) * 100) : 0}%</span>
+          </div>
+        )}
+      </div>
+      {items.length === 0 && !canEdit && <div style={{ color: "#aaa", fontSize: 13 }}>No checklist items.</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: canEdit ? 12 : 0 }}>
+        {items.map((it, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: it.done ? "#f0f7f3" : "#f9f9f7", borderRadius: 6, border: `1px solid ${it.done ? "#b7e0c8" : "#e8e8e4"}` }}>
+            <input type="checkbox" checked={it.done} onChange={() => toggle(i)} disabled={saving} style={{ cursor: "pointer", width: 16, height: 16, flexShrink: 0 }} />
+            <span style={{ flex: 1, fontSize: 13, color: it.done ? "#888" : "#1c2b1e", textDecoration: it.done ? "line-through" : "none" }}>{it.text}</span>
+            {canEdit && <button onClick={() => remove(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ccc", fontSize: 14, padding: 0 }} disabled={saving}>✕</button>}
+          </div>
+        ))}
+      </div>
+      {canEdit && (
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={newText}
+            onChange={e => setNewText(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") add(); }}
+            placeholder="Add checklist item… (Enter to add)"
+            style={{ flex: 1, fontSize: 13 }}
+            disabled={saving}
+          />
+          <button className="btn btn-sm btn-primary" onClick={add} disabled={saving || !newText.trim()}>Add</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ActivityDetail({ activityId, profile, goPage }) {
   const [activity, setActivity] = useState(null);
   const [program,  setProgram]  = useState(null);
@@ -348,6 +424,9 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
           ))}
         </div>
       </div>
+
+      {/* Checklist */}
+      <ChecklistPanel activity={activity} canEdit={canEdit} />
 
       {/* Evidence links + File uploads */}
       <div className="panel">

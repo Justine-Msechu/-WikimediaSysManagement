@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { listenParticipants, addParticipant, updateParticipant, deleteParticipant, batchAddParticipants } from "../services/participantService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { fetchEventParticipants, parseODCSV } from "../utils/wikiImport";
+import { listenSettings } from "../services/settingsService";
 
 const GENDERS  = ["Female", "Male", "Non-binary", "Prefer not to say"];
 const REGIONS  = ["Kilimanjaro", "Arusha", "Dar es Salaam", "Mwanza", "Dodoma", "Other"];
@@ -22,10 +23,16 @@ export default function Participants({ profile }) {
   const [wepUrl,    setWepUrl]    = useState("");
   const [wepLoading,setWepLoading]= useState(false);
   const [wepPreview,setWepPreview]= useState(null);
+  const [wikiStats, setWikiStats] = useState({});   // username -> editCount | "loading" | "error"
+  const [settings,  setSettings]  = useState(null);
   const csvRef = useRef();
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
 
-  useEffect(() => { return listenParticipants(setParticipants); }, []);
+  useEffect(() => {
+    const u1 = listenParticipants(setParticipants);
+    const u2 = listenSettings(setSettings);
+    return () => { u1(); u2(); };
+  }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -103,6 +110,75 @@ export default function Participants({ profile }) {
     a.href = url; a.download = "participants.csv"; a.click();
     URL.revokeObjectURL(url);
     addAudit(profile, AUDIT_ACTIONS.EXPORT, "participants", { details: `${participants.length} participants exported` });
+  };
+
+  const fetchEditCount = async (username) => {
+    if (!username) return;
+    setWikiStats(s => ({ ...s, [username]: "loading" }));
+    try {
+      const url = `https://en.wikipedia.org/w/api.php?action=query&list=users&ususers=${encodeURIComponent(username)}&usprop=editcount&format=json&origin=*`;
+      const res  = await fetch(url);
+      const json = await res.json();
+      const user = json?.query?.users?.[0];
+      if (user && !user.missing && user.editcount != null) {
+        setWikiStats(s => ({ ...s, [username]: user.editcount }));
+      } else {
+        setWikiStats(s => ({ ...s, [username]: "not found" }));
+      }
+    } catch {
+      setWikiStats(s => ({ ...s, [username]: "error" }));
+    }
+  };
+
+  const printCertificate = (p) => {
+    const orgName = settings?.orgName || "Wikimedians of Kilimanjaro";
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>Certificate — ${p.name}</title>
+    <style>
+      @page { size: A4 landscape; margin: 0; }
+      body { font-family: 'Segoe UI', Georgia, serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #fff; }
+      .cert { width: 90%; max-width: 720px; text-align: center; border: 8px double #2d7a4f; padding: 48px 56px; }
+      .org { font-size: 13px; color: #888; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+      h1 { font-size: 36px; font-weight: 300; color: #2d7a4f; margin: 0 0 24px; }
+      .presented { font-size: 14px; color: #555; margin-bottom: 12px; }
+      .name { font-size: 32px; font-weight: 700; color: #1c2b1e; border-bottom: 2px solid #4a9e6b; display: inline-block; padding-bottom: 6px; margin-bottom: 24px; }
+      .body { font-size: 14px; color: #555; line-height: 1.8; margin-bottom: 32px; }
+      .footer { display: flex; justify-content: space-around; margin-top: 40px; }
+      .sig { font-size: 12px; color: #888; }
+      .sig span { display: block; border-top: 1px solid #ccc; padding-top: 6px; margin-top: 24px; }
+      .no-print { position: fixed; top: 16px; right: 16px; }
+      .no-print button { padding: 8px 20px; background: #2d7a4f; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+      @media print { .no-print { display: none; } }
+    </style></head><body>
+    <div class="no-print"><button onclick="window.print()">Print / Save PDF</button></div>
+    <div class="cert">
+      <div class="org">${orgName}</div>
+      <h1>Certificate of Participation</h1>
+      <div class="presented">This is to certify that</div>
+      <div class="name">${p.name}</div>
+      <div class="body">
+        has actively participated in Wikimedia community activities<br>
+        organised by <strong>${orgName}</strong><br>
+        and has contributed to the growth of free knowledge.
+        ${p.wikimediaUsername ? `<br><br>Wikipedia username: <strong>${p.wikimediaUsername}</strong>` : ""}
+      </div>
+      <div class="footer">
+        <div class="sig"><span>Coordinator signature</span></div>
+        <div class="sig"><span>Date</span></div>
+        <div class="sig"><span>Official stamp</span></div>
+      </div>
+    </div>
+    </body></html>`;
+    const w = window.open("", "_blank", "width=900,height=650");
+    w.document.write(html);
+    w.document.close();
+  };
+
+  const whatsappLink = (phone, name) => {
+    if (!phone) return null;
+    const digits = phone.replace(/\D/g, "");
+    const msg = encodeURIComponent(`Hello ${name || ""},`);
+    return `https://wa.me/${digits}?text=${msg}`;
   };
 
   const filtered = participants.filter(p => !search || [p.name, p.wikimediaUsername, p.email, p.region].join(" ").toLowerCase().includes(search.toLowerCase()));
@@ -192,24 +268,50 @@ export default function Participants({ profile }) {
         {filtered.length === 0 ? <div className="empty">{participants.length === 0 ? "No participants yet. Add manually, import from WEP, or share the registration form." : "No participants match your search."}</div> : (
           <div style={{ overflowX: "auto" }}>
             <table>
-              <thead><tr><th>Name</th><th>Wikipedia username</th><th>Email</th><th>Gender</th><th>Region</th><th>New editor</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Name</th><th>Wikipedia username</th><th>Edits</th><th>Email</th><th>Phone</th><th>Gender</th><th>Region</th><th>New editor</th><th>Actions</th></tr></thead>
               <tbody>
-                {filtered.map(p => (
-                  <tr key={p.id}>
-                    <td style={{ fontWeight: 500 }}>{p.name}</td>
-                    <td>{p.wikimediaUsername ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(p.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{p.wikimediaUsername}</a> : ""}</td>
-                    <td style={{ fontSize: 12, color: "#555" }}>{p.email || ""}</td>
-                    <td style={{ fontSize: 12 }}>{p.gender || ""}</td>
-                    <td style={{ fontSize: 12 }}>{p.region || ""}</td>
-                    <td>{p.isNew ? <span className="badge badge-green">New</span> : ""}</td>
-                    <td>
-                      {canEdit && <div style={{ display: "flex", gap: 6 }}>
-                        <button className="btn btn-sm" onClick={() => openEdit(p)}>Edit</button>
-                        <button className="btn btn-sm btn-danger" onClick={() => del(p)}>✕</button>
-                      </div>}
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map(p => {
+                  const stat = p.wikimediaUsername ? wikiStats[p.wikimediaUsername] : undefined;
+                  const waLink = whatsappLink(p.phone, p.name);
+                  return (
+                    <tr key={p.id}>
+                      <td style={{ fontWeight: 500 }}>{p.name}</td>
+                      <td>
+                        {p.wikimediaUsername
+                          ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(p.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{p.wikimediaUsername}</a>
+                          : ""}
+                      </td>
+                      <td style={{ fontSize: 12, textAlign: "right", whiteSpace: "nowrap" }}>
+                        {p.wikimediaUsername && (
+                          stat === undefined
+                            ? <button className="btn btn-sm" style={{ fontSize: 10, padding: "2px 6px" }} onClick={() => fetchEditCount(p.wikimediaUsername)}>Fetch</button>
+                            : stat === "loading"
+                              ? <span style={{ color: "#888" }}>…</span>
+                              : typeof stat === "number"
+                                ? <span style={{ fontWeight: 600, color: stat > 0 ? "#2d7a4f" : "#888" }}>{stat.toLocaleString()}</span>
+                                : <span style={{ color: "#c0392b", fontSize: 11 }}>{stat}</span>
+                        )}
+                      </td>
+                      <td style={{ fontSize: 12, color: "#555" }}>{p.email || ""}</td>
+                      <td style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+                        {p.phone || ""}
+                        {waLink && <a href={waLink} target="_blank" rel="noreferrer" title="Open WhatsApp chat" style={{ marginLeft: 6, fontSize: 14, textDecoration: "none" }}>💬</a>}
+                      </td>
+                      <td style={{ fontSize: 12 }}>{p.gender || ""}</td>
+                      <td style={{ fontSize: 12 }}>{p.region || ""}</td>
+                      <td>{p.isNew ? <span className="badge badge-green">New</span> : ""}</td>
+                      <td>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button className="btn btn-sm" title="Generate participation certificate" onClick={() => printCertificate(p)}>Cert</button>
+                          {canEdit && <>
+                            <button className="btn btn-sm" onClick={() => openEdit(p)}>Edit</button>
+                            <button className="btn btn-sm btn-danger" onClick={() => del(p)}>✕</button>
+                          </>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

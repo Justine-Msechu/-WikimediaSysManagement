@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   listenBudgetEntries, addBudgetEntry, updateBudgetEntry, deleteBudgetEntry,
   BUDGET_STATUSES, BUDGET_STATUS_BADGE, BUDGET_GROUPS,
@@ -8,6 +8,7 @@ import { listenSettings, updateSettings } from "../services/settingsService";
 import { listenPrograms } from "../services/programService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { notifySubmission } from "../services/notificationService";
+import { uploadToDrive, preAuthorize } from "../services/driveService";
 import logo from "../assets/logo.png";
 
 function fmt(n)    { return (n || 0).toLocaleString(); }
@@ -134,12 +135,14 @@ export default function Budget({ profile }) {
   const [toast,         setToast]         = useState("");
 
   // Expenses tab
-  const [form,          setForm]          = useState(null);
-  const [editId,        setEditId]        = useState(null);
-  const [reviewId,      setReviewId]      = useState(null);
-  const [reviewComment, setReviewComment] = useState("");
-  const [filterStatus,  setFilterStatus]  = useState("all");
-  const [filterGroup,   setFilterGroup]   = useState("all");
+  const [form,           setForm]          = useState(null);
+  const [editId,         setEditId]        = useState(null);
+  const [reviewId,       setReviewId]      = useState(null);
+  const [reviewComment,  setReviewComment] = useState("");
+  const [filterStatus,   setFilterStatus]  = useState("all");
+  const [filterGroup,    setFilterGroup]   = useState("all");
+  const [receiptBusy,    setReceiptBusy]   = useState(false);
+  const receiptRef = useRef(null);
 
   // Personnel tab
   const [personnel,   setPersonnel]   = useState(DEFAULT_PERSONNEL);
@@ -168,6 +171,22 @@ export default function Budget({ profile }) {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const uploadReceipt = async (file) => {
+    if (!file) return;
+    setReceiptBusy(true);
+    try {
+      const result = await uploadToDrive(file);
+      setF("receiptUrl",  result.url);
+      setF("receiptName", result.name);
+      showToast("Receipt uploaded to Drive.");
+    } catch (err) {
+      alert(err.message || "Upload failed.");
+    } finally {
+      setReceiptBusy(false);
+      if (receiptRef.current) receiptRef.current.value = "";
+    }
+  };
 
   // ── derived numbers ───────────────────────────────────────────────────────
   const grant          = settings?.grant || {};
@@ -517,6 +536,37 @@ export default function Budget({ profile }) {
                 <label>Description</label>
                 <textarea rows={2} value={form.description} onChange={e => setF("description", e.target.value)} />
               </div>
+              <div className="field">
+                <label>Receipt / supporting document</label>
+                {form.receiptUrl ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "#f0f7f3", border: "1px solid #b7e0c8", borderRadius: 6 }}>
+                    <span style={{ fontSize: 18 }}>📎</span>
+                    <a href={form.receiptUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: "#2d7a4f", flex: 1 }}>{form.receiptName || "View receipt"}</a>
+                    <button className="btn btn-sm btn-danger" onClick={() => { setF("receiptUrl", ""); setF("receiptName", ""); }}>Remove</button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <button
+                      className="btn btn-sm"
+                      disabled={receiptBusy}
+                      onClick={async () => {
+                        try { await preAuthorize(); receiptRef.current?.click(); }
+                        catch (err) { alert(err.message || "Could not connect to Google Drive."); }
+                      }}
+                    >
+                      {receiptBusy ? "Uploading…" : "Upload receipt to Drive"}
+                    </button>
+                    <span style={{ fontSize: 11, color: "#aaa" }}>or</span>
+                    <input
+                      value={form.receiptUrl || ""}
+                      onChange={e => setF("receiptUrl", e.target.value)}
+                      placeholder="Paste receipt URL"
+                      style={{ flex: 1, fontSize: 12 }}
+                    />
+                    <input ref={receiptRef} type="file" style={{ display: "none" }} accept="image/*,.pdf" onChange={e => uploadReceipt(e.target.files?.[0])} />
+                  </div>
+                )}
+              </div>
               <div className="btn-row">
                 {canApprove
                   ? <button className="btn btn-primary" onClick={() => saveEntry(false)}>Save</button>
@@ -540,7 +590,7 @@ export default function Budget({ profile }) {
             <div style={{ overflowX: "auto" }}>
               <table>
                 <thead>
-                  <tr><th>Title</th><th>Group</th><th>Category</th><th>Amount (TZS)</th><th>By</th><th>Date</th><th>Status</th><th>Comment</th><th></th></tr>
+                  <tr><th>Title</th><th>Group</th><th>Category</th><th>Amount (TZS)</th><th>By</th><th>Date</th><th>Status</th><th>Receipt</th><th>Comment</th><th></th></tr>
                 </thead>
                 <tbody>
                   {filteredEntries.map(entry => {
@@ -556,6 +606,7 @@ export default function Budget({ profile }) {
                           <td style={{ fontSize: 12 }}>{entry.requestedBy || ""}</td>
                           <td style={{ fontSize: 12, color: "#888" }}>{entry.date || ""}</td>
                           <td><span className={`badge ${badge.cls}`}>{badge.label}</span></td>
+                          <td style={{ fontSize: 12 }}>{entry.receiptUrl ? <a href={entry.receiptUrl} target="_blank" rel="noreferrer" style={{ color: "#2d7a4f" }}>📎 View</a> : ""}</td>
                           <td style={{ fontSize: 11, color: "#777", maxWidth: 140 }}>{entry.reviewerComment || ""}</td>
                           <td>
                             <div style={{ display: "flex", gap: 4 }}>
@@ -579,7 +630,7 @@ export default function Budget({ profile }) {
                         </tr>
                         {reviewing && (
                           <tr>
-                            <td colSpan={9} style={{ background: "#fdf0ee", padding: "12px 16px" }}>
+                            <td colSpan={10} style={{ background: "#fdf0ee", padding: "12px 16px" }}>
                               <div style={{ fontWeight: 600, color: "#c0392b", marginBottom: 8, fontSize: 13 }}>Reason for rejection (optional)</div>
                               <textarea rows={2} value={reviewComment} onChange={e => setReviewComment(e.target.value)} placeholder="Explain why this entry is rejected…" style={{ width: "100%", fontSize: 13, padding: "6px 8px", border: "1px solid #ddd", borderRadius: 5 }} />
                               <div className="btn-row" style={{ marginTop: 8 }}>

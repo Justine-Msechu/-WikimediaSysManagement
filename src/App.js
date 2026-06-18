@@ -80,6 +80,20 @@ function AppShell() {
   const [page, setPage]                   = useState("dashboard");
   const [selectedActivityId, setSelectedActivityId] = useState(null);
   const [sidebarOpen, setSidebarOpen]     = useState(false);
+  const [budgetEntries,   setBudgetEntries]   = React.useState([]);
+  const [reviewPrograms,  setReviewPrograms]  = React.useState([]);
+  const [notifications,   setNotifications]   = React.useState([]);
+  const [showNotifPanel,  setShowNotifPanel]  = React.useState(false);
+
+  React.useEffect(() => {
+    if (!profile || profile.role === "volunteer") return;
+    const { listenBudgetEntries } = require("./services/budgetService");
+    const { listenPrograms }      = require("./services/programService");
+    const u1 = listenBudgetEntries(setBudgetEntries);
+    const u2 = listenPrograms(setReviewPrograms);
+    const u3 = listenNotifications(profile.role, profile.name || "", setNotifications);
+    return () => { u1(); u2(); u3(); };
+  }, [profile?.role, profile?.name]);
 
   const publicFormId = getPublicFormId();
 
@@ -115,21 +129,6 @@ function AppShell() {
 
   const role        = profile.role;
   const isVolunteer = role === "volunteer";
-
-  const [budgetEntries,   setBudgetEntries]   = React.useState([]);
-  const [reviewPrograms,  setReviewPrograms]  = React.useState([]);
-  const [notifications,   setNotifications]   = React.useState([]);
-  const [showNotifPanel,  setShowNotifPanel]  = React.useState(false);
-
-  React.useEffect(() => {
-    if (isVolunteer) return; // volunteers only see MyTasks, skip heavy listeners
-    const { listenBudgetEntries } = require("./services/budgetService");
-    const { listenPrograms }      = require("./services/programService");
-    const u1 = listenBudgetEntries(setBudgetEntries);
-    const u2 = listenPrograms(setReviewPrograms);
-    const u3 = listenNotifications(role, profile?.name || "", setNotifications);
-    return () => { u1(); u2(); u3(); };
-  }, [role, isVolunteer]);
 
   const pendingBudget   = budgetEntries.filter(e => e.status === "submitted").length;
   const pendingPrograms = reviewPrograms.filter(p => p.status === "submitted").length;

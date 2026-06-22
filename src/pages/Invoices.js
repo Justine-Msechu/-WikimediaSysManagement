@@ -35,7 +35,6 @@ function emptyInvoice(invoices, grant, paymentDetails) {
     recipientNote: "",
     description: "",
     amountUSD: "",
-    conversionRate: Number(grant?.conversionRate) || 0.000413,
     status: "draft",
     paymentDetails: { ...paymentDetails },
   };
@@ -43,7 +42,8 @@ function emptyInvoice(invoices, grant, paymentDetails) {
 
 function invoicePrintHtml(inv, orgName, grant, logoSrc) {
   const pd = inv.paymentDetails || {};
-  const rate = Number(inv.conversionRate) || Number(grant?.conversionRate) || 0.000413;
+  // Always use the grant's own conversion rate, kept in sync with the Grant page — not editable per invoice.
+  const rate = Number(grant?.conversionRate) || 0.000413;
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <title>Invoice ${esc(inv.invoiceNumber)}</title>
   <style>
@@ -157,7 +157,6 @@ export default function Invoices({ profile, grantId, currentGrant }) {
   const openEdit = (inv) => {
     setForm({
       ...inv,
-      conversionRate: Number(inv.conversionRate) || Number(grant?.conversionRate) || 0.000413,
       paymentDetails: { ...(inv.paymentDetails || settings?.paymentDetails || {}) },
     });
     setEditId(inv.id);
@@ -167,7 +166,7 @@ export default function Invoices({ profile, grantId, currentGrant }) {
   const save = async () => {
     if (!form.recipientName.trim()) { alert("Recipient name is required."); return; }
     if (!form.amountUSD || Number(form.amountUSD) <= 0) { alert("Amount must be greater than zero."); return; }
-    const data = { ...form, amountUSD: Number(form.amountUSD), conversionRate: Number(form.conversionRate) || 0, grantId: grantId || "" };
+    const data = { ...form, amountUSD: Number(form.amountUSD), grantId: grantId || "" };
     if (!editId) {
       const id = await addInvoice(data);
       await addAudit(profile, AUDIT_ACTIONS.CREATE, "invoices", { targetId: id, recordTitle: data.invoiceNumber });
@@ -232,8 +231,7 @@ export default function Invoices({ profile, grantId, currentGrant }) {
             <div className="field"><label>Recipient (e.g. fiscal sponsor)</label><input value={form.recipientName} onChange={e => setF("recipientName", e.target.value)} placeholder="Dunia Salama Foundation" /></div>
             <div className="field"><label>Recipient note</label><input value={form.recipientNote} onChange={e => setF("recipientNote", e.target.value)} placeholder="Fiscal sponsor" /></div>
             <div className="field"><label>Amount requested (USD)</label><input type="number" min="0" step="0.01" value={form.amountUSD} onChange={e => setF("amountUSD", e.target.value)} /></div>
-            <div className="field"><label>USD to TZS conversion rate</label><input type="number" min="0" step="0.000001" value={form.conversionRate} onChange={e => setF("conversionRate", Number(e.target.value))} placeholder="0.000413" /></div>
-            <div className="field"><label>Equivalent in TZS</label><input value={fmtTZS(toTZS(form.amountUSD, form.conversionRate))} disabled /></div>
+            <div className="field"><label>Equivalent in TZS</label><input value={fmtTZS(toTZS(form.amountUSD, Number(grant?.conversionRate) || 0.000413))} disabled /></div>
             <div className="field"><label>Status</label>
               <select value={form.status} onChange={e => setF("status", e.target.value)}>
                 {INVOICE_STATUSES.map(s => <option key={s}>{s}</option>)}
@@ -241,6 +239,9 @@ export default function Invoices({ profile, grantId, currentGrant }) {
             </div>
           </div>
           <div className="field"><label>Description</label><input value={form.description} onChange={e => setF("description", e.target.value)} placeholder="First tranche disbursement — 50% of total approved grant" /></div>
+          <div style={{ fontSize: 12, color: "#888", marginTop: -6, marginBottom: 10 }}>
+            TZS conversion uses this grant's rate (1 TZS = {(Number(grant?.conversionRate) || 0.000413).toFixed(7)} USD), set on the Grants page.
+          </div>
 
           <div className="panel-title" style={{ fontSize: 13, marginTop: 16 }}>Payment details</div>
           <div className="form-grid">
@@ -274,7 +275,7 @@ export default function Invoices({ profile, grantId, currentGrant }) {
                     <td style={{ fontSize: 12 }}>{inv.description}</td>
                     <td style={{ textAlign: "right" }}>
                       <div style={{ fontWeight: 600 }}>{fmtUSD(inv.amountUSD)}</div>
-                      <div style={{ fontSize: 11, color: "#888" }}>{fmtTZS(toTZS(inv.amountUSD, Number(inv.conversionRate) || Number(grant?.conversionRate) || 0.000413))}</div>
+                      <div style={{ fontSize: 11, color: "#888" }}>{fmtTZS(toTZS(inv.amountUSD, Number(grant?.conversionRate) || 0.000413))}</div>
                     </td>
                     <td>
                       {canEdit ? (

@@ -6,6 +6,7 @@ import {
 } from "../services/budgetService";
 import { listenSettings, updateSettings } from "../services/settingsService";
 import { listenPrograms } from "../services/programService";
+import { listenActivities } from "../services/activityService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { notifySubmission } from "../services/notificationService";
 import { uploadToDrive, preAuthorize } from "../services/driveService";
@@ -115,7 +116,7 @@ function getMonthName(dateStr) {
 function emptyEntry(profile) {
   return {
     title: "", description: "", category: "Food & refreshments",
-    programId: "", amount: 0, date: new Date().toISOString().slice(0, 10),
+    programId: "", activityId: "", amount: 0, date: new Date().toISOString().slice(0, 10),
     requestedBy: profile?.name || "", status: "draft", reviewerComment: "",
   };
 }
@@ -133,6 +134,7 @@ export default function Budget({ profile, grantId, currentGrant }) {
   const [entries,       setEntries]       = useState([]);
   const [settings,      setSettings]      = useState(null);
   const [programs,      setPrograms]      = useState([]);
+  const [activities,    setActivities]    = useState([]);
   const [toast,         setToast]         = useState("");
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
@@ -163,12 +165,13 @@ export default function Budget({ profile, grantId, currentGrant }) {
   useEffect(() => {
     const u1 = listenBudgetEntries(setEntries);
     const u3 = listenPrograms(setPrograms);
+    const u4 = listenActivities(setActivities);
     const u2 = listenSettings(s => {
       setSettings(s);
       setPersonnel(s?.personnel?.length ? s.personnel : DEFAULT_PERSONNEL);
       setCashFlow(s?.cashFlow || {});
     });
-    return () => { u1(); u2(); u3(); };
+    return () => { u1(); u2(); u3(); u4(); };
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
@@ -456,11 +459,22 @@ export default function Budget({ profile, grantId, currentGrant }) {
                 </div>
                 <div className="field">
                   <label>Program</label>
-                  <select value={form.programId || ""} onChange={e => setF("programId", e.target.value)}>
+                  <select value={form.programId || ""} onChange={e => { setF("programId", e.target.value); setF("activityId", ""); }}>
                     <option value="">(No program)</option>
                     {visiblePrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
+                {form.programId && (
+                  <div className="field">
+                    <label>Session</label>
+                    <select value={form.activityId || ""} onChange={e => setF("activityId", e.target.value)}>
+                      <option value="">(Whole program — not session-specific)</option>
+                      {activities.filter(a => a.programId === form.programId).sort((a, b) => (a.date || "").localeCompare(b.date || "")).map(a => (
+                        <option key={a.id} value={a.id}>{a.date} — {a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="field">
                   <label>Amount (TZS)</label>
                   <input type="number" min="0" value={form.amount} onChange={e => setF("amount", Number(e.target.value) || 0)} />
@@ -560,6 +574,23 @@ export default function Budget({ profile, grantId, currentGrant }) {
                   </div>
                 );
               })()}
+              {/* Session budget reference */}
+              {(() => {
+                const selProg = form.programId ? programs.find(p => p.id === form.programId) : null;
+                const selAct  = form.activityId ? activities.find(a => a.id === form.activityId) : null;
+                if (!selProg || !selAct) return null;
+                const items        = selProg.budgetItems || [];
+                const fallbackPlan = (selProg.plannedBudget || items.reduce((s,i) => s+(Number(i.unitCost)||0)*(Number(i.quantity)||1), 0)) / (selProg.plannedSessions || 1);
+                const sessionPlanned = selProg.requestedPerSessionTZS || fallbackPlan;
+                const sessionSpent   = approved.filter(e => e.activityId === selAct.id).reduce((s,e) => s+(e.amount||0), 0);
+                return (
+                  <div style={{ gridColumn: "1 / -1", background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 8, padding: "10px 14px", marginTop: 4, fontSize: 12 }}>
+                    Session <strong>{selAct.date} — {selAct.name}</strong>: planned <strong>TZS {fmt(sessionPlanned)}</strong>,
+                    already spent <strong style={{ color: "#c0392b" }}>TZS {fmt(sessionSpent)}</strong>,
+                    remaining <strong style={{ color: (sessionPlanned - sessionSpent) < 0 ? "#c0392b" : "#2d7a4f" }}>TZS {fmt(sessionPlanned - sessionSpent)}</strong>.
+                  </div>
+                );
+              })()}
               <div className="field">
                 <label>Description</label>
                 <textarea rows={2} value={form.description} onChange={e => setF("description", e.target.value)} />
@@ -618,7 +649,7 @@ export default function Budget({ profile, grantId, currentGrant }) {
             <div style={{ overflowX: "auto" }}>
               <table>
                 <thead>
-                  <tr><th>Title</th><th>Group</th><th>Category</th><th>Amount (TZS)</th><th>By</th><th>Date</th><th>Status</th><th>Receipt</th><th>Comment</th><th></th></tr>
+                  <tr><th>Title</th><th>Group</th><th>Category</th><th>Session</th><th>Amount (TZS)</th><th>By</th><th>Date</th><th>Status</th><th>Receipt</th><th>Comment</th><th></th></tr>
                 </thead>
                 <tbody>
                   {filteredEntries.map(entry => {
@@ -630,6 +661,7 @@ export default function Budget({ profile, grantId, currentGrant }) {
                           <td style={{ fontWeight: 500 }}>{entry.title}</td>
                           <td><span className="badge badge-gray" style={{ fontSize: 10 }}>{getGroup(entry.category)}</span></td>
                           <td style={{ fontSize: 12, color: "#555" }}>{entry.category}</td>
+                          <td style={{ fontSize: 11, color: "#888" }}>{entry.activityId ? (() => { const a = activities.find(x => x.id === entry.activityId); return a ? `${a.date} — ${a.name}` : "—"; })() : ""}</td>
                           <td style={{ fontWeight: 600 }}>{fmt(entry.amount)}</td>
                           <td style={{ fontSize: 12 }}>{entry.requestedBy || ""}</td>
                           <td style={{ fontSize: 12, color: "#888" }}>{entry.date || ""}</td>
@@ -658,7 +690,7 @@ export default function Budget({ profile, grantId, currentGrant }) {
                         </tr>
                         {reviewing && (
                           <tr>
-                            <td colSpan={10} style={{ background: "#fdf0ee", padding: "12px 16px" }}>
+                            <td colSpan={11} style={{ background: "#fdf0ee", padding: "12px 16px" }}>
                               <div style={{ fontWeight: 600, color: "#c0392b", marginBottom: 8, fontSize: 13 }}>Reason for rejection (optional)</div>
                               <textarea rows={2} value={reviewComment} onChange={e => setReviewComment(e.target.value)} placeholder="Explain why this entry is rejected…" style={{ width: "100%", fontSize: 13, padding: "6px 8px", border: "1px solid #ddd", borderRadius: 5 }} />
                               <div className="btn-row" style={{ marginTop: 8 }}>

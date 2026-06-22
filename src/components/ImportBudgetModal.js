@@ -52,6 +52,7 @@ export default function ImportBudgetModal({ profile, grantId, settings, conversi
           name: p.name, category: p.category, color: p.color,
           plannedSessions: p.plannedSessions, description: p.description,
           requestedBudgetUSD: p.requestedBudgetUSD, requestedBudgetTZS: p.requestedBudgetTZS,
+          requestedPerSessionUSD: p.requestedPerSessionUSD, requestedPerSessionTZS: p.requestedPerSessionTZS,
           exchangeRate: conversionRate, budgetItems: [], grantId: grantId || "",
         });
         await addAudit(profile, AUDIT_ACTIONS.IMPORT, "programs", { targetId: id, recordTitle: p.name, details: "Imported from budget template" });
@@ -114,7 +115,7 @@ export default function ImportBudgetModal({ profile, grantId, settings, conversi
             <div className="panel-title" style={{ fontSize: 13 }}>Programs ({parsed.programs.filter(p => p.include).length} of {parsed.programs.length})</div>
             <div style={{ overflowX: "auto", marginBottom: 18 }}>
               <table style={{ fontSize: 12 }}>
-                <thead><tr><th></th><th>Program</th><th>Category</th><th>Sessions/yr</th><th style={{ textAlign: "right" }}>Requested</th></tr></thead>
+                <thead><tr><th></th><th>Program</th><th>Category</th><th>Sessions/yr</th><th style={{ textAlign: "right" }}>Per session</th><th style={{ textAlign: "right" }}>Total requested</th></tr></thead>
                 <tbody>
                   {parsed.programs.map((p, i) => (
                     <tr key={i} style={{ opacity: p.include ? 1 : 0.4 }}>
@@ -122,6 +123,7 @@ export default function ImportBudgetModal({ profile, grantId, settings, conversi
                       <td style={{ fontWeight: 500 }}>{p.name}</td>
                       <td>{p.category}</td>
                       <td style={{ textAlign: "center" }}>{p.plannedSessions}</td>
+                      <td style={{ textAlign: "right" }}>{fmtUSD(p.requestedPerSessionUSD)}<div style={{ color: "#888" }}>{fmtTZS(p.requestedPerSessionTZS)}</div></td>
                       <td style={{ textAlign: "right" }}>{fmtUSD(p.requestedBudgetUSD)}<div style={{ color: "#888" }}>{fmtTZS(p.requestedBudgetTZS)}</div></td>
                     </tr>
                   ))}

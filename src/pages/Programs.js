@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { listenPrograms, addProgram, updateProgram, deleteProgram, submitProgram, DEFAULT_PROGRAMS, PROGRAM_CATEGORIES } from "../services/programService";
 import { listenActivities } from "../services/activityService";
+import { listenBudgetEntries } from "../services/budgetService";
 import { listenSettings } from "../services/settingsService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import RichTextEditor, { renderHtml } from "../components/RichTextEditor";
@@ -39,6 +40,7 @@ function computeTotal(items) {
 export default function Programs({ profile, grantId }) {
   const [programs,    setPrograms]    = useState([]);
   const [activities,  setActivities]  = useState([]);
+  const [budgetEntries, setBudgetEntries] = useState([]);
   const [settings,    setSettings]    = useState(null);
   const [showForm,    setShowForm]    = useState(false);
   const [editId,      setEditId]      = useState(null);
@@ -57,7 +59,8 @@ export default function Programs({ profile, grantId }) {
     const u1 = listenPrograms(setPrograms);
     const u2 = listenActivities(setActivities);
     const u3 = listenSettings(setSettings);
-    return () => { u1(); u2(); u3(); };
+    const u4 = listenBudgetEntries(setBudgetEntries);
+    return () => { u1(); u2(); u3(); u4(); };
   }, []);
 
   const rate = Number(settings?.grant?.conversionRate || 0.000438);
@@ -306,7 +309,9 @@ export default function Programs({ profile, grantId }) {
                     {p.description && <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }} dangerouslySetInnerHTML={{ __html: renderHtml(p.description) }} />}
                     {p.requestedBudgetUSD > 0 && !(p.budgetItems?.length > 0) && (
                       <div style={{ fontSize: 12, color: "#d97706", background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 5, padding: "4px 10px", marginBottom: 4, display: "inline-block" }}>
-                        Requested budget (from import): {fmtUSD(p.requestedBudgetUSD)} ({fmt(p.requestedBudgetTZS)} TZS) — add the budget line item below to confirm it.
+                        Requested budget (from import): {fmtUSD(p.requestedBudgetUSD)} ({fmt(p.requestedBudgetTZS)} TZS) total
+                        {p.requestedPerSessionTZS > 0 && ` — ${fmtUSD(p.requestedPerSessionUSD)} (${fmt(p.requestedPerSessionTZS)} TZS) per session`}
+                        . Add the budget line item below to confirm it.
                       </div>
                     )}
                     {p.rejectionComment && (
@@ -322,7 +327,7 @@ export default function Programs({ profile, grantId }) {
                     )}
                   </div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 12, flexWrap: "wrap" }}>
-                    {(p.budgetItems?.length > 0) && (
+                    {(p.budgetItems?.length > 0 || activities.some(a => a.programId === p.id)) && (
                       <button className="btn btn-sm" onClick={() => setExpanded(isExp ? null : p.id)}>
                         {isExp ? "Hide budget" : "View budget"}
                       </button>
@@ -410,6 +415,38 @@ export default function Programs({ profile, grantId }) {
                     </div>
                   </div>
                 )}
+
+                {/* Spending by session */}
+                {isExp && (() => {
+                  const sessions = activities.filter(a => a.programId === p.id).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+                  if (sessions.length === 0) return null;
+                  const fallbackPlan = (p.plannedBudget || computeTotal(p.budgetItems || [])) / (p.plannedSessions || 1);
+                  const sessionPlanned = p.requestedPerSessionTZS || fallbackPlan;
+                  return (
+                    <div style={{ marginTop: 16, borderTop: "1px solid #e8e8e4", paddingTop: 14 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px", color: "#555" }}>Spending by session</div>
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ fontSize: 12 }}>
+                          <thead><tr><th>Session</th><th style={{ textAlign: "right" }}>Planned (TZS)</th><th style={{ textAlign: "right" }}>Spent (TZS)</th><th style={{ textAlign: "right" }}>Remaining</th></tr></thead>
+                          <tbody>
+                            {sessions.map(a => {
+                              const spent = budgetEntries.filter(e => e.activityId === a.id && e.status === "approved").reduce((s, e) => s + (e.amount || 0), 0);
+                              const remaining = sessionPlanned - spent;
+                              return (
+                                <tr key={a.id}>
+                                  <td>{a.date} — {a.name}</td>
+                                  <td style={{ textAlign: "right" }}>{fmt(sessionPlanned)}</td>
+                                  <td style={{ textAlign: "right", fontWeight: 600 }}>{fmt(spent)}</td>
+                                  <td style={{ textAlign: "right", color: remaining < 0 ? "#c0392b" : "#2d7a4f" }}>{fmt(remaining)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

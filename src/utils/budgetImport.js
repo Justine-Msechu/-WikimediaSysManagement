@@ -86,6 +86,10 @@ export function parseBudgetWorkbook(arrayBuffer, conversionRate) {
     description:        p.description,
     requestedBudgetUSD: p.totalUSD,
     requestedBudgetTZS: Math.round(p.totalUSD / rate),
+    // Per-session planned amount, straight from the approved budget's cost/event —
+    // this is the figure session-level tracking should compare actual spend against.
+    requestedPerSessionUSD: p.costPerEventUSD,
+    requestedPerSessionTZS: Math.round(p.costPerEventUSD / rate),
     originalUSD:        p.originalUSD,
     include:            true,
   }));

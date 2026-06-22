@@ -43,6 +43,7 @@ function emptyInvoice(invoices, grant, paymentDetails) {
 
 function invoicePrintHtml(inv, orgName, grant, logoSrc) {
   const pd = inv.paymentDetails || {};
+  const rate = Number(inv.conversionRate) || Number(grant?.conversionRate) || 0.000413;
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <title>Invoice ${esc(inv.invoiceNumber)}</title>
   <style>
@@ -104,10 +105,10 @@ function invoicePrintHtml(inv, orgName, grant, logoSrc) {
   <h3>Disbursement requested</h3>
   <table>
     <tr><th>Description</th><th style="text-align:right">Amount (USD)</th><th style="text-align:right">Equivalent (TZS)</th></tr>
-    <tr><td>${esc(inv.description || "Disbursement request")}</td><td style="text-align:right">${fmtUSD(inv.amountUSD)}</td><td style="text-align:right">${fmtTZS(toTZS(inv.amountUSD, inv.conversionRate))}</td></tr>
-    <tr class="total-row"><td>Total amount requested</td><td style="text-align:right">${fmtUSD(inv.amountUSD)}</td><td style="text-align:right">${fmtTZS(toTZS(inv.amountUSD, inv.conversionRate))}</td></tr>
+    <tr><td>${esc(inv.description || "Disbursement request")}</td><td style="text-align:right">${fmtUSD(inv.amountUSD)}</td><td style="text-align:right">${fmtTZS(toTZS(inv.amountUSD, rate))}</td></tr>
+    <tr class="total-row"><td>Total amount requested</td><td style="text-align:right">${fmtUSD(inv.amountUSD)}</td><td style="text-align:right">${fmtTZS(toTZS(inv.amountUSD, rate))}</td></tr>
   </table>
-  <div style="font-size:11px;color:#888;margin-top:4px">Converted at a rate of 1 TZS = ${(Number(inv.conversionRate) || 0).toFixed(7)} USD.</div>
+  <div style="font-size:11px;color:#888;margin-top:4px">Converted at a rate of 1 TZS = ${rate.toFixed(7)} USD.</div>
 
   <h3>Payment instructions</h3>
   <table>
@@ -273,7 +274,7 @@ export default function Invoices({ profile, grantId, currentGrant }) {
                     <td style={{ fontSize: 12 }}>{inv.description}</td>
                     <td style={{ textAlign: "right" }}>
                       <div style={{ fontWeight: 600 }}>{fmtUSD(inv.amountUSD)}</div>
-                      <div style={{ fontSize: 11, color: "#888" }}>{fmtTZS(toTZS(inv.amountUSD, inv.conversionRate))}</div>
+                      <div style={{ fontSize: 11, color: "#888" }}>{fmtTZS(toTZS(inv.amountUSD, Number(inv.conversionRate) || Number(grant?.conversionRate) || 0.000413))}</div>
                     </td>
                     <td>
                       {canEdit ? (

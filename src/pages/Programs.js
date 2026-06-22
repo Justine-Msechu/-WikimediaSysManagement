@@ -37,7 +37,7 @@ function computeTotal(items) {
   return items.reduce((s, item) => s + (Number(item.unitCost) || 0) * (Number(item.quantity) || 1), 0);
 }
 
-export default function Programs({ profile, grantId }) {
+export default function Programs({ profile, grantId, currentGrant }) {
   const [programs,    setPrograms]    = useState([]);
   const [activities,  setActivities]  = useState([]);
   const [budgetEntries, setBudgetEntries] = useState([]);
@@ -63,7 +63,7 @@ export default function Programs({ profile, grantId }) {
     return () => { u1(); u2(); u3(); u4(); };
   }, []);
 
-  const rate = Number(settings?.grant?.conversionRate || 0.000438);
+  const rate = Number(currentGrant?.conversionRate || settings?.grant?.conversionRate || 0.000438);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));

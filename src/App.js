@@ -243,7 +243,7 @@ function AppShell() {
     switch (page) {
       case "dashboard":    return <Dashboard    key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} currentGrant={currentGrant} />;
       case "grant":        return role === "admin" ? <Grant profile={profile} currentGrantId={currentGrantId} onSelectGrant={setCurrentGrant} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} currentGrant={currentGrant} />;
-      case "programs":     return <Programs     key={currentGrantId} profile={profile} grantId={currentGrantId} />;
+      case "programs":     return <Programs     key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} />;
       case "activities":   return <Activities   key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} />;
       case "timeline":     return <Timeline     key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} />;
       case "budget":       return <Budget       key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} />;

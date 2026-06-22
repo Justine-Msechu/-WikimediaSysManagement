@@ -1,1 +1,29 @@
-{"indexes":[],"fieldOverrides":[]}
+{
+  "indexes": [
+    {
+      "collectionGroup": "programs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "grantId", "order": "ASCENDING" },
+        { "fieldPath": "name",    "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "activities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "grantId", "order": "ASCENDING" },
+        { "fieldPath": "date",    "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "budgetEntries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "grantId",    "order": "ASCENDING" },
+        { "fieldPath": "createdAt",  "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

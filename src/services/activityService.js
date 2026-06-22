@@ -2,7 +2,7 @@ import {
   addDocument, updateDocument, deleteDocument,
   listenCollection, getCollection, getDocument,
 } from "../firebase/firestore";
-import { orderBy, where } from "firebase/firestore";
+import { orderBy, where } from "../firebase/firestore";
 
 export async function getActivities() {
   return getCollection("activities", orderBy("date", "desc"));
@@ -26,6 +26,11 @@ export async function deleteActivity(id) {
 
 export function listenActivities(callback) {
   return listenCollection("activities", callback, orderBy("date", "desc"));
+}
+
+export function listenActivitiesByGrant(grantId, callback) {
+  // No orderBy — combining where(grantId) + orderBy(date) requires a composite index. Sort client-side.
+  return listenCollection("activities", callback, where("grantId", "==", grantId));
 }
 
 // Evidence sub-collection lives under /evidence with activityId field

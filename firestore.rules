@@ -44,7 +44,13 @@ service cloud.firestore {
       allow get:    if isAuth() && (request.auth.uid == uid || isAdmin());
       allow list:   if isAdmin();
       allow create: if isAdmin();
-      allow update: if isAdmin();
+      // Admins can update anything. Non-admins may update their own doc only if
+      // role, isActive, and email are unchanged (prevents self-escalation).
+      allow update: if isAdmin() ||
+        (isAuth() && request.auth.uid == uid &&
+         request.resource.data.role     == resource.data.role &&
+         request.resource.data.isActive == resource.data.isActive &&
+         request.resource.data.email    == resource.data.email);
       allow delete: if isAdmin();
     }
 
@@ -53,6 +59,15 @@ service cloud.firestore {
     match /settings/{docId} {
       allow read:   if isAnyStaff();
       allow write:  if isAdmin();
+    }
+
+    // ── /grants ────────────────────────────────────────────────────────────
+    // Multi-grant registry. All staff read; only admins create/edit/delete.
+    match /grants/{docId} {
+      allow read:   if isAnyStaff();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     // ── /metrics ───────────────────────────────────────────────────────────
@@ -89,15 +104,15 @@ service cloud.firestore {
     }
 
     // ── /participants ───────────────────────────────────────────────────────
-    // Public registration auto-writes here (create only, no auth).
-    // Field validation prevents spam: name must be a non-empty string and
-    // formId must be present so orphan documents can't be injected.
+    // Staff can create directly (e.g. manual entry or seed).
+    // Public registration auto-writes here too — field validation prevents spam.
     match /participants/{docId} {
       allow read:   if isAnyStaff();
-      allow create: if request.resource.data.name is string
-                    && request.resource.data.name.size() > 0
-                    && request.resource.data.name.size() <= 300
-                    && request.resource.data.formId is string;
+      allow create: if isCoordinator()
+                    || (request.resource.data.name is string
+                        && request.resource.data.name.size() > 0
+                        && request.resource.data.name.size() <= 300
+                        && request.resource.data.formId is string);
       allow update: if isCoordinator();
       allow delete: if isCoordinator();
     }
@@ -135,6 +150,17 @@ service cloud.firestore {
       allow create: if isFinance() || isCoordinator();
       allow update: if isFinance() || isCoordinator();
       allow delete: if isFinance();
+    }
+
+    // ── /invoices ──────────────────────────────────────────────────────────
+    // Disbursement requests / invoices to fiscal sponsors and donors.
+    // Money-movement records — restricted to Admin and Finance officer only,
+    // unlike most other collections which Coordinators can also touch.
+    match /invoices/{docId} {
+      allow read:   if isAdmin() || isFinance();
+      allow create: if isAdmin() || isFinance();
+      allow update: if isAdmin() || isFinance();
+      allow delete: if isAdmin() || isFinance();
     }
 
     // ── /risks ─────────────────────────────────────────────────────────────

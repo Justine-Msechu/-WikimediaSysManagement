@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { listenRisks, addRisk, updateRisk, deleteRisk, RISK_CATEGORIES, RISK_STATUSES } from "../services/riskService";
+import { listenRisks, listenRisksByGrant, addRisk, updateRisk, deleteRisk, RISK_CATEGORIES, RISK_STATUSES } from "../services/riskService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import RichTextEditor from "../components/RichTextEditor";
 
 const STATUS_BADGE = { open: "badge-red", mitigated: "badge-blue", closed: "badge-gray" };
 const HEAT_COLOR = (s) => s >= 20 ? "#c0392b" : s >= 12 ? "#d97706" : s >= 6 ? "#d97706" : "#2d7a4f";
@@ -9,7 +10,7 @@ function emptyRisk() {
   return { title: "", category: "Operational", likelihood: 3, impact: 3, status: "open", owner: "", response: "" };
 }
 
-export default function RiskRegister({ profile }) {
+export default function RiskRegister({ profile, grantId }) {
   const [risks,    setRisks]    = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editId,   setEditId]   = useState(null);
@@ -17,7 +18,9 @@ export default function RiskRegister({ profile }) {
   const [toast,    setToast]    = useState("");
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
 
-  useEffect(() => { return listenRisks(setRisks); }, []);
+  useEffect(() => {
+    return grantId ? listenRisksByGrant(grantId, setRisks) : listenRisks(setRisks);
+  }, [grantId]);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -27,7 +30,7 @@ export default function RiskRegister({ profile }) {
 
   const save = async () => {
     if (!form.title.trim()) { alert("Risk title is required."); return; }
-    const data = { ...form, score: form.likelihood * form.impact };
+    const data = { ...form, score: form.likelihood * form.impact, grantId: grantId || "" };
     if (!editId) {
       const id = await addRisk(data);
       await addAudit(profile, AUDIT_ACTIONS.CREATE, "risks", { targetId: id, recordTitle: form.title });
@@ -46,6 +49,8 @@ export default function RiskRegister({ profile }) {
     await addAudit(profile, AUDIT_ACTIONS.DELETE, "risks", { targetId: r.id, recordTitle: r.title });
     showToast("Risk deleted.");
   };
+
+  const sortedRisks = [...risks].sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
 
   // Heat map grid: likelihood 1-5 (y) x impact 1-5 (x)
   const heatMap = Array.from({ length: 5 }, (_, y) =>
@@ -81,7 +86,7 @@ export default function RiskRegister({ profile }) {
               </select>
             </div>
           </div>
-          <div className="field"><label>Response / mitigation plan</label><textarea rows={3} value={form.response} onChange={e => setF("response", e.target.value)} placeholder="What actions will be taken to reduce this risk?" /></div>
+          <div className="field"><label>Response / mitigation plan</label><RichTextEditor value={form.response} onChange={v => setF("response", v)} placeholder="What actions will be taken to reduce this risk?" rows={3} /></div>
           <div className="btn-row">
             <button className="btn btn-primary" onClick={save}>Save</button>
             <button className="btn" onClick={() => setShowForm(false)}>Cancel</button>
@@ -100,9 +105,15 @@ export default function RiskRegister({ profile }) {
               <React.Fragment key={ri}>
                 <div style={{ fontSize: 10, color: "#888", display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 4 }}>L{5-ri}</div>
                 {row.map(({ l, i, s, risks: cr }) => (
-                  <div key={i} style={{ background: HEAT_COLOR(s) + "33", border: `2px solid ${HEAT_COLOR(s)}`, borderRadius: 6, minHeight: 56, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 3 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: HEAT_COLOR(s) }}>{s}</div>
-                    {cr.map(r => <div key={r.id} style={{ fontSize: 9, background: HEAT_COLOR(s), color: "#fff", borderRadius: 3, padding: "1px 4px", marginTop: 2, maxWidth: 58, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</div>)}
+                  <div key={i} style={{ background: HEAT_COLOR(s) + "33", border: `2px solid ${HEAT_COLOR(s)}`, borderRadius: 6, height: 60, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", padding: "6px 3px 3px", boxSizing: "border-box" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: HEAT_COLOR(s), flexShrink: 0 }}>{s}</div>
+                    <div style={{ width: "100%", overflow: "hidden", display: "flex", flexDirection: "column", gap: 2, marginTop: 3 }}>
+                      {cr.map(r => (
+                        <div key={r.id} title={r.title} style={{ fontSize: 8, background: HEAT_COLOR(s), color: "#fff", borderRadius: 3, padding: "1px 3px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", width: "100%", boxSizing: "border-box" }}>
+                          {r.title}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </React.Fragment>
@@ -113,12 +124,12 @@ export default function RiskRegister({ profile }) {
 
       {/* Risk table */}
       <div className="panel" style={{ padding: 0 }}>
-        {risks.length === 0 ? <div className="empty">No risks logged yet.</div> : (
+        {sortedRisks.length === 0 ? <div className="empty">No risks logged yet.</div> : (
           <div style={{ overflowX: "auto" }}>
             <table>
               <thead><tr><th>Risk</th><th>Category</th><th>L</th><th>I</th><th>Score</th><th>Owner</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
-                {risks.map(r => (
+                {sortedRisks.map(r => (
                   <tr key={r.id}>
                     <td style={{ fontWeight: 500 }}>{r.title}</td>
                     <td style={{ fontSize: 12 }}>{r.category}</td>

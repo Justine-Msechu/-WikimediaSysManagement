@@ -195,7 +195,7 @@ export default function ImportPanel({
               onKeyDown={e => e.key === "Enter" && fetchWiki()}
             />
             <button className="btn btn-primary" onClick={fetchWiki} disabled={fetching}>
-              {fetching ? "Fetching…" : "Fetch →"}
+              {fetching ? "Fetching…" : "Fetch"}
             </button>
           </div>
 
@@ -288,7 +288,7 @@ export default function ImportPanel({
           <div style={{ fontSize: 12, color: "#666", marginBottom: 12, lineHeight: 1.6 }}>
             Export your participants from the Outreach Dashboard, then upload the CSV here.
             <br />
-            <strong>How to export from OD:</strong> Go to your campaign → Courses tab → click a course → scroll to Editors table → "Download CSV".
+            <strong>How to export from OD:</strong> Go to your campaign, Courses tab, click a course, scroll to Editors table, then "Download CSV".
             <br />
             Edit counts and article stats are imported automatically.
           </div>

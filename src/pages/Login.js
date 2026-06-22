@@ -36,7 +36,7 @@ export default function Login() {
         return;
       }
       if (profile.isActive === false) { setError("Your account is deactivated. Contact your administrator."); setBusy(false); return; }
-      await touchLastLogin(cred.user.uid);
+      try { await touchLastLogin(cred.user.uid); } catch (_) { /* non-fatal — non-admin users can't update their own doc */ }
       await addAudit({ ...profile, id: cred.user.uid }, AUDIT_ACTIONS.LOGIN, "auth", { details: "Signed in" });
     } catch (err) {
       const msg = {
@@ -102,7 +102,7 @@ export default function Login() {
               </label>
             )}
             <button type="submit" className="btn btn-primary" style={{ width: "100%", marginTop: 14 }} disabled={busy}>
-              {busy ? (mode === "login" ? "Signing in…" : "Sending…") : (mode === "login" ? "Sign in →" : "Send reset email →")}
+              {busy ? (mode === "login" ? "Signing in…" : "Sending…") : (mode === "login" ? "Sign in" : "Send reset email")}
             </button>
           </form>
         )}
@@ -116,13 +116,13 @@ export default function Login() {
           ) : (
             <button onClick={() => { setMode("login"); setError(""); }}
               style={{ background: "none", border: "none", color: "#4a9e6b", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
-              ← Back to sign in
+              Back to sign in
             </button>
           )}
         </div>
       </div>
       <div style={{ fontSize: 11, color: "#bbb", marginTop: 14, textAlign: "center" }}>
-        Wikimedians of Kilimanjaro · Open Knowledge Tanzania
+        Wikimedians of Kilimanjaro · Youth Technology
       </div>
     </div>
   );

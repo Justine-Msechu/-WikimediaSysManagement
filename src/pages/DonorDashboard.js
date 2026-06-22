@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { listenActivities } from "../services/activityService";
 import { listenParticipants } from "../services/participantService";
 import { listenSettings } from "../services/settingsService";
-import { listenMetrics, DEFAULT_METRICS } from "../services/metricsService";
+import { listenMetrics, listenMetricsByGrant, DEFAULT_METRICS } from "../services/metricsService";
 import { listenBudgetEntries } from "../services/budgetService";
 import { listenPrograms } from "../services/programService";
 
@@ -25,7 +25,7 @@ const METRIC_ROWS = [
   { key: "allOrganizers", label: "Organizers" },
 ];
 
-export default function DonorDashboard({ profile }) {
+export default function DonorDashboard({ profile, grantId, currentGrant }) {
   const [activities,    setActivities]    = useState([]);
   const [participants,  setParticipants]  = useState([]);
   const [settings,      setSettings]      = useState(null);
@@ -37,22 +37,26 @@ export default function DonorDashboard({ profile }) {
     const u1 = listenActivities(setActivities);
     const u2 = listenParticipants(setParticipants);
     const u3 = listenSettings(setSettings);
-    const u4 = listenMetrics(setMetrics);
+    const u4 = grantId ? listenMetricsByGrant(grantId, setMetrics) : listenMetrics(setMetrics);
     const u5 = listenBudgetEntries(setBudgetEntries);
     const u6 = listenPrograms(setPrograms);
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
-  }, []);
+  }, [grantId]);
 
-  const grant = settings?.grant || {};
+  const visibleActivities = grantId ? activities.filter(a => a.grantId === grantId) : activities;
+  const visibleEntries    = grantId ? budgetEntries.filter(e => e.grantId === grantId) : budgetEntries;
+  const visiblePrograms   = grantId ? programs.filter(p => p.grantId === grantId) : programs;
+
+  const grant = currentGrant || settings?.grant || {};
   const org   = settings?.org   || {};
   const totalBudgetTZS = grant.totalUSD ? Math.round(grant.totalUSD / (grant.conversionRate || 0.000413)) : 0;
-  const approvedSpend  = budgetEntries.filter(e => e.status === "approved").reduce((s, e) => s + (e.amount || 0), 0);
+  const approvedSpend  = visibleEntries.filter(e => e.status === "approved").reduce((s, e) => s + (e.amount || 0), 0);
 
-  const totalParticipants = activities.reduce((s, a) => s + (a.participants || 0), 0);
-  const totalWomen        = activities.reduce((s, a) => s + (a.women || 0), 0);
-  const totalNewEditors   = activities.reduce((s, a) => s + (a.newEditors || 0), 0);
-  const totalCreated      = activities.reduce((s, a) => s + (a.created || 0), 0);
-  const totalImproved     = activities.reduce((s, a) => s + (a.improved || 0), 0);
+  const totalParticipants = visibleActivities.reduce((s, a) => s + (a.participants || 0), 0);
+  const totalWomen        = visibleActivities.reduce((s, a) => s + (a.women || 0), 0);
+  const totalNewEditors   = visibleActivities.reduce((s, a) => s + (a.newEditors || 0), 0);
+  const totalCreated      = visibleActivities.reduce((s, a) => s + (a.created || 0), 0);
+  const totalImproved     = visibleActivities.reduce((s, a) => s + (a.improved || 0), 0);
 
   const womenPct = totalParticipants > 0 ? Math.round((totalWomen / totalParticipants) * 100) : 0;
 
@@ -66,7 +70,7 @@ export default function DonorDashboard({ profile }) {
       {/* Headline KPIs */}
       <div className="card-grid" style={{ marginBottom: 24 }}>
         {[
-          { label: "Activities",           value: activities.length,        color: "#1c2b1e" },
+          { label: "Activities",           value: visibleActivities.length,        color: "#1c2b1e" },
           { label: "Total participants",   value: fmt(totalParticipants),   color: "#2d7a4f" },
           { label: "Women participants",   value: `${fmt(totalWomen)} (${womenPct}%)`, color: "#9333ea" },
           { label: "New editors",          value: fmt(totalNewEditors),     color: "#2563eb" },
@@ -119,12 +123,12 @@ export default function DonorDashboard({ profile }) {
       </div>
 
       {/* Programs */}
-      {programs.length > 0 && (
+      {visiblePrograms.length > 0 && (
         <div className="panel" style={{ marginBottom: 20 }}>
           <div className="panel-title">Programs</div>
           <div className="card-grid">
-            {programs.map(p => {
-              const acts = activities.filter(a => a.programId === p.id);
+            {visiblePrograms.map(p => {
+              const acts = visibleActivities.filter(a => a.programId === p.id);
               return (
                 <div key={p.id} style={{ background: "#f9f9f7", borderRadius: 8, padding: 14, borderTop: `3px solid ${p.color || "#4a9e6b"}` }}>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>{p.name}</div>
@@ -141,7 +145,7 @@ export default function DonorDashboard({ profile }) {
       {/* Recent activities */}
       <div className="panel">
         <div className="panel-title">Recent activities</div>
-        {activities.slice(0, 10).map(a => (
+        {visibleActivities.slice(0, 10).map(a => (
           <div key={a.id} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "10px 0", borderBottom: "1px solid #f5f4f0" }}>
             <div style={{ minWidth: 90, fontSize: 11, color: "#888" }}>{a.date}</div>
             <div style={{ flex: 1 }}>
@@ -150,7 +154,7 @@ export default function DonorDashboard({ profile }) {
             </div>
           </div>
         ))}
-        {activities.length === 0 && <div className="empty">No activities yet.</div>}
+        {visibleActivities.length === 0 && <div className="empty">No activities yet.</div>}
       </div>
     </div>
   );

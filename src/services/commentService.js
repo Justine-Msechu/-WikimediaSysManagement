@@ -13,12 +13,12 @@ export async function addComment(docType, docId, { text, author, authorRole }) {
 }
 
 export function listenComments(docType, docId, callback) {
+  // No orderBy — multiple where() + orderBy() requires a composite index. Sort client-side.
   return listenCollection(
     "comments",
     callback,
     where("docType", "==", docType),
-    where("docId",   "==", docId),
-    orderBy("createdAt", "asc")
+    where("docId",   "==", docId)
   );
 }
 

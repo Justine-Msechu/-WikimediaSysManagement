@@ -16,7 +16,7 @@ function emptyParticipant(programId = "") {
   return { name: "", wikimediaUsername: "", email: "", phone: "", gender: "", region: "", isNew: false, programId, notes: "" };
 }
 
-export default function Participants({ profile }) {
+export default function Participants({ profile, grantId }) {
   const [participants, setParticipants] = useState([]);
   const [programs,   setPrograms]    = useState([]);
   const [programFilter, setProgramFilter] = useState("");
@@ -58,7 +58,7 @@ export default function Participants({ profile }) {
   const save = async () => {
     if (!form.name.trim()) { alert("Name is required."); return; }
     if (!editId) {
-      const id = await addParticipant(form);
+      const id = await addParticipant({ ...form, grantId: grantId || "" });
       await addAudit(profile, AUDIT_ACTIONS.CREATE, "participants", { targetId: id, recordTitle: form.name });
       showToast("Participant added.");
     } else {
@@ -105,7 +105,7 @@ export default function Participants({ profile }) {
       wikimediaUsername:r.username    || r.wikimediaUsername  || "",
       email: "", phone: "", gender: "", region: "", isNew: false, notes: "",
     }));
-    const existingEmails = participants.map(p => (p.email || "").toLowerCase()).filter(Boolean);
+    const existingEmails = visibleParticipants.map(p => (p.email || "").toLowerCase()).filter(Boolean);
     const added = await batchAddParticipants(normalized, existingEmails);
     await addAudit(profile, AUDIT_ACTIONS.IMPORT, "participants", { details: `WEP import: ${added} new participants added` });
     showToast(`${added} participants imported.`);
@@ -119,7 +119,7 @@ export default function Participants({ profile }) {
     const text = await file.text();
     const records = parseODCSV(text);
     if (!records.length) { alert("No valid participants found in CSV."); return; }
-    const existingEmails = participants.map(p => (p.email || "").toLowerCase()).filter(Boolean);
+    const existingEmails = visibleParticipants.map(p => (p.email || "").toLowerCase()).filter(Boolean);
     const added = await batchAddParticipants(records, existingEmails);
     await addAudit(profile, AUDIT_ACTIONS.IMPORT, "participants", { details: `CSV import: ${added} participants added` });
     showToast(`${added} participants imported from CSV.`);
@@ -129,15 +129,16 @@ export default function Participants({ profile }) {
 
   // CSV export
   const exportCSV = () => {
+    const meta   = `# Wikimedia Community Kilimanjaro — Participants Export — ${new Date().toLocaleDateString("en-GB")}`;
     const header = "Name,Wikipedia username,Email,Phone,Gender,Region,New editor,Notes";
-    const rows   = participants.map(p => [p.name, p.wikimediaUsername, p.email, p.phone, p.gender, p.region, p.isNew ? "Yes" : "No", p.notes].map(v => `"${(v || "").replace(/"/g, '""')}"`).join(","));
-    const csv    = [header, ...rows].join("\n");
+    const rows   = visibleParticipants.map(p => [p.name, p.wikimediaUsername, p.email, p.phone, p.gender, p.region, p.isNew ? "Yes" : "No", p.notes].map(v => `"${(v || "").replace(/"/g, '""')}"`).join(","));
+    const csv    = [meta, header, ...rows].join("\n");
     const blob   = new Blob([csv], { type: "text/csv" });
     const url    = URL.createObjectURL(blob);
     const a      = document.createElement("a");
     a.href = url; a.download = "participants.csv"; a.click();
     URL.revokeObjectURL(url);
-    addAudit(profile, AUDIT_ACTIONS.EXPORT, "participants", { details: `${participants.length} participants exported` });
+    addAudit(profile, AUDIT_ACTIONS.EXPORT, "participants", { details: `${visibleParticipants.length} participants exported` });
   };
 
   const fetchEditCount = async (username) => {
@@ -161,7 +162,7 @@ export default function Participants({ profile }) {
   };
 
   const fetchAllEditCounts = async () => {
-    const withUsername = participants.filter(p => p.wikimediaUsername);
+    const withUsername = visibleParticipants.filter(p => p.wikimediaUsername);
     if (!withUsername.length) { alert("No participants have a Wikipedia username."); return; }
     // Batch up to 50 at a time using the ususers multi-value API
     const BATCH = 50;
@@ -241,51 +242,56 @@ export default function Participants({ profile }) {
     return `https://wa.me/${digits}?text=${msg}`;
   };
 
-  // For each participant: resolved programId using every available source
-  const getProgram = (p) => {
-    if (p.programId) return p.programId;
-    // form lookup via registeredViaForm / formId
-    const formMap = {};
-    forms.forEach(f => { if (f.id && f.programId) formMap[f.id] = f.programId; });
-    if (p.registeredViaForm && formMap[p.registeredViaForm]) return formMap[p.registeredViaForm];
-    if (p.formId && formMap[p.formId]) return formMap[p.formId];
-    // registration lookup via email / name
-    const byEmail = {};
-    const byName  = {};
-    allRegs.forEach(r => {
-      const pid = formMap[r.formId];
-      if (!pid) return;
-      if (r.email) byEmail[r.email.toLowerCase().trim()] = pid;
-      if (r.name)  byName[r.name.toLowerCase().trim()]   = pid;
-    });
-    if (p.email && byEmail[p.email.toLowerCase().trim()]) return byEmail[p.email.toLowerCase().trim()];
-    if (p.name  && byName[p.name.toLowerCase().trim()])  return byName[p.name.toLowerCase().trim()];
-    return "";
-  };
+  const visiblePrograms = grantId ? programs.filter(p => p.grantId === grantId) : programs;
 
-  const filtered = participants.filter(p => {
-    if (programFilter && getProgram(p) !== programFilter) return false;
-    if (search && ![p.name, p.wikimediaUsername, p.email, p.region].join(" ").toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  // Scope participants to the active grant — direct grantId match first, fall back to programId chain
+  const grantProgramIds = grantId ? new Set(visiblePrograms.map(p => p.id)) : null;
+  const visibleParticipants = grantId
+    ? participants.filter(p => p.grantId === grantId || grantProgramIds.has(p.programId))
+    : participants;
+
+  // When a program is selected: pull directly from registrations of forms linked to that program
+  // When "All programs": use the general participants registry
+  const programFormIds = programFilter
+    ? forms.filter(f => f.programId === programFilter).map(f => f.id)
+    : [];
+
+  const programRegistrations = programFilter
+    ? allRegs.filter(r => programFormIds.includes(r.formId))
+    : [];
+
+  // What to display in the table
+  const useRegistrations = programFilter && programFormIds.length > 0;
+
+  const filtered = useRegistrations
+    ? programRegistrations.filter(r =>
+        !search || [r.name, r.wikimediaUsername, r.email].join(" ").toLowerCase().includes(search.toLowerCase())
+      )
+    : visibleParticipants.filter(p => {
+        if (programFilter) {
+          if ((p.programId || "") !== programFilter) return false;
+        }
+        if (search && ![p.name, p.wikimediaUsername, p.email, p.region].join(" ").toLowerCase().includes(search.toLowerCase())) return false;
+        return true;
+      });
 
   const assignProgram = async (p, newProgramId) => {
     await updateParticipant(p.id, { programId: newProgramId });
     showToast(`Program updated for ${p.name}.`);
   };
 
-  // Sync: write the resolved programId back to Firestore for participants that lack it
   const syncProgramsFromForms = async () => {
-    const toFix = participants.filter(p => !p.programId && getProgram(p));
-    if (!toFix.length) { showToast("Nothing to sync — check that registration forms are linked to a program."); return; }
-    showToast(`Syncing ${toFix.length} participants…`);
-    for (const p of toFix) {
-      await updateParticipant(p.id, { programId: getProgram(p) });
+    let updated = 0;
+    for (const p of visibleParticipants) {
+      if (p.programId) continue;
+      const reg = allRegs.find(r => r.formId === p.formId || (p.email && r.email && r.email.toLowerCase() === p.email.toLowerCase()));
+      if (!reg) continue;
+      const form_ = forms.find(f => f.id === reg.formId);
+      if (!form_?.programId) continue;
+      await updateParticipant(p.id, { programId: form_.programId });
+      updated++;
     }
-    await addAudit(profile, AUDIT_ACTIONS.UPDATE, "participants", {
-      details: `Synced programId for ${toFix.length} participants`,
-    });
-    showToast(`Done — ${toFix.length} participant(s) updated.`);
+    showToast(updated > 0 ? `${updated} participants updated.` : "No participants needed updating.");
   };
 
   const printAttendance = () => {
@@ -294,8 +300,13 @@ export default function Participants({ profile }) {
     const orgName = esc(settings?.org?.name || "Wikimedians of Kilimanjaro");
     const progName = esc(prog?.name || "");
     const logoUrl = window.location.origin + logo;
-    const MIN_ROWS = Math.max(30, filtered.length);
-    const rows = [...filtered];
+    // Get date from the linked registration form (programs don't store a date)
+    const linkedForms = forms.filter(f => f.programId === programFilter);
+    const eventDate = linkedForms.map(f => f.date).filter(Boolean).join(", ");
+    // Use registrations directly if available; fall back to filtered participants
+    const printRows = useRegistrations ? programRegistrations : filtered;
+    const MIN_ROWS = Math.max(30, printRows.length);
+    const rows = [...printRows];
     while (rows.length < MIN_ROWS) rows.push(null);
     const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>Participants List — ${progName}</title>
@@ -333,7 +344,7 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
   <table class="meta">
     <tr><td class="label">User Group</td><td class="val">${orgName}</td></tr>
     <tr><td class="label">Event</td><td class="val">${progName}</td></tr>
-    <tr><td class="label">Date</td><td class="val">${prog?.date ? esc(prog.date) : ""}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td><td class="label" style="width:80px">Currency</td><td class="val" style="width:60px">TZS</td></tr>
+    <tr><td class="label">Date</td><td class="val">${esc(eventDate)}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td><td class="label" style="width:80px">Currency</td><td class="val" style="width:60px">TZS</td></tr>
     <tr><td class="label">Type of expense</td><td class="val" colspan="3">${esc(expenseType)}</td></tr>
     <tr class="total-row"><td colspan="2"></td><td style="width:80px">Total</td><td style="width:60px"></td></tr>
   </table>
@@ -374,10 +385,10 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <select value={programFilter} onChange={e => setProgramFilter(e.target.value)} style={{ fontSize: 13, minWidth: 180 }}>
           <option value="">All programs</option>
-          {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          {visiblePrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search participants…" style={{ flex: 1, minWidth: 160, fontSize: 13 }} />
-        <span style={{ fontSize: 12, color: "#888" }}>{filtered.length} / {participants.length}</span>
+        <span style={{ fontSize: 12, color: "#888" }}>{filtered.length} / {visibleParticipants.length}</span>
         <button className="btn btn-sm" onClick={fetchAllEditCounts}>Fetch edit counts</button>
         {canEdit && <>
           {programFilter && <>
@@ -397,7 +408,7 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
       {Object.keys(wikiStats).length > 0 && (() => {
         const fetched      = Object.entries(wikiStats).filter(([, v]) => typeof v === "number");
         const totalEditors = fetched.length;
-        const newEditors   = participants.filter(p => p.isNew && p.wikimediaUsername && typeof wikiStats[p.wikimediaUsername] === "number").length;
+        const newEditors   = visibleParticipants.filter(p => p.isNew && p.wikimediaUsername && typeof wikiStats[p.wikimediaUsername] === "number").length;
         const totalEdits   = fetched.reduce((s, [, v]) => s + v, 0);
         return (
           <div className="panel" style={{ marginBottom: 16, background: "#f0f8f3", border: "1px solid #b7e0c8" }}>
@@ -410,7 +421,7 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
             </div>
             <div style={{ fontSize: 12, color: "#555", marginTop: 10 }}>
               Use these numbers to update your targets and results in the <strong>Metrics</strong> page.
-              Total participants in registry: <strong>{participants.length}</strong>.
+              Total participants in registry: <strong>{visibleParticipants.length}</strong>.
             </div>
           </div>
         );
@@ -487,7 +498,7 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
           <div className="panel-title">{editId ? "Edit participant" : "Add participant"}</div>
           <div className="form-grid">
             <div className="field"><label>Full name <span className="req">★</span></label><input value={form.name} onChange={e => setF("name", e.target.value)} placeholder="Jane Doe" /></div>
-            <div className="field"><label>Wikipedia username</label><input value={form.wikimediaUsername} onChange={e => setF("wikimediaUsername", e.target.value)} placeholder="JaneDoe" /></div>
+            <div className="field"><label>Wikipedia username</label><input value={form.wikimediaUsername} onChange={e => { const val = e.target.value; setForm(f => ({ ...f, wikimediaUsername: val })); }} placeholder="Jane Doe" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} /></div>
             <div className="field"><label>Email</label><input type="email" value={form.email} onChange={e => setF("email", e.target.value)} placeholder="jane@example.com" /></div>
             <div className="field"><label>Phone</label><input value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="+255 …" /></div>
             <div className="field"><label>Gender</label>
@@ -506,7 +517,7 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
           <div className="field"><label>Program</label>
             <select value={form.programId || ""} onChange={e => setF("programId", e.target.value)}>
               <option value="">(None / unassigned)</option>
-              {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {visiblePrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
@@ -521,77 +532,108 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
         </div>
       )}
 
-      {programFilter && filtered.length === 0 && participants.length > 0 && (
-        <div className="panel" style={{ marginBottom: 12, background: "#fffdf0", border: "1.5px solid #f0c060", fontSize: 13, color: "#92600a" }}>
-          No participants are linked to this program yet.
-          Select <strong>"All programs"</strong> to see all participants, then use the <strong>Program column dropdown</strong> on each row to assign them here.
-        </div>
-      )}
 
       <div className="panel" style={{ padding: 0 }}>
-        {filtered.length === 0 ? <div className="empty">{participants.length === 0 ? "No participants yet. Add manually, import from WEP, or share the registration form." : "No participants match your search."}</div> : (
+        {filtered.length === 0
+          ? <div className="empty">
+              {useRegistrations
+                ? `No registrations found for this program. Make sure registration forms are linked to this program and participants have registered.`
+                : visibleParticipants.length === 0
+                  ? "No participants yet. Add manually or share the registration form."
+                  : "No participants match your search."}
+            </div>
+          : (
           <div style={{ overflowX: "auto" }}>
-            <table>
-              <thead><tr><th>Name</th><th>Program</th><th>Wikipedia username</th><th>Edits</th><th>Email</th><th>Phone</th><th>Gender</th><th>New editor</th><th>Actions</th></tr></thead>
-              <tbody>
-                {filtered.map(p => {
-                  const stat = p.wikimediaUsername ? wikiStats[p.wikimediaUsername] : undefined;
-                  const waLink = whatsappLink(p.phone, p.name);
-                  return (
-                    <tr key={p.id}>
-                      <td style={{ fontWeight: 500 }}>{p.name}</td>
-                      <td style={{ fontSize: 11 }}>
-                        {canEdit ? (
-                          <select
-                            value={p.programId || ""}
-                            onChange={e => assignProgram(p, e.target.value)}
-                            style={{ fontSize: 11, maxWidth: 140, border: p.programId ? "1px solid #ccc" : "1.5px solid #f0c060", borderRadius: 4, background: p.programId ? "#fff" : "#fffdf0" }}
-                          >
-                            <option value="">— assign —</option>
-                            {programs.map(pr => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
-                          </select>
-                        ) : (
-                          <span style={{ color: "#888" }}>{programs.find(pr => pr.id === p.programId)?.name || ""}</span>
-                        )}
+            {useRegistrations
+              /* ── Program view: rows come from registrations collection ── */
+              ? (
+              <table>
+                <thead><tr><th>Name</th><th>Wikipedia username</th><th>Email</th><th>Phone</th><th>New editor</th><th>Attendance</th><th>Actions</th></tr></thead>
+                <tbody>
+                  {filtered.map((r, i) => (
+                    <tr key={r.id || i}>
+                      <td style={{ fontWeight: 500 }}>{r.name}</td>
+                      <td>
+                        {r.wikimediaUsername
+                          ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(r.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{r.wikimediaUsername}</a>
+                          : <span style={{ color: "#bbb", fontSize: 11 }}>—</span>}
+                      </td>
+                      <td style={{ fontSize: 12 }}>{r.email || ""}</td>
+                      <td style={{ fontSize: 12 }}>{r.phone || ""}</td>
+                      <td>{r.isNew ? <span className="badge badge-green">New</span> : ""}</td>
+                      <td>
+                        <span className={`badge ${r.attendance === "present" ? "badge-green" : r.attendance === "absent" ? "badge-red" : "badge-gray"}`} style={{ fontSize: 10 }}>
+                          {r.attendance || "not marked"}
+                        </span>
                       </td>
                       <td>
-                        {p.wikimediaUsername
-                          ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(p.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{p.wikimediaUsername}</a>
-                          : ""}
-                      </td>
-                      <td style={{ fontSize: 12, textAlign: "right", whiteSpace: "nowrap" }}>
-                        {p.wikimediaUsername && (
-                          stat === undefined
-                            ? <button className="btn btn-sm" style={{ fontSize: 10, padding: "2px 6px" }} onClick={() => fetchEditCount(p.wikimediaUsername)}>Fetch</button>
-                            : stat === "loading"
-                              ? <span style={{ color: "#888" }}>…</span>
-                              : typeof stat === "number"
-                                ? <span style={{ fontWeight: 600, color: stat > 0 ? "#2d7a4f" : "#888" }}>{stat.toLocaleString()}</span>
-                                : <span style={{ color: "#c0392b", fontSize: 11 }}>{stat}</span>
-                        )}
-                      </td>
-                      <td style={{ fontSize: 12, color: "#555" }}>{p.email || ""}</td>
-                      <td style={{ fontSize: 12, whiteSpace: "nowrap" }}>
-                        {p.phone || ""}
-                        {waLink && <a href={waLink} target="_blank" rel="noreferrer" title="Open WhatsApp chat" style={{ marginLeft: 6, fontSize: 14, textDecoration: "none" }}>💬</a>}
-                      </td>
-                      <td style={{ fontSize: 12 }}>{p.gender || ""}</td>
-                      <td style={{ fontSize: 12 }}>{p.region || ""}</td>
-                      <td>{p.isNew ? <span className="badge badge-green">New</span> : ""}</td>
-                      <td>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <button className="btn btn-sm" title="Generate participation certificate" onClick={() => printCertificate(p)}>Cert</button>
-                          {canEdit && <>
-                            <button className="btn btn-sm" onClick={() => openEdit(p)}>Edit</button>
-                            <button className="btn btn-sm btn-danger" onClick={() => del(p)}>✕</button>
-                          </>}
-                        </div>
+                        <button className="btn btn-sm" onClick={() => printCertificate(r)}>Cert</button>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+              )
+              /* ── All-programs view: rows come from participants collection ── */
+              : (
+              <table>
+                <thead><tr><th>Name</th><th>Program</th><th>Wikipedia username</th><th>Edits</th><th>Email</th><th>Phone</th><th>Gender</th><th>New editor</th><th>Actions</th></tr></thead>
+                <tbody>
+                  {filtered.map(p => {
+                    const stat = p.wikimediaUsername ? wikiStats[p.wikimediaUsername] : undefined;
+                    const waLink = whatsappLink(p.phone, p.name);
+                    return (
+                      <tr key={p.id}>
+                        <td style={{ fontWeight: 500 }}>{p.name}</td>
+                        <td style={{ fontSize: 11 }}>
+                          {canEdit ? (
+                            <select value={p.programId || ""} onChange={e => assignProgram(p, e.target.value)}
+                              style={{ fontSize: 11, maxWidth: 140, border: p.programId ? "1px solid #ccc" : "1.5px solid #f0c060", borderRadius: 4, background: p.programId ? "#fff" : "#fffdf0" }}>
+                              <option value="">— assign —</option>
+                              {visiblePrograms.map(pr => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
+                            </select>
+                          ) : (
+                            <span style={{ color: "#888" }}>{programs.find(pr => pr.id === p.programId)?.name || ""}</span>
+                          )}
+                        </td>
+                        <td>
+                          {p.wikimediaUsername
+                            ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(p.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{p.wikimediaUsername}</a>
+                            : ""}
+                        </td>
+                        <td style={{ fontSize: 12, textAlign: "right", whiteSpace: "nowrap" }}>
+                          {p.wikimediaUsername && (
+                            stat === undefined
+                              ? <button className="btn btn-sm" style={{ fontSize: 10, padding: "2px 6px" }} onClick={() => fetchEditCount(p.wikimediaUsername)}>Fetch</button>
+                              : stat === "loading"
+                                ? <span style={{ color: "#888" }}>…</span>
+                                : typeof stat === "number"
+                                  ? <span style={{ fontWeight: 600, color: stat > 0 ? "#2d7a4f" : "#888" }}>{stat.toLocaleString()}</span>
+                                  : <span style={{ color: "#c0392b", fontSize: 11 }}>{stat}</span>
+                          )}
+                        </td>
+                        <td style={{ fontSize: 12, color: "#555" }}>{p.email || ""}</td>
+                        <td style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+                          {p.phone || ""}
+                          {waLink && <a href={waLink} target="_blank" rel="noreferrer" title="Open WhatsApp chat" style={{ marginLeft: 6, fontSize: 14, textDecoration: "none" }}>💬</a>}
+                        </td>
+                        <td style={{ fontSize: 12 }}>{p.gender || ""}</td>
+                        <td>{p.isNew ? <span className="badge badge-green">New</span> : ""}</td>
+                        <td>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button className="btn btn-sm" onClick={() => printCertificate(p)}>Cert</button>
+                            {canEdit && <>
+                              <button className="btn btn-sm" onClick={() => openEdit(p)}>Edit</button>
+                              <button className="btn btn-sm btn-danger" onClick={() => del(p)}>✕</button>
+                            </>}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              )}
           </div>
         )}
       </div>

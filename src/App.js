@@ -4,6 +4,9 @@ import { logout } from "./firebase/auth";
 import { addAudit, AUDIT_ACTIONS } from "./services/auditService";
 import { ROLE_LABELS, ROLE_COLORS } from "./services/userService";
 import { listenNotifications, markAllRead } from "./services/notificationService";
+import { listenGrants } from "./services/grantService";
+import OnboardingModal from "./components/OnboardingModal";
+import BackToTop      from "./components/BackToTop";
 
 import Login         from "./pages/Login";
 import Dashboard     from "./pages/Dashboard";
@@ -13,6 +16,7 @@ import Activities    from "./pages/Activities";
 import ActivityDetail from "./pages/ActivityDetail";
 import Timeline      from "./pages/Timeline";
 import Budget        from "./pages/Budget";
+import Invoices      from "./pages/Invoices";
 import Metrics       from "./pages/Metrics";
 import Participants  from "./pages/Participants";
 import RegistrationForms from "./pages/RegistrationForms";
@@ -28,6 +32,7 @@ import Settings      from "./pages/Settings";
 import MyTasks       from "./pages/MyTasks";
 import Announcements from "./pages/Announcements";
 import Deadlines     from "./pages/Deadlines";
+import Help          from "./pages/Help";
 
 import logo from "./assets/logo.png";
 import "./App.css";
@@ -37,7 +42,7 @@ const NAV_ITEMS = {
   dashboard:    { label: "Dashboard",    icon: "⊞", roles: null },
   announcements:{ label: "Announcements",icon: "📢", roles: null },
   deadlines:    { label: "Deadlines",    icon: "⏰", roles: null },
-  grant:        { label: "Grant",        icon: "◇", roles: null },
+  grant:        { label: "Grant",        icon: "◇", roles: ["admin"] },
   programs:     { label: "Programs",     icon: "◈", roles: null },
   timeline:     { label: "Timeline",     icon: "◷", roles: null },
   metrics:      { label: "Metrics",      icon: "◑", roles: null },
@@ -46,6 +51,7 @@ const NAV_ITEMS = {
   volunteers:   { label: "Volunteers",   icon: "◎", roles: ["admin", "coordinator"] },
   register:     { label: "Reg. forms",   icon: "◫", roles: ["admin", "coordinator"] },
   budget:       { label: "Budget",       icon: "◎", roles: null },
+  invoices:     { label: "Invoices",     icon: "▤", roles: ["admin", "finance_officer"] },
   review:       { label: "Review",       icon: "✓", roles: null },
   report:       { label: "Final report", icon: "▤", roles: null },
   donor:        { label: "Donor report", icon: "◌", roles: ["admin", "finance_officer"] },
@@ -54,6 +60,7 @@ const NAV_ITEMS = {
   users:        { label: "Users",        icon: "◯", roles: ["admin"] },
   settings:     { label: "Settings",     icon: "⚙", roles: null },
   mytasks:      { label: "My tasks",     icon: "✓", roles: ["volunteer"] },
+  help:         { label: "Help & guide", icon: "?", roles: null },
 };
 
 // Grouped modules for the sidebar
@@ -61,13 +68,15 @@ const NAV_GROUPS = [
   { label: "Overview",         ids: ["dashboard", "announcements", "deadlines"] },
   { label: "Grant & planning", ids: ["grant", "programs", "timeline", "metrics"] },
   { label: "Activities",       ids: ["activities", "participants", "volunteers", "register"] },
-  { label: "Finance",          ids: ["budget", "review"] },
+  { label: "Finance",          ids: ["budget", "invoices", "review"] },
   { label: "Reports",          ids: ["report", "donor", "risks"] },
   { label: "Admin",            ids: ["audit", "users", "settings"] },
+  { label: "Help",             ids: ["help"] },
 ];
 
 const VOLUNTEER_GROUPS = [
   { label: "My portal", ids: ["mytasks", "announcements", "deadlines"] },
+  { label: "Help",      ids: ["help"] },
 ];
 
 function getPublicFormId() {
@@ -84,15 +93,36 @@ function AppShell() {
   const [reviewPrograms,  setReviewPrograms]  = React.useState([]);
   const [notifications,   setNotifications]   = React.useState([]);
   const [showNotifPanel,  setShowNotifPanel]  = React.useState(false);
+  const [grants,          setGrants]          = React.useState([]);
+  const [currentGrantId,  setCurrentGrantIdState] = React.useState(
+    () => localStorage.getItem("wkgsf_currentGrantId") || ""
+  );
+
+  const setCurrentGrant = (id) => {
+    setCurrentGrantIdState(id);
+    localStorage.setItem("wkgsf_currentGrantId", id);
+  };
+
+  const onboardingKey = profile ? `wkgsf_onboarded_${profile.id}` : null;
+  const [showOnboarding, setShowOnboarding] = React.useState(
+    () => onboardingKey ? !localStorage.getItem(onboardingKey) : false
+  );
+  const dismissOnboarding = () => {
+    if (onboardingKey) localStorage.setItem(onboardingKey, "1");
+    setShowOnboarding(false);
+  };
 
   React.useEffect(() => {
     if (!profile || profile.role === "volunteer") return;
     const { listenBudgetEntries } = require("./services/budgetService");
     const { listenPrograms }      = require("./services/programService");
+    const { purgeOrphanedData }   = require("./services/grantService");
     const u1 = listenBudgetEntries(setBudgetEntries);
     const u2 = listenPrograms(setReviewPrograms);
     const u3 = listenNotifications(profile.role, profile.name || "", setNotifications);
-    return () => { u1(); u2(); u3(); };
+    const u4 = listenGrants(setGrants);
+    purgeOrphanedData().catch(() => {});
+    return () => { u1(); u2(); u3(); u4(); };
   }, [profile?.role, profile?.name]);
 
   const publicFormId = getPublicFormId();
@@ -180,32 +210,59 @@ function AppShell() {
     if (isVolunteer) {
       if (page === "announcements") return <Announcements profile={profile} />;
       if (page === "deadlines")     return <Deadlines     profile={profile} />;
+      if (page === "help")          return <Help          profile={profile} />;
       return <MyTasks profile={profile} />;
     }
     if (selectedActivityId) {
       return <ActivityDetail activityId={selectedActivityId} profile={profile} goPage={goPage} />;
     }
+
+    // Auto-select first grant if none selected or if saved ID no longer exists
+    const currentGrant = grants.find(g => g.id === currentGrantId) || null;
+    if (grants.length > 0 && !currentGrant) {
+      setCurrentGrant(grants[0].id);
+    }
+
+    // Guard: data pages require a grant to be selected
+    const DATA_PAGES = ["dashboard","programs","activities","timeline","budget","invoices","review","metrics","participants","risks","donor","report"];
+    if (!currentGrant && DATA_PAGES.includes(page)) {
+      return (
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"60vh", gap:16, textAlign:"center", padding:24 }}>
+          <div style={{ fontSize:52 }}>🗂️</div>
+          <div style={{ fontSize:22, fontWeight:700, color:"#1c2b1e" }}>No grant selected</div>
+          <div style={{ fontSize:14, color:"#666", maxWidth:340 }}>
+            {grants.length === 0
+              ? "No grants have been created yet. Create your first grant to get started."
+              : "Select a grant from the dropdown in the sidebar to view its data."}
+          </div>
+          {role === "admin" && <button className="btn btn-primary" onClick={() => goPage("grant")}>Go to Grants</button>}
+        </div>
+      );
+    }
+
     switch (page) {
-      case "dashboard":    return <Dashboard    profile={profile} goPage={goPage} />;
-      case "grant":        return <Grant        profile={profile} />;
-      case "programs":     return <Programs     profile={profile} />;
-      case "activities":   return <Activities   profile={profile} goPage={goPage} />;
-      case "timeline":     return <Timeline     profile={profile} goPage={goPage} />;
-      case "budget":       return <Budget       profile={profile} />;
-      case "review":       return <Review       profile={profile} goPage={goPage} />;
-      case "metrics":      return <Metrics      profile={profile} />;
-      case "participants": return <Participants profile={profile} />;
-      case "risks":        return <RiskRegister profile={profile} />;
-      case "donor":        return <DonorDashboard profile={profile} />;
-      case "report":       return <FinalReport  profile={profile} />;
-      case "audit":        return role === "admin" ? <AuditLog profile={profile} /> : <Dashboard profile={profile} goPage={goPage} />;
-      case "users":        return role === "admin" ? <Users    profile={profile} /> : <Dashboard profile={profile} goPage={goPage} />;
+      case "dashboard":    return <Dashboard    key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} currentGrant={currentGrant} />;
+      case "grant":        return role === "admin" ? <Grant profile={profile} currentGrantId={currentGrantId} onSelectGrant={setCurrentGrant} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} currentGrant={currentGrant} />;
+      case "programs":     return <Programs     key={currentGrantId} profile={profile} grantId={currentGrantId} />;
+      case "activities":   return <Activities   key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} />;
+      case "timeline":     return <Timeline     key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} />;
+      case "budget":       return <Budget       key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} />;
+      case "invoices":     return ["admin","finance_officer"].includes(role) ? <Invoices key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} currentGrant={currentGrant} />;
+      case "review":       return <Review       key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} />;
+      case "metrics":      return <Metrics      key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} />;
+      case "participants": return <Participants key={currentGrantId} profile={profile} grantId={currentGrantId} />;
+      case "risks":        return <RiskRegister key={currentGrantId} profile={profile} grantId={currentGrantId} />;
+      case "donor":        return <DonorDashboard key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} />;
+      case "report":       return <FinalReport  key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} />;
+      case "audit":        return role === "admin" ? <AuditLog profile={profile} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
+      case "users":        return role === "admin" ? <Users    profile={profile} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
       case "volunteers":    return <Volunteers         profile={profile} />;
       case "register":      return <RegistrationForms profile={profile} />;
       case "announcements": return <Announcements     profile={profile} />;
       case "deadlines":     return <Deadlines         profile={profile} />;
-      case "settings":      return <Settings          profile={profile} />;
-      default:             return <Dashboard    profile={profile} goPage={goPage} />;
+      case "settings":      return <Settings          profile={profile} goPage={goPage} />;
+      case "help":          return <Help              profile={profile} />;
+      default:             return <Dashboard    key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
     }
   };
 
@@ -233,6 +290,22 @@ function AppShell() {
         <div className="sidebar-brand">
           <img src={logo} alt="Wikimedia Community Kilimanjaro" className="sidebar-logo" />
         </div>
+
+        {!isVolunteer && (
+          <div style={{ padding: "0 12px 10px" }}>
+            <div style={{ fontSize: 10, color: "#6b8f7a", letterSpacing: "0.5px", textTransform: "uppercase", marginBottom: 4 }}>Active grant</div>
+            <select
+              value={currentGrantId}
+              onChange={e => setCurrentGrant(e.target.value)}
+              style={{ width: "100%", fontSize: 12, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6, color: currentGrantId ? "#e8e8e4" : "#6b8f7a", padding: "6px 8px", cursor: "pointer" }}
+            >
+              <option value="">— select a grant —</option>
+              {grants.map(g => (
+                <option key={g.id} value={g.id}>{g.title || g.grantNumber || "Untitled"}{g.type === "Rapid Grant" ? " [R]" : ""}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <nav className="sidebar-nav">
           {visibleGroups.map((group, gi) => (
@@ -315,9 +388,25 @@ function AppShell() {
         </div>
       </aside>
 
+      {/* Shown only when printing — logo header on every printed page */}
+      <div className="print-logo-header">
+        <img src={logo} alt="Wikimedia Community Kilimanjaro" />
+        <div>
+          <div className="print-org-name">Wikimedia Community Kilimanjaro</div>
+          <div className="print-org-sub">Youth Technology · GSF Manager</div>
+        </div>
+        <div className="print-date">{new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</div>
+      </div>
+
       <main className="main-content">
         <div className="page-wrap">{renderPage()}</div>
       </main>
+
+      {showOnboarding && (
+        <OnboardingModal profile={profile} onDismiss={dismissOnboarding} />
+      )}
+
+      <BackToTop />
     </div>
   );
 }

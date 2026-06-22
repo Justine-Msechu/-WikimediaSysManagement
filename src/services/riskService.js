@@ -1,6 +1,6 @@
 import {
   addDocument, updateDocument, deleteDocument,
-  listenCollection, getCollection,
+  listenCollection, getCollection, where,
 } from "../firebase/firestore";
 import { orderBy } from "firebase/firestore";
 
@@ -29,4 +29,12 @@ export async function deleteRisk(id) {
 
 export function listenRisks(callback) {
   return listenCollection("risks", callback, orderBy("createdAt", "desc"));
+}
+
+export function listenRisksByGrant(grantId, callback) {
+  return listenCollection("risks", callback, where("grantId", "==", grantId));
+}
+
+export async function getRisksByGrant(grantId) {
+  return getCollection("risks", where("grantId", "==", grantId));
 }

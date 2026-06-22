@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { renderHtml } from "../components/RichTextEditor";
 import {
   listenBudgetEntries, updateBudgetEntry, addBudgetEntry, BUDGET_STATUS_BADGE,
 } from "../services/budgetService";
@@ -27,7 +28,7 @@ const SECTIONS = [
   { id: "rejected",  label: "Rejected",          color: "#c0392b", bg: "#fdf0ee", border: "#f5c6c0" },
 ];
 
-export default function Review({ profile, goPage }) {
+export default function Review({ profile, goPage, grantId }) {
   const [entries,       setEntries]       = useState([]);
   const [programs,      setPrograms]      = useState([]);
   const [reviewId,      setReviewId]      = useState(null);
@@ -114,8 +115,11 @@ export default function Review({ profile, goPage }) {
     showToast("Submitted for approval.");
   };
 
+  const visibleEntries = grantId ? entries.filter(e => e.grantId === grantId) : entries;
+  const visiblePrograms = grantId ? programs.filter(p => p.grantId === grantId) : programs;
+
   const grouped = {};
-  SECTIONS.forEach(s => { grouped[s.id] = entries.filter(e => e.status === s.id); });
+  SECTIONS.forEach(s => { grouped[s.id] = visibleEntries.filter(e => e.status === s.id); });
 
   // For non-approvers: only show their own drafts under Draft section
   if (!canApprove) {
@@ -140,7 +144,7 @@ export default function Review({ profile, goPage }) {
 
       {/* ── Submitted programs ───────────────────────────────────────────── */}
       {(() => {
-        const submitted = programs.filter(p => p.status === "submitted");
+        const submitted = visiblePrograms.filter(p => p.status === "submitted");
         if (submitted.length === 0) return null;
         return (
           <div className="panel" style={{ border: "2px solid #d97706", marginBottom: 20 }}>
@@ -162,7 +166,7 @@ export default function Review({ profile, goPage }) {
                         <div style={{ fontSize: 11, color: "#888" }}>
                           {p.category} · Submitted by {p.submittedBy || ""} · Budget: <strong>TZS {fmt(totalTZS)} / ${((totalTZS * pRate)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                         </div>
-                        {p.description && <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>{p.description}</div>}
+                        {p.description && <div style={{ fontSize: 12, color: "#555", marginTop: 4 }} dangerouslySetInnerHTML={{ __html: renderHtml(p.description) }} />}
                         {items.length > 0 && (
                           <div style={{ marginTop: 10, overflowX: "auto" }}>
                             <table style={{ fontSize: 11 }}>
@@ -324,7 +328,7 @@ export default function Review({ profile, goPage }) {
                         {entry.requestedBy && <span> · Requested by: {entry.requestedBy}</span>}
                         {entry.reviewedBy  && <span> · Reviewed by: {entry.reviewedBy} on {entry.reviewedAt}</span>}
                       </div>
-                      {entry.description && <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>{entry.description}</div>}
+                      {entry.description && <div style={{ fontSize: 12, color: "#666", marginTop: 4 }} dangerouslySetInnerHTML={{ __html: renderHtml(entry.description) }} />}
                       {entry.reviewerComment && (
                         <div style={{ marginTop: 6, fontSize: 12, padding: "5px 10px", background: "#fdf0ee", borderRadius: 5, color: "#c0392b" }}>
                           Comment: {entry.reviewerComment}
@@ -346,7 +350,7 @@ export default function Review({ profile, goPage }) {
                       {canApprove && entry.status === "draft" && (
                         <button className="btn btn-sm btn-primary" onClick={() => submit(entry)}>Submit</button>
                       )}
-                      <button className="btn btn-sm" onClick={() => goPage("budget")}>Open in Budget →</button>
+                      <button className="btn btn-sm" onClick={() => goPage("budget")}>Open in Budget</button>
                     </div>
                   </div>
 

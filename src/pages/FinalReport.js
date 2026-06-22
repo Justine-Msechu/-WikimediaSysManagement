@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
+import RichTextEditor, { renderHtml } from "../components/RichTextEditor";
 import { listenSettings, updateSettings } from "../services/settingsService";
-import { listenMetrics, DEFAULT_METRICS } from "../services/metricsService";
+import { listenMetrics, listenMetricsByGrant, DEFAULT_METRICS } from "../services/metricsService";
 import { listenActivities } from "../services/activityService";
 import { listenPrograms } from "../services/programService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
@@ -29,7 +30,12 @@ function QuestionBlock({ qnum, question, hint, ansKey, answers, onChange, childr
       {children && <div className="rpt-q-data">{children}</div>}
       {ansKey && (
         <div style={{ marginTop: 8 }}>
-          <textarea className="rpt-q-answer" rows={5} placeholder={canEdit ? "Write your answer here…" : "Sign in as Coordinator or Admin to write answers."} value={val} onChange={e => canEdit && onChange(ansKey, e.target.value)} readOnly={!canEdit} style={!canEdit ? { background: "#f8f8f6", color: "#999" } : {}} />
+          {canEdit ? (
+            <RichTextEditor value={val} onChange={v => onChange(ansKey, v)} placeholder="Write your answer here…" rows={5} />
+          ) : (
+            <div className="rpt-q-answer" style={{ background: "#f8f8f6", color: "#999", padding: "8px 10px", borderRadius: 7, fontSize: 13, lineHeight: 1.7, minHeight: "5em" }}
+              dangerouslySetInnerHTML={{ __html: renderHtml(val) || "Sign in as Coordinator or Admin to write answers." }} />
+          )}
           <button className="btn btn-sm btn-primary" style={{ marginTop: 6 }} onClick={copy}>Copy answer</button>
         </div>
       )}
@@ -37,7 +43,7 @@ function QuestionBlock({ qnum, question, hint, ansKey, answers, onChange, childr
   );
 }
 
-export default function FinalReport({ profile }) {
+export default function FinalReport({ profile, grantId, currentGrant }) {
   const [settings,   setSettings]   = useState(null);
   const [metrics,    setMetrics]    = useState(DEFAULT_METRICS);
   const [activities, setActivities] = useState([]);
@@ -47,21 +53,24 @@ export default function FinalReport({ profile }) {
 
   useEffect(() => {
     const u1 = listenSettings(setSettings);
-    const u2 = listenMetrics(setMetrics);
+    const u2 = grantId ? listenMetricsByGrant(grantId, setMetrics) : listenMetrics(setMetrics);
     const u3 = listenActivities(setActivities);
     const u4 = listenPrograms(setPrograms);
     return () => { u1(); u2(); u3(); u4(); };
-  }, []);
+  }, [grantId]);
+
+  const visibleActivities = grantId ? activities.filter(a => a.grantId === grantId) : activities;
+  const visiblePrograms   = grantId ? programs.filter(p => p.grantId === grantId)   : programs;
 
   const answers   = settings?.reportAnswers || {};
-  const grant     = settings?.grant         || {};
+  const grant     = currentGrant || settings?.grant || {};
 
   const setAns = async (key, val) => {
     await updateSettings({ reportAnswers: { ...answers, [key]: val } });
   };
 
-  const totalParticipants = activities.reduce((s, a) => s + (a.participants || 0), 0);
-  const totalWomen        = activities.reduce((s, a) => s + (a.women || 0), 0);
+  const totalParticipants = visibleActivities.reduce((s, a) => s + (a.participants || 0), 0);
+  const totalWomen        = visibleActivities.reduce((s, a) => s + (a.women || 0), 0);
   const womenPct          = totalParticipants > 0 ? Math.round((totalWomen / totalParticipants) * 100) : 0;
 
   const downloadReport = () => {
@@ -131,10 +140,10 @@ export default function FinalReport({ profile }) {
         <div className="panel-title">Overview</div>
         <div className="card-grid">
           {[
-            { label: "Activities",        value: activities.length,      color: "#1c2b1e" },
+            { label: "Activities",        value: visibleActivities.length,      color: "#1c2b1e" },
             { label: "Total participants", value: fmt(totalParticipants), color: "#2d7a4f" },
             { label: "Women",             value: `${fmt(totalWomen)} (${womenPct}%)`, color: "#9333ea" },
-            { label: "New editors",       value: fmt(activities.reduce((s, a) => s + (a.newEditors || 0), 0)), color: "#2563eb" },
+            { label: "New editors",       value: fmt(visibleActivities.reduce((s, a) => s + (a.newEditors || 0), 0)), color: "#2563eb" },
           ].map(({ label, value, color }) => (
             <div key={label} className="stat-card"><div className="stat-label">{label}</div><div className="stat-value" style={{ color }}>{value}</div></div>
           ))}
@@ -165,17 +174,17 @@ export default function FinalReport({ profile }) {
       <div className="rpt-part-header">Part 1: Your work and learning</div>
 
       <QuestionBlock qnum="Q1" question="Describe your programs and approaches for the year. Explain how you adapted your planned activities. What were the major challenges?" hint="Reference the activities logged in the system. Explain each program and any changes from your plan." ansKey="q1" answers={answers} onChange={setAns} canEdit={canEdit}>
-        {activities.length > 0 && (
+        {visibleActivities.length > 0 && (
           <div style={{ fontSize: 12 }}>
             <div style={{ color: "#555", marginBottom: 4 }}>Activities logged this cycle:</div>
-            {activities.slice(0, 5).map(a => <div key={a.id} style={{ color: "#555", marginBottom: 2 }}>• {a.date}: {a.name} ({a.participants || 0} participants, {a.type})</div>)}
-            {activities.length > 5 && <div style={{ color: "#aaa" }}>…and {activities.length - 5} more</div>}
+            {visibleActivities.slice(0, 5).map(a => <div key={a.id} style={{ color: "#555", marginBottom: 2 }}>• {a.date}: {a.name} ({a.participants || 0} participants, {a.type})</div>)}
+            {visibleActivities.length > 5 && <div style={{ color: "#aaa" }}>…and {visibleActivities.length - 5} more</div>}
           </div>
         )}
       </QuestionBlock>
 
       <QuestionBlock qnum="Q2" question="What did you learn about what worked and what didn't? What were your biggest achievements? What are your plans to build on successes?" hint="Use lessons learned and impact stories from your activity logs." ansKey="q2" answers={answers} onChange={setAns} canEdit={canEdit}>
-        {activities.filter(a => a.lessons || a.stories).slice(0, 3).map(a => (
+        {visibleActivities.filter(a => a.lessons || a.stories).slice(0, 3).map(a => (
           <div key={a.id} style={{ fontSize: 12, color: "#555", marginBottom: 6, borderLeft: "3px solid #e8e8e4", paddingLeft: 8 }}>
             <strong>{a.name}:</strong>
             {a.lessons && <div>Lessons: {a.lessons}</div>}

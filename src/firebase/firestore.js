@@ -14,7 +14,9 @@ import {
   limit,
   serverTimestamp,
   writeBatch,
+  increment,
 } from "firebase/firestore";
+export { increment };
 import { db } from "./config";
 
 // ── Generic helpers ────────────────────────────────────────────────────────────

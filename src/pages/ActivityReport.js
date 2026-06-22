@@ -26,7 +26,7 @@ export default function ActivityReport({ activity: a, index, state, update, onBa
   return (
     <div>
       <button className="btn btn-sm" onClick={onBack} style={{ marginBottom: 16 }}>
-        ← Back to activities
+        Back to activities
       </button>
 
       {/* Header */}
@@ -159,7 +159,7 @@ export default function ActivityReport({ activity: a, index, state, update, onBa
         }}>
           Copy report text
         </button>
-        <button className="btn" onClick={onBack}>← Back</button>
+        <button className="btn" onClick={onBack}>Back</button>
       </div>
     </div>
   );

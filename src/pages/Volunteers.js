@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import RichTextEditor, { renderHtml } from "../components/RichTextEditor";
 import {
   listenVolunteers, addVolunteer, updateVolunteer, deleteVolunteer,
   listenTasks, addTask, updateTask, deleteTask,
@@ -23,7 +24,7 @@ function whatsappLink(phone, name) {
 const TABS = ["Registry", "Tasks", "Report"];
 
 function emptyVolunteer() {
-  return { name: "", phone: "", email: "", skills: [], availability: "", programs: [], notes: "", isActive: true };
+  return { name: "", wikimediaUsername: "", phone: "", email: "", skills: [], availability: "", programs: [], notes: "", isActive: true };
 }
 
 function emptyTask(programs) {
@@ -57,7 +58,8 @@ function Registry({ volunteers, programs, profile, showToast }) {
   const openCreate = () => { setForm(emptyVolunteer()); setEditId(null); setShowForm(true); };
   const openEdit   = (v) => {
     setForm({
-      name: v.name, phone: v.phone || "", email: v.email || "",
+      name: v.name, wikimediaUsername: v.wikimediaUsername || "",
+      phone: v.phone || "", email: v.email || "",
       skills: v.skills || [], availability: v.availability || "",
       programs: v.programs || [], notes: v.notes || "", isActive: v.isActive !== false,
     });
@@ -88,6 +90,7 @@ function Registry({ volunteers, programs, profile, showToast }) {
 
   const filtered = volunteers.filter(v =>
     !search || v.name?.toLowerCase().includes(search.toLowerCase()) ||
+    v.wikimediaUsername?.toLowerCase().includes(search.toLowerCase()) ||
     v.skills?.some(s => s.toLowerCase().includes(search.toLowerCase()))
   );
 
@@ -104,6 +107,9 @@ function Registry({ volunteers, programs, profile, showToast }) {
           <div className="form-grid">
             <div className="field"><label>Full name <span className="req">★</span></label>
               <input value={form.name} onChange={e => setF("name", e.target.value)} placeholder="e.g. Amina Juma" />
+            </div>
+            <div className="field"><label>Wikipedia username</label>
+              <input value={form.wikimediaUsername} onChange={e => { const val = e.target.value; setForm(f => ({ ...f, wikimediaUsername: val })); }} placeholder="e.g. Amina Juma" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} />
             </div>
             <div className="field"><label>Phone</label>
               <input value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="+255 7XX XXX XXX" />
@@ -169,7 +175,7 @@ function Registry({ volunteers, programs, profile, showToast }) {
           <table>
             <thead>
               <tr>
-                <th>Name</th><th>Phone</th><th>Email</th><th>Skills</th><th>Availability</th><th>Status</th>
+                <th>Name</th><th>Wikipedia username</th><th>Phone</th><th>Email</th><th>Skills</th><th>Availability</th><th>Status</th>
                 {canEdit && <th>Actions</th>}
               </tr>
             </thead>
@@ -177,6 +183,11 @@ function Registry({ volunteers, programs, profile, showToast }) {
               {filtered.map(v => (
                 <tr key={v.id}>
                   <td style={{ fontWeight: 600 }}>{v.name}</td>
+                  <td style={{ fontSize: 12 }}>
+                    {v.wikimediaUsername
+                      ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(v.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{v.wikimediaUsername}</a>
+                      : <span style={{ color: "#bbb" }}>—</span>}
+                  </td>
                   <td style={{ fontSize: 12, whiteSpace: "nowrap" }}>
                     {v.phone || ""}
                     {whatsappLink(v.phone, v.name) && <a href={whatsappLink(v.phone, v.name)} target="_blank" rel="noreferrer" title="Open WhatsApp chat" style={{ marginLeft: 6, fontSize: 14, textDecoration: "none" }}>💬</a>}
@@ -406,10 +417,10 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
           </div>
 
           <div className="field" style={{ marginTop: 8 }}><label>Task description</label>
-            <textarea rows={3} value={form.description || ""} onChange={e => setF("description", e.target.value)} placeholder="Describe what the volunteer(s) need to do..." />
+            <RichTextEditor value={form.description || ""} onChange={v => setF("description", v)} placeholder="Describe what the volunteer(s) need to do..." rows={3} />
           </div>
           <div className="field" style={{ marginTop: 8 }}><label>Coordinator report notes</label>
-            <textarea rows={3} value={form.reportNotes || ""} onChange={e => setF("reportNotes", e.target.value)} placeholder="Notes on outcomes achieved..." />
+            <RichTextEditor value={form.reportNotes || ""} onChange={v => setF("reportNotes", v)} placeholder="Notes on outcomes achieved..." rows={3} />
           </div>
           <div className="btn-row">
             <button className="btn btn-primary" onClick={save}>Save</button>
@@ -439,7 +450,7 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
                         </span>
                       )}
                     </div>
-                    {t.description && <div style={{ fontSize: 13, color: "#666", marginTop: 6 }}>{t.description}</div>}
+                    {t.description && <div style={{ fontSize: 13, color: "#666", marginTop: 6 }} dangerouslySetInnerHTML={{ __html: renderHtml(t.description) }} />}
                     {t.reportNotes && (
                       <div style={{ marginTop: 8, background: "#f0f8f3", border: "1px solid #b7e0c8", borderRadius: 6, padding: "8px 12px", fontSize: 12 }}>
                         <strong style={{ color: "#2d7a4f" }}>Coordinator notes:</strong> {t.reportNotes}
@@ -604,7 +615,7 @@ function Report({ volunteers, programs, tasks, profile }) {
                         {t.dueDate    && <span>Due: {t.dueDate}</span>}
                         {t.assignedBy && <span>Assigned by: {t.assignedBy}</span>}
                       </div>
-                      {t.description  && <div style={{ fontSize: 13, color: "#555", marginTop: 6 }}>{t.description}</div>}
+                      {t.description  && <div style={{ fontSize: 13, color: "#555", marginTop: 6 }} dangerouslySetInnerHTML={{ __html: renderHtml(t.description) }} />}
                       {t.reportNotes  && (
                         <div style={{ marginTop: 8, background: "#f0f8f3", border: "1px solid #b7e0c8", borderRadius: 6, padding: "8px 12px", fontSize: 12 }}>
                           <strong style={{ color: "#2d7a4f" }}>Coordinator notes:</strong> {t.reportNotes}

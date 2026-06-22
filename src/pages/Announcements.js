@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { listenAnnouncements, addAnnouncement, deleteAnnouncement, updateAnnouncement } from "../services/announcementService";
+import RichTextEditor, { renderHtml } from "../components/RichTextEditor";
 
 const PRIORITY_COLORS = { urgent: "#c0392b", normal: "#2d7a4f" };
 
@@ -66,7 +67,7 @@ export default function Announcements({ profile }) {
             </div>
           </div>
           <div className="field"><label>Message</label>
-            <textarea rows={4} value={form.body} onChange={e => setF("body", e.target.value)} placeholder="Details of the announcement..." />
+            <RichTextEditor value={form.body} onChange={v => setF("body", v)} placeholder="Details of the announcement..." rows={4} />
           </div>
           <div className="btn-row">
             <button className="btn btn-primary" onClick={post}>Post</button>
@@ -95,7 +96,7 @@ export default function Announcements({ profile }) {
                       <div style={{ fontWeight: 700, fontSize: 15, color: "#1c2b1e" }}>{a.title}</div>
                     </div>
                     {a.body && (
-                      <div style={{ fontSize: 13, color: "#444", lineHeight: 1.7, whiteSpace: "pre-wrap", marginBottom: 8 }}>{a.body}</div>
+                      <div style={{ fontSize: 13, color: "#444", lineHeight: 1.7, marginBottom: 8 }} dangerouslySetInnerHTML={{ __html: renderHtml(a.body) }} />
                     )}
                     <div style={{ fontSize: 11, color: "#aaa" }}>
                       Posted by <strong style={{ color: "#888" }}>{a.createdBy}</strong>

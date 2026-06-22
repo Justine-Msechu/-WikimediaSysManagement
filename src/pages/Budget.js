@@ -9,6 +9,7 @@ import { listenPrograms } from "../services/programService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { notifySubmission } from "../services/notificationService";
 import { uploadToDrive, preAuthorize } from "../services/driveService";
+import { batchWrite } from "../firebase/firestore";
 import logo from "../assets/logo.png";
 
 function fmt(n)    { return (n || 0).toLocaleString(); }
@@ -127,12 +128,13 @@ const TABS = [
   { id: "pl",        label: "P&L"                },
 ];
 
-export default function Budget({ profile }) {
+export default function Budget({ profile, grantId, currentGrant }) {
   const [tab,           setTab]           = useState("expenses");
   const [entries,       setEntries]       = useState([]);
   const [settings,      setSettings]      = useState(null);
   const [programs,      setPrograms]      = useState([]);
   const [toast,         setToast]         = useState("");
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   // Expenses tab
   const [form,           setForm]          = useState(null);
@@ -189,13 +191,15 @@ export default function Budget({ profile }) {
   };
 
   // ── derived numbers ───────────────────────────────────────────────────────
-  const grant          = settings?.grant || {};
+  const grant          = currentGrant || settings?.grant || {};
   const grantTotalUSD  = Number(grant.totalUSD || 0);
   const rate           = Number(grant.conversionRate || 0.00037);
   const grantTotalTZS  = grantTotalUSD > 0 ? Math.round(grantTotalUSD / rate) : 0;
-  const approved        = entries.filter(e => e.status === "approved");
+  const visibleEntries  = grantId ? entries.filter(e => e.grantId === grantId) : entries;
+  const visiblePrograms = grantId ? programs.filter(p => p.grantId === grantId) : programs;
+  const approved        = visibleEntries.filter(e => e.status === "approved");
   const approvedSpend   = approved.reduce((s, e) => s + (e.amount || 0), 0);
-  const pendingCount    = entries.filter(e => e.status === "submitted").length;
+  const pendingCount    = visibleEntries.filter(e => e.status === "submitted").length;
   const budgetPct       = grantTotalTZS > 0 ? Math.min(100, Math.round((approvedSpend / grantTotalTZS) * 100)) : 0;
 
   // Actual spend per fiscal month (approved entries)
@@ -218,10 +222,22 @@ export default function Budget({ profile }) {
   const personnelMonthlyTZS = personnel.reduce((s, p) => s + (Number(p.monthlySalary) || 0), 0);
   const personnelAnnualTZS  = personnelMonthlyTZS * 12;
 
+  const assignUnassigned = async () => {
+    if (!grantId) return;
+    const unassigned = entries.filter(e => !e.grantId);
+    if (!unassigned.length) return;
+    if (!window.confirm(`Assign ${unassigned.length} unassigned budget entries to this grant?`)) return;
+    await batchWrite(unassigned.map(e => ({ type: "update", path: "budgetEntries", id: e.id, data: { grantId } })));
+    setBannerDismissed(true);
+    showToast(`${unassigned.length} entries assigned to grant.`);
+  };
+
+  const unassignedCount = grantId ? entries.filter(e => !e.grantId).length : 0;
+
   // ── expense handlers ───────────────────────────────────────────────────────
   const saveEntry = async (submit = false) => {
     if (!form.title.trim()) { alert("Title is required."); return; }
-    const data = { ...form, status: submit ? "submitted" : "draft" };
+    const data = { ...form, status: submit ? "submitted" : "draft", grantId: grantId || "" };
     if (!editId) {
       const id = await addBudgetEntry(data);
       await addAudit(profile, submit ? AUDIT_ACTIONS.SUBMIT : AUDIT_ACTIONS.CREATE, "budget", { targetId: id, recordTitle: form.title, details: `TZS ${fmt(form.amount)}, ${form.category}` });
@@ -256,7 +272,7 @@ export default function Budget({ profile }) {
     showToast("Submitted for approval.");
   };
 
-  const filteredEntries = entries.filter(e => {
+  const filteredEntries = visibleEntries.filter(e => {
     if (filterStatus !== "all" && e.status !== filterStatus) return false;
     if (filterGroup  !== "all" && getGroup(e.category) !== filterGroup) return false;
     return true;
@@ -315,6 +331,7 @@ export default function Budget({ profile }) {
         requestedBy:     profile?.name || "",
         status:          "draft",
         reviewerComment: "",
+        grantId:         grantId || "",
       });
     }
     setForm(null); setEditId(null);
@@ -335,6 +352,17 @@ export default function Budget({ profile }) {
     <div>
       {toast && <div style={{ position: "fixed", bottom: 24, right: 24, background: "#2d7a4f", color: "#fff", padding: "10px 18px", borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 9999 }}>✓ {toast}</div>}
       <div className="page-title">Budget</div>
+
+      {/* Legacy unassigned banner */}
+      {grantId && unassignedCount > 0 && !bannerDismissed && (
+        <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 8, padding: "10px 14px", fontSize: 13, marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <span><strong>{unassignedCount}</strong> budget entr{unassignedCount !== 1 ? "ies have" : "y has"} no grant assigned — they are hidden while a grant is selected.</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            {canEdit && <button className="btn btn-sm btn-primary" onClick={assignUnassigned}>Assign {unassignedCount} to this grant</button>}
+            <button className="btn btn-sm" onClick={() => setBannerDismissed(true)}>Dismiss</button>
+          </div>
+        </div>
+      )}
 
       {/* KPI cards */}
       <div className="card-grid" style={{ marginBottom: 20 }}>
@@ -430,7 +458,7 @@ export default function Budget({ profile }) {
                   <label>Program</label>
                   <select value={form.programId || ""} onChange={e => setF("programId", e.target.value)}>
                     <option value="">(No program)</option>
-                    {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {visiblePrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
                 <div className="field">
@@ -658,16 +686,16 @@ export default function Budget({ profile }) {
               <div className="panel-title" style={{ marginBottom: 2 }}>Program budgets</div>
               <div style={{ fontSize: 12, color: "#888" }}>Set planned budgets on each program in the Programs page. Link budget entries to a program using the Program dropdown when creating an expense.</div>
             </div>
-            {programs.length > 0 && (
-              <button className="btn btn-sm" onClick={() => printBudgets(programs)}>Print all budgets</button>
+            {visiblePrograms.length > 0 && (
+              <button className="btn btn-sm" onClick={() => printBudgets(visiblePrograms)}>Print all budgets</button>
             )}
           </div>
 
-          {programs.length === 0 ? (
+          {visiblePrograms.length === 0 ? (
             <div className="empty">No programs yet. Go to Programs to create some.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {programs.map(p => {
+              {visiblePrograms.map(p => {
                 const progEntries  = approved.filter(e => e.programId === p.id);
                 const actualSpend  = progEntries.reduce((s, e) => s + (e.amount || 0), 0);
                 const plannedBudget = Number(p.plannedBudget || 0);
@@ -875,7 +903,7 @@ export default function Budget({ profile }) {
       {/* ── P&L ───────────────────────────────────────────────────────────── */}
       {tab === "pl" && (
         <div className="panel" style={{ borderRadius: "0 8px 8px 8px" }}>
-          <div className="panel-title">Projected profit &amp; loss: {settings?.grant?.grantPeriod || "2025–2026"}</div>
+          <div className="panel-title">Projected profit &amp; loss: {grant.cycle || grant.grantPeriod || "2025–2026"}</div>
 
           <table style={{ maxWidth: 580 }}>
             <thead>

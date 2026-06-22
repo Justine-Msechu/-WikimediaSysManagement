@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { listenDeadlines, addDeadline, updateDeadline, deleteDeadline, DEADLINE_TYPES } from "../services/deadlineService";
+import RichTextEditor, { renderHtml } from "../components/RichTextEditor";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { listenSettings } from "../services/settingsService";
 import { listenVolunteers } from "../services/volunteerService";
@@ -83,7 +84,7 @@ export default function Deadlines({ profile }) {
 
   const sendReminder = async (d) => {
     if (!settings?.sms?.enabled) {
-      alert("SMS is not configured. Go to Settings → SMS notifications to enable it.");
+      alert("SMS is not configured. Go to Settings, SMS notifications to enable it.");
       return;
     }
     const phones = volunteers.filter(v => v.phone && v.isActive !== false).map(v => ({
@@ -159,7 +160,7 @@ export default function Deadlines({ profile }) {
             </div>
           </div>
           <div className="field"><label>Notes</label>
-            <textarea rows={2} value={form.description} onChange={e => setF("description", e.target.value)} placeholder="Optional details or instructions..." />
+            <RichTextEditor value={form.description} onChange={v => setF("description", v)} placeholder="Optional details or instructions..." rows={2} />
           </div>
           <div className="btn-row">
             <button className="btn btn-primary" onClick={save}>Save</button>
@@ -186,7 +187,7 @@ export default function Deadlines({ profile }) {
                     </div>
                     <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 3, textDecoration: d.done ? "line-through" : "none", color: d.done ? "#aaa" : "#1c2b1e" }}>{d.title}</div>
                     <div style={{ fontSize: 12, color: "#888" }}>Due: <strong>{d.date}</strong></div>
-                    {d.description && <div style={{ fontSize: 12, color: "#666", marginTop: 6, lineHeight: 1.5 }}>{d.description}</div>}
+                    {d.description && <div style={{ fontSize: 12, color: "#666", marginTop: 6, lineHeight: 1.5 }} dangerouslySetInnerHTML={{ __html: renderHtml(d.description) }} />}
                   </div>
                   {canEdit && (
                     <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>

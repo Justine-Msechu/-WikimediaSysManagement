@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import RichTextEditor from "../components/RichTextEditor";
 import { listenActivities, addActivity, updateActivity, deleteActivity, getActivity, ACTIVITY_TYPES, SESSION_TYPES } from "../services/activityService";
 import { listenPrograms } from "../services/programService";
 import { listenSettings } from "../services/settingsService";
@@ -7,6 +8,7 @@ import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { notifyAssignment } from "../services/notificationService";
 import { listenTemplates, addTemplate, deleteTemplate } from "../services/activityTemplateService";
 import { listenForms } from "../services/registrationService";
+import { batchWrite } from "../firebase/firestore";
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
@@ -23,21 +25,22 @@ function emptyActivity(programs) {
   };
 }
 
-export default function Activities({ profile, goPage }) {
-  const [activities,   setActivities]   = useState([]);
-  const [programs,     setPrograms]     = useState([]);
-  const [settings,     setSettings]     = useState(null);
-  const [users,        setUsers]        = useState([]);
-  const [templates,    setTemplates]    = useState([]);
-  const [forms,        setForms]        = useState([]);
-  const [showForm,     setShowForm]     = useState(false);
-  const [showTpls,     setShowTpls]     = useState(false);
-  const [editId,       setEditId]       = useState(null);
-  const [editVersion,  setEditVersion]  = useState(null);
-  const [form,         setForm]         = useState({});
-  const [filter,       setFilter]       = useState("");
-  const [myTasksOnly,  setMyTasksOnly]  = useState(false);
-  const [toast,        setToast]        = useState("");
+export default function Activities({ profile, goPage, grantId }) {
+  const [activities,    setActivities]    = useState([]);
+  const [programs,      setPrograms]      = useState([]);
+  const [settings,      setSettings]      = useState(null);
+  const [users,         setUsers]         = useState([]);
+  const [templates,     setTemplates]     = useState([]);
+  const [forms,         setForms]         = useState([]);
+  const [showForm,      setShowForm]      = useState(false);
+  const [showTpls,      setShowTpls]      = useState(false);
+  const [editId,        setEditId]        = useState(null);
+  const [editVersion,   setEditVersion]   = useState(null);
+  const [form,          setForm]          = useState({});
+  const [filter,        setFilter]        = useState("");
+  const [myTasksOnly,   setMyTasksOnly]   = useState(false);
+  const [toast,         setToast]         = useState("");
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
 
   useEffect(() => {
@@ -48,14 +51,15 @@ export default function Activities({ profile, goPage }) {
     const u5 = listenTemplates(setTemplates);
     const u6 = listenForms(setForms);
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
-  }, []);
+  }, [grantId]);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const n = (v) => v === "" ? null : Number(v);
 
   const coordinators    = users.filter(u => ["admin", "coordinator"].includes(u.role) && u.isActive !== false);
-  const approvedPrograms = programs.filter(p => p.status === "approved");
+  const visiblePrograms  = grantId ? programs.filter(p => p.grantId === grantId) : programs;
+  const approvedPrograms = visiblePrograms.filter(p => p.status === "approved");
   const hasApproved      = approvedPrograms.length > 0;
 
   const openCreate = () => {
@@ -113,6 +117,7 @@ export default function Activities({ profile, goPage }) {
       createdEnglish: n(form.createdEnglish), improvedEnglish: n(form.improvedEnglish),
       commons: n(form.commons), wikidata: n(form.wikidata),
       lastEditedBy: profile?.name || "",
+      grantId: grantId || "",
     };
 
     if (!editId) {
@@ -174,7 +179,20 @@ export default function Activities({ profile, goPage }) {
     showToast(`Template "${tpl.name}" applied.`);
   };
 
-  const filtered = activities.filter(a => {
+  const assignUnassigned = async () => {
+    if (!grantId) return;
+    const unassigned = activities.filter(a => !a.grantId);
+    if (!unassigned.length) return;
+    if (!window.confirm(`Assign ${unassigned.length} unassigned activities to this grant?`)) return;
+    await batchWrite(unassigned.map(a => ({ type: "update", path: "activities", id: a.id, data: { grantId } })));
+    setBannerDismissed(true);
+    showToast(`${unassigned.length} activities assigned to grant.`);
+  };
+
+  const grantActivities = grantId ? activities.filter(a => a.grantId === grantId) : activities;
+  const unassignedCount = grantId ? activities.filter(a => !a.grantId).length : 0;
+
+  const filtered = grantActivities.filter(a => {
     const matchSearch = !filter ||
       a.name?.toLowerCase().includes(filter.toLowerCase()) ||
       a.type?.toLowerCase().includes(filter.toLowerCase());
@@ -208,6 +226,17 @@ export default function Activities({ profile, goPage }) {
         </div>
       )}
       <div className="page-title">Activities</div>
+
+      {/* Legacy unassigned banner */}
+      {grantId && unassignedCount > 0 && !bannerDismissed && (
+        <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 8, padding: "10px 14px", fontSize: 13, marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <span><strong>{unassignedCount}</strong> activit{unassignedCount !== 1 ? "ies have" : "y has"} no grant assigned — they are hidden while a grant is selected.</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            {canEdit && <button className="btn btn-sm btn-primary" onClick={assignUnassigned}>Assign {unassignedCount} to this grant</button>}
+            <button className="btn btn-sm" onClick={() => setBannerDismissed(true)}>Dismiss</button>
+          </div>
+        </div>
+      )}
 
       {/* Warn if no approved programs exist yet */}
       {canEdit && !hasApproved && (
@@ -368,7 +397,12 @@ export default function Activities({ profile, goPage }) {
           {[["summary","Activity summary"],["challenges","Challenges faced"],["lessons","Lessons learned"],["stories","Impact stories"],["nextSteps","Next steps"]].map(([k, label]) => (
             <div key={k} className="field">
               <label>{label}</label>
-              <textarea rows={3} value={form[k] || ""} onChange={e => setF(k, e.target.value)} placeholder={label + "…"} />
+              <RichTextEditor
+                value={form[k] || ""}
+                onChange={v => setF(k, v)}
+                placeholder={label + "…"}
+                rows={3}
+              />
             </div>
           ))}
 

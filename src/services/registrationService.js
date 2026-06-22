@@ -1,6 +1,7 @@
 import {
   addDocument, updateDocument, deleteDocument,
   listenCollection, getCollection, getDocument,
+  increment,
 } from "../firebase/firestore";
 import { where, orderBy } from "firebase/firestore";
 import { addParticipant } from "./participantService";
@@ -56,6 +57,10 @@ export async function submitRegistration(formId, regData) {
     registeredAt: new Date().toISOString(),
     attendance: "",
   });
+
+  // Increment the counter on the form document (used for limit enforcement without auth)
+  try { await updateDocument("registrationForms", formId, { registrationCount: increment(1) }); } catch (_) {}
+
 
   // Auto-add to participants (no auth required — dedup handled by coordinators)
   await addParticipant({

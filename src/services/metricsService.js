@@ -30,3 +30,17 @@ export async function updateMetrics(data) {
 export function listenMetrics(callback) {
   return listenDocument("metrics", METRICS_ID, doc => callback(doc || DEFAULT_METRICS));
 }
+
+// Per-grant metrics — document ID = grantId
+export async function getMetricsByGrant(grantId) {
+  const m = await getDocument("metrics", grantId);
+  return m || DEFAULT_METRICS;
+}
+
+export async function updateMetricsByGrant(grantId, data) {
+  return setDocument("metrics", grantId, data);
+}
+
+export function listenMetricsByGrant(grantId, callback) {
+  return listenDocument("metrics", grantId, doc => callback(doc || DEFAULT_METRICS));
+}

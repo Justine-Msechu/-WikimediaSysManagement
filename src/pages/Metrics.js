@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { listenMetrics, updateMetrics, DEFAULT_METRICS } from "../services/metricsService";
+import { listenMetrics, listenMetricsByGrant, updateMetrics, updateMetricsByGrant, DEFAULT_METRICS } from "../services/metricsService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { listenParticipants } from "../services/participantService";
 import { listenSettings } from "../services/settingsService";
 import { listenActivities } from "../services/activityService";
+import { listenPrograms } from "../services/programService";
 
 function fmt(n) { return (n || 0).toLocaleString(); }
 function pct(r, t) { if (!t) return 0; return Math.min(999, Math.round((r / t) * 100)); }
@@ -20,10 +21,11 @@ const METRIC_ROWS = [
 
 const PROJECT_FIELDS = ["Wikipedia", "Wikimedia Commons", "Wikidata", "Wiktionary", "Wikisource"];
 
-export default function Metrics({ profile }) {
+export default function Metrics({ profile, grantId, currentGrant }) {
   const [metrics,      setMetrics]      = useState(DEFAULT_METRICS);
   const [participants, setParticipants] = useState([]);
   const [activities,   setActivities]   = useState([]);
+  const [programs,     setPrograms]     = useState([]);
   const [settings,     setSettings]     = useState(null);
   const [wikiStats,    setWikiStats]    = useState({});
   const [fetchingAll,  setFetchingAll]  = useState(false);
@@ -33,16 +35,23 @@ export default function Metrics({ profile }) {
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
 
   useEffect(() => {
-    const u1 = listenMetrics(setMetrics);
+    const u1 = grantId
+      ? listenMetricsByGrant(grantId, setMetrics)
+      : listenMetrics(setMetrics);
     const u2 = listenParticipants(setParticipants);
     const u3 = listenSettings(setSettings);
     const u4 = listenActivities(setActivities);
-    return () => { u1(); u2(); u3(); u4(); };
-  }, []);
+    const u5 = listenPrograms(setPrograms);
+    return () => { u1(); u2(); u3(); u4(); u5(); };
+  }, [grantId]);
 
   const save = async (patch) => {
     const merged = { ...metrics, ...patch };
-    await updateMetrics(patch);
+    if (grantId) {
+      await updateMetricsByGrant(grantId, patch);
+    } else {
+      await updateMetrics(patch);
+    }
     setMetrics(merged);
     setSaved(true); setTimeout(() => setSaved(false), 1500);
   };
@@ -59,16 +68,25 @@ export default function Metrics({ profile }) {
 
   const projects = metrics.projects || PROJECT_FIELDS.map(p => ({ name: p, tCreated: 0, tImproved: 0, rCreated: 0, rImproved: 0 }));
 
+  // Scope to current grant
+  const grantProgramIds = grantId
+    ? new Set(programs.filter(p => p.grantId === grantId).map(p => p.id))
+    : null;
+  const grantActivities  = grantId ? activities.filter(a => a.grantId === grantId) : activities;
+  const grantParticipants = grantId
+    ? participants.filter(p => grantProgramIds.has(p.programId))
+    : participants;
+
   const registryCounts = {
-    participants:    participants.length,
-    allEditors:      participants.filter(p => p.wikimediaUsername).length,
-    newEditors:      participants.filter(p => p.isNew).length,
-    retainedEditors: participants.filter(p => !p.isNew && p.wikimediaUsername).length,
+    participants:    grantParticipants.length,
+    allEditors:      grantParticipants.filter(p => p.wikimediaUsername).length,
+    newEditors:      grantParticipants.filter(p => p.isNew).length,
+    retainedEditors: grantParticipants.filter(p => !p.isNew && p.wikimediaUsername).length,
   };
 
-  const sum = (field) => activities.reduce((acc, a) => acc + (Number(a[field]) || 0), 0);
+  const sum = (field) => grantActivities.reduce((acc, a) => acc + (Number(a[field]) || 0), 0);
 
-  const activityRollup = activities.length === 0 ? null : {
+  const activityRollup = grantActivities.length === 0 ? null : {
     participants:      sum("participants"),
     newEditors:        sum("newEditors"),
     retainedEditors:   sum("retainedEditors"),
@@ -118,7 +136,7 @@ export default function Metrics({ profile }) {
   };
 
   const fetchAndSuggest = async () => {
-    const withUsername = participants.filter(p => p.wikimediaUsername);
+    const withUsername = grantParticipants.filter(p => p.wikimediaUsername);
     if (!withUsername.length) {
       alert("No participants have a Wikipedia username. Add participants with usernames first.");
       return;
@@ -146,8 +164,8 @@ export default function Metrics({ profile }) {
 
     const activeEditors   = Object.values(stats).filter(v => v > 0).length;
     const allEditors      = Object.keys(stats).length;
-    const newEditorCount  = participants.filter(p => p.isNew && p.wikimediaUsername && stats[p.wikimediaUsername] != null).length;
-    const totalParticipants = participants.length;
+    const newEditorCount  = grantParticipants.filter(p => p.isNew && p.wikimediaUsername && stats[p.wikimediaUsername] != null).length;
+    const totalParticipants = grantParticipants.length;
 
     setSuggestion({
       participants: totalParticipants,
@@ -174,7 +192,7 @@ export default function Metrics({ profile }) {
   };
 
   const fetchFromOD = async () => {
-    const raw = (settings?.grant?.odCampaignUrl || "").trim();
+    const raw = (currentGrant?.odCampaignUrl || settings?.grant?.odCampaignUrl || "").trim();
     if (!raw) {
       alert("No Outreach Dashboard campaign URL set. Go to Settings → Grant configuration and paste your campaign URL.");
       return;
@@ -360,7 +378,7 @@ export default function Metrics({ profile }) {
 
       {activityRollup && (
         <div className="panel" style={{ marginBottom: 16, background: "#fff8f0", border: "1px solid #f0d5b0" }}>
-          <div className="panel-title" style={{ color: "#b45309", marginBottom: 8 }}>Activity rollup — totals from {activities.length} logged activities</div>
+          <div className="panel-title" style={{ color: "#b45309", marginBottom: 8 }}>Activity rollup — totals from {grantActivities.length} logged activities</div>
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, marginBottom: 12 }}>
             <div><span style={{ color: "#888" }}>Participants:</span> <strong>{fmt(activityRollup.participants)}</strong></div>
             <div><span style={{ color: "#888" }}>New editors:</span> <strong>{fmt(activityRollup.newEditors)}</strong></div>
@@ -381,7 +399,7 @@ export default function Metrics({ profile }) {
         </div>
       )}
 
-      {participants.length > 0 && (
+      {grantParticipants.length > 0 && (
         <div className="panel" style={{ marginBottom: 16, background: "#f5f8ff", border: "1px solid #c5d5f0" }}>
           <div className="panel-title" style={{ color: "#2563eb", marginBottom: 8 }}>Registry summary — from your participants list</div>
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, marginBottom: 12 }}>
@@ -410,7 +428,7 @@ export default function Metrics({ profile }) {
             <div><span style={{ color: "#888" }}>Commons uploads:</span> <strong>{fmt(suggestion.commonsUploads)}</strong></div>
           </div>
           <div style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>
-            Applies: All editors → result. Articles → Swahili Wikipedia result columns. Commons uploads → Commons result. English Wikipedia must be entered manually.
+            Applies: All editors to result. Articles to Swahili Wikipedia result columns. Commons uploads to Commons result. English Wikipedia must be entered manually.
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {canEdit && <button className="btn btn-sm btn-primary" onClick={applyODSuggestion}>Apply to metrics results</button>}

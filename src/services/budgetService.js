@@ -2,7 +2,7 @@ import {
   addDocument, updateDocument, deleteDocument,
   listenCollection, getCollection,
 } from "../firebase/firestore";
-import { orderBy } from "firebase/firestore";
+import { orderBy, where } from "../firebase/firestore";
 
 export const BUDGET_STATUSES = ["draft", "submitted", "approved", "rejected"];
 
@@ -66,4 +66,9 @@ export async function deleteBudgetEntry(id) {
 
 export function listenBudgetEntries(callback) {
   return listenCollection("budgetEntries", callback, orderBy("createdAt", "desc"));
+}
+
+export function listenBudgetEntriesByGrant(grantId, callback) {
+  // No orderBy — combining where(grantId) + orderBy(createdAt) requires a composite index. Sort client-side.
+  return listenCollection("budgetEntries", callback, where("grantId", "==", grantId));
 }

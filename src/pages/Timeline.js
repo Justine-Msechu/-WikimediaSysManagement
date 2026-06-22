@@ -8,7 +8,7 @@ const WEEKDAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 function daysInMonth(year, month) { return new Date(year, month + 1, 0).getDate(); }
 function startDow(year, month) { let d = new Date(year, month, 1).getDay(); return d === 0 ? 6 : d - 1; }
 
-export default function Timeline({ profile, goPage }) {
+export default function Timeline({ profile, goPage, grantId }) {
   const [activities, setActivities] = useState([]);
   const [programs,   setPrograms]   = useState([]);
   const now = new Date();
@@ -27,8 +27,10 @@ export default function Timeline({ profile, goPage }) {
   const programColor = (pid) => programs.find(p => p.id === pid)?.color || "#4a9e6b";
   const programName  = (pid) => programs.find(p => p.id === pid)?.name  || null;
 
+  const visibleActivities = grantId ? activities.filter(a => a.grantId === grantId) : activities;
+
   const actsByDay = {};
-  activities.forEach(a => {
+  visibleActivities.forEach(a => {
     if (!a.date) return;
     const d = new Date(a.date);
     if (d.getFullYear() === year && d.getMonth() === month) {
@@ -44,7 +46,7 @@ export default function Timeline({ profile, goPage }) {
   const isToday  = (d) => today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
 
   // Month list — all activities for the month sorted by date
-  const monthActivities = activities
+  const monthActivities = visibleActivities
     .filter(a => { if (!a.date) return false; const d = new Date(a.date); return d.getFullYear() === year && d.getMonth() === month; })
     .sort((a, b) => a.date.localeCompare(b.date));
 
@@ -53,9 +55,9 @@ export default function Timeline({ profile, goPage }) {
       <div className="page-title">Activity timeline</div>
 
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 20, flexWrap: "wrap" }}>
-        <button className="btn" onClick={prev}>← Prev</button>
+        <button className="btn" onClick={prev}>Prev</button>
         <div style={{ fontWeight: 700, fontSize: 18, minWidth: 180, textAlign: "center" }}>{MONTHS[month]} {year}</div>
-        <button className="btn" onClick={next}>Next →</button>
+        <button className="btn" onClick={next}>Next</button>
         <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth()); }}>Today</button>
       </div>
 

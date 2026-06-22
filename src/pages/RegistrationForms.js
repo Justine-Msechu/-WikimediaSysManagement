@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import RichTextEditor, { renderHtml } from "../components/RichTextEditor";
 import {
   listenForms, addForm, updateForm, deleteForm,
   listenRegistrations, updateAttendance,
@@ -30,6 +31,7 @@ function emptyForm() {
   return {
     title: "", description: "", date: "", location: "",
     wikiEventUrl: "", status: "draft", programId: "",
+    maxRegistrations: "",
   };
 }
 
@@ -68,7 +70,7 @@ export default function RegistrationForms({ profile }) {
   const setF = (k, v) => setFormData(f => ({ ...f, [k]: v }));
 
   const openCreate = () => { setFormData(emptyForm()); setEditId(null); setShowBuilder(true); };
-  const openEdit   = (f) => { setFormData({ title: f.title, description: f.description || "", date: f.date || "", location: f.location || "", wikiEventUrl: f.wikiEventUrl || "", status: f.status, programId: f.programId || "" }); setEditId(f.id); setShowBuilder(true); };
+  const openEdit   = (f) => { setFormData({ title: f.title, description: f.description || "", date: f.date || "", location: f.location || "", wikiEventUrl: f.wikiEventUrl || "", status: f.status, programId: f.programId || "", maxRegistrations: f.maxRegistrations || "" }); setEditId(f.id); setShowBuilder(true); };
 
   const saveForm = async () => {
     if (!formData.title.trim()) { alert("Form title is required."); return; }
@@ -282,9 +284,12 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
             </div>
             <div className="field"><label>Event date</label><input type="date" value={formData.date} onChange={e => setF("date", e.target.value)} /></div>
             <div className="field"><label>Location</label><input value={formData.location} onChange={e => setF("location", e.target.value)} placeholder="Town, venue" /></div>
+            <div className="field"><label>Max registrations</label>
+              <input type="number" min="1" value={formData.maxRegistrations} onChange={e => setF("maxRegistrations", e.target.value)} placeholder="Leave blank for unlimited" />
+            </div>
             <div className="field"><label>Wikipedia Event Platform URL</label><input value={formData.wikiEventUrl} onChange={e => setF("wikiEventUrl", e.target.value)} placeholder="https://www.mediawiki.org/wiki/…" /></div>
           </div>
-          <div className="field"><label>Description / instructions for participants</label><textarea rows={3} value={formData.description} onChange={e => setF("description", e.target.value)} placeholder="Tell participants what to expect at this event" /></div>
+          <div className="field"><label>Description / instructions for participants</label><RichTextEditor value={formData.description} onChange={v => setF("description", v)} placeholder="Tell participants what to expect at this event" rows={3} /></div>
           <div className="btn-row">
             <button className="btn btn-primary" onClick={saveForm}>Save form</button>
             <button className="btn" onClick={() => setShowBuilder(false)}>Cancel</button>
@@ -332,19 +337,22 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
                 <div>
                   <div className="panel-title">{selectedForm.title}</div>
-                  {selectedForm.description && <div style={{ fontSize: 13, color: "#555", marginBottom: 8 }}>{selectedForm.description}</div>}
+                  {selectedForm.description && <div style={{ fontSize: 13, color: "#555", marginBottom: 8 }} dangerouslySetInnerHTML={{ __html: renderHtml(selectedForm.description) }} />}
                 </div>
                 <button className="btn btn-sm" onClick={() => setSelectedForm(null)}>✕ Close</button>
               </div>
 
               {/* Stats */}
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
-                {[["Registrations", registrations.length], ["With Wikipedia username", withWiki], ["Attended", registrations.filter(r => r.attendance === "present").length]].map(([l, v]) => (
+                {[["Registrations", selectedForm.maxRegistrations ? `${registrations.length} / ${selectedForm.maxRegistrations}` : registrations.length], ["With Wikipedia username", withWiki], ["Attended", registrations.filter(r => r.attendance === "present").length]].map(([l, v]) => (
                   <div key={l} style={{ textAlign: "center", minWidth: 80 }}>
                     <div style={{ fontSize: 22, fontWeight: 700, color: "#2d7a4f" }}>{v}</div>
                     <div style={{ fontSize: 11, color: "#888" }}>{l}</div>
                   </div>
                 ))}
+                {selectedForm.maxRegistrations && registrations.length >= Number(selectedForm.maxRegistrations) && (
+                  <div style={{ alignSelf: "center", background: "#fde8e8", color: "#c0392b", fontSize: 12, fontWeight: 600, borderRadius: 6, padding: "4px 10px" }}>Registration full — form is closed to new registrants</div>
+                )}
               </div>
 
               {/* Share panel */}

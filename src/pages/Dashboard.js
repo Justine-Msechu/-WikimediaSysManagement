@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
+import { renderHtml } from "../components/RichTextEditor";
 import { listenActivities } from "../services/activityService";
 import { listenParticipants } from "../services/participantService";
 import { listenSettings } from "../services/settingsService";
-import { listenMetrics, DEFAULT_METRICS } from "../services/metricsService";
+import { listenMetrics, listenMetricsByGrant, DEFAULT_METRICS } from "../services/metricsService";
 import { listenBudgetEntries } from "../services/budgetService";
 import { listenAnnouncements } from "../services/announcementService";
 import { listenDeadlines } from "../services/deadlineService";
@@ -50,7 +51,7 @@ function daysUntil(date) {
   return Math.round((new Date(date).setHours(0,0,0,0) - new Date(todayStr()).setHours(0,0,0,0)) / 86400000);
 }
 
-export default function Dashboard({ profile, goPage }) {
+export default function Dashboard({ profile, goPage, grantId, grants }) {
   const [activities,     setActivities]     = useState([]);
   const [participants,   setParticipants]   = useState([]);
   const [settings,       setSettings]       = useState(null);
@@ -63,21 +64,40 @@ export default function Dashboard({ profile, goPage }) {
     const u1 = listenActivities(setActivities);
     const u2 = listenParticipants(setParticipants);
     const u3 = listenSettings(setSettings);
-    const u4 = listenMetrics(setMetrics);
+    const u4 = grantId
+      ? listenMetricsByGrant(grantId, setMetrics)
+      : listenMetrics(setMetrics);
     const u5 = listenBudgetEntries(setBudgetEntries);
     const u6 = listenAnnouncements(setAnnouncements);
     const u7 = listenDeadlines(setDeadlines);
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
-  }, []);
+  }, [grantId]);
+
+  // Filter in JS when a grant is selected (keep subscriptions unfiltered for simplicity)
+  const filteredActivities = grantId
+    ? activities.filter(a => a.grantId === grantId)
+    : activities;
+  const filteredEntries = grantId
+    ? budgetEntries.filter(e => e.grantId === grantId)
+    : budgetEntries;
+
+  // Current grant info for header display
+  const currentGrant = grantId && grants ? grants.find(g => g.id === grantId) : null;
 
   const grant          = settings?.grant || {};
-  const totalBudgetTZS = grant.totalUSD ? Math.round(grant.totalUSD / (grant.conversionRate || 0.000413)) : 0;
-  const approvedSpend  = budgetEntries.filter(e => e.status === "approved").reduce((s, e) => s + (e.amount || 0), 0);
+  // Prefer current grant totalUSD/conversionRate if a grant is selected
+  const grantTotalUSD  = currentGrant?.totalUSD || grant.totalUSD;
+  const grantRate      = currentGrant?.conversionRate || grant.conversionRate;
+  const totalBudgetTZS = grantTotalUSD ? Math.round(grantTotalUSD / (grantRate || 0.000413)) : 0;
+  const approvedSpend  = filteredEntries.filter(e => e.status === "approved").reduce((s, e) => s + (e.amount || 0), 0);
   const budgetPct      = totalBudgetTZS ? Math.min(100, Math.round((approvedSpend / totalBudgetTZS) * 100)) : 0;
 
   const canApprove     = ["admin", "finance_officer"].includes(profile?.role);
-  const pendingEntries = budgetEntries.filter(e => e.status === "submitted");
-  const myDrafts       = budgetEntries.filter(e => e.status === "draft" && e.requestedBy === profile?.name);
+  // Money totals (grant size, budget utilisation) are finance-only — coordinators run
+  // programs/activities but should not see overall grant money figures.
+  const showFinancials = profile?.role !== "coordinator";
+  const pendingEntries = filteredEntries.filter(e => e.status === "submitted");
+  const myDrafts       = filteredEntries.filter(e => e.status === "draft" && e.requestedBy === profile?.name);
   const actionItems    = [
     canApprove && pendingEntries.length > 0 && {
       label: `${pendingEntries.length} budget ${pendingEntries.length === 1 ? "entry" : "entries"} pending your approval`,
@@ -89,9 +109,9 @@ export default function Dashboard({ profile, goPage }) {
     },
   ].filter(Boolean);
 
-  const totalParticipants = activities.reduce((s, a) => s + (a.participants || 0), 0);
-  const totalWomen        = activities.reduce((s, a) => s + (a.women       || 0), 0);
-  const totalNewEditors   = activities.reduce((s, a) => s + (a.newEditors  || 0), 0);
+  const totalParticipants = filteredActivities.reduce((s, a) => s + (a.participants || 0), 0);
+  const totalWomen        = filteredActivities.reduce((s, a) => s + (a.women       || 0), 0);
+  const totalNewEditors   = filteredActivities.reduce((s, a) => s + (a.newEditors  || 0), 0);
 
   const STAT_METRICS = [
     { key: "participants",  label: "Participants" },
@@ -102,10 +122,10 @@ export default function Dashboard({ profile, goPage }) {
 
   // Monthly activity chart data
   const months      = getLast6Months();
-  const chartData   = months.map(m => ({ label: m.label, value: activities.filter(a => a.date?.startsWith(m.key)).length }));
+  const chartData   = months.map(m => ({ label: m.label, value: filteredActivities.filter(a => a.date?.startsWith(m.key)).length }));
   const chartPeople = months.map(m => ({
     label: m.label,
-    value: activities.filter(a => a.date?.startsWith(m.key)).reduce((s, a) => s + (a.participants || 0), 0),
+    value: filteredActivities.filter(a => a.date?.startsWith(m.key)).reduce((s, a) => s + (a.participants || 0), 0),
   }));
 
   // Upcoming deadlines for widget
@@ -117,6 +137,16 @@ export default function Dashboard({ profile, goPage }) {
     <div>
       <div className="page-title">Dashboard</div>
 
+      {/* Current grant indicator */}
+      {currentGrant && (
+        <div style={{ marginBottom: 16, padding: "8px 14px", background: "#f0f7f3", border: "1px solid #b7e0c8", borderRadius: 8, fontSize: 13, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ color: "#2d7a4f", fontWeight: 700 }}>Viewing:</span>
+          <span style={{ fontWeight: 600 }}>{currentGrant.title || currentGrant.grantNumber || "Untitled"}</span>
+          {currentGrant.type && <span style={{ fontSize: 11, color: "#555", background: "#e6f4ec", borderRadius: 4, padding: "2px 8px" }}>{currentGrant.type}</span>}
+          {currentGrant.cycle && <span style={{ fontSize: 12, color: "#888" }}>{currentGrant.cycle}</span>}
+        </div>
+      )}
+
       {/* Action-required alerts */}
       {actionItems.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
@@ -124,7 +154,7 @@ export default function Dashboard({ profile, goPage }) {
             <div key={i} onClick={() => goPage(item.page)}
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: item.bg, border: `1px solid ${item.border}`, borderLeft: `4px solid ${item.color}`, borderRadius: 8, cursor: "pointer" }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: item.color }}>{item.label}</div>
-              <div style={{ fontSize: 12, color: item.color, fontWeight: 500 }}>Go to Review →</div>
+              <div style={{ fontSize: 12, color: item.color, fontWeight: 500 }}>Go to Review</div>
             </div>
           ))}
         </div>
@@ -133,13 +163,13 @@ export default function Dashboard({ profile, goPage }) {
       {/* Stat cards */}
       <div className="card-grid" style={{ marginBottom: 24 }}>
         {[
-          { label: "Activities logged",  value: activities.length,      color: "#1c2b1e" },
+          { label: "Activities logged",  value: filteredActivities.length, color: "#1c2b1e" },
           { label: "Total participants", value: fmt(totalParticipants), color: "#2d7a4f" },
           { label: "Women participants", value: fmt(totalWomen),        color: "#9333ea" },
           { label: "New editors",        value: fmt(totalNewEditors),   color: "#2563eb" },
           { label: "Registry size",      value: participants.length,    color: "#0891b2" },
-          { label: "Budget used",        value: `${budgetPct}%`,        color: budgetPct > 90 ? "#c0392b" : "#2d7a4f" },
-        ].map(({ label, value, color }) => (
+          showFinancials && { label: "Budget used", value: `${budgetPct}%`, color: budgetPct > 90 ? "#c0392b" : "#2d7a4f" },
+        ].filter(Boolean).map(({ label, value, color }) => (
           <div key={label} className="stat-card">
             <div className="stat-label">{label}</div>
             <div className="stat-value" style={{ color }}>{value}</div>
@@ -183,10 +213,10 @@ export default function Dashboard({ profile, goPage }) {
         <div className="panel">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div className="panel-title" style={{ marginBottom: 0 }}>Recent activities</div>
-            <button className="btn btn-sm" onClick={() => goPage("activities")}>View all →</button>
+            <button className="btn btn-sm" onClick={() => goPage("activities")}>View all</button>
           </div>
-          {activities.length === 0 ? <div className="empty">No activities logged yet.</div>
-            : activities.slice(0, 5).map(a => (
+          {filteredActivities.length === 0 ? <div className="empty">No activities logged yet.</div>
+            : filteredActivities.slice(0, 5).map(a => (
               <div key={a.id} style={{ paddingBottom: 10, marginBottom: 10, borderBottom: "1px solid #f0f0ec" }}>
                 <div style={{ fontWeight: 500, fontSize: 13 }}>{a.name}</div>
                 <div style={{ fontSize: 11, color: "#888" }}>{a.date} · {a.type} · {a.participants || 0} participants</div>
@@ -201,7 +231,7 @@ export default function Dashboard({ profile, goPage }) {
         <div className="panel">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div className="panel-title" style={{ marginBottom: 0 }}>Upcoming deadlines</div>
-            <button className="btn btn-sm" onClick={() => goPage("deadlines")}>Manage →</button>
+            <button className="btn btn-sm" onClick={() => goPage("deadlines")}>Manage</button>
           </div>
           {urgentDlines.length === 0 ? (
             <div className="empty">No upcoming deadlines.</div>
@@ -228,7 +258,7 @@ export default function Dashboard({ profile, goPage }) {
         <div className="panel">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div className="panel-title" style={{ marginBottom: 0 }}>Announcements</div>
-            <button className="btn btn-sm" onClick={() => goPage("announcements")}>View all →</button>
+            <button className="btn btn-sm" onClick={() => goPage("announcements")}>View all</button>
           </div>
           {latestAnnouncements.length === 0 ? (
             <div className="empty">No announcements yet.</div>
@@ -240,7 +270,7 @@ export default function Dashboard({ profile, goPage }) {
                   {a.pinned && <span style={{ fontSize: 11 }}>📌</span>}
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{a.title}</div>
                 </div>
-                {a.body && <div style={{ fontSize: 12, color: "#666", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{a.body}</div>}
+                {a.body && <div style={{ fontSize: 12, color: "#666", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }} dangerouslySetInnerHTML={{ __html: renderHtml(a.body) }} />}
                 <div style={{ fontSize: 10, color: "#aaa", marginTop: 4 }}>By {a.createdBy}</div>
               </div>
             ))
@@ -249,7 +279,7 @@ export default function Dashboard({ profile, goPage }) {
       </div>
 
       {/* Budget */}
-      {totalBudgetTZS > 0 && (
+      {showFinancials && totalBudgetTZS > 0 && (
         <div className="panel">
           <div className="panel-title">Budget utilisation</div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>

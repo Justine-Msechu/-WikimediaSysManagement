@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { renderHtml } from "../components/RichTextEditor";
 import { getActivity, updateActivity } from "../services/activityService";
 import { listenEvidence } from "../services/activityService";
 import { getProgramById } from "../services/programService";
@@ -11,8 +12,21 @@ import logo from "../assets/logo.png";
 
 function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
+function stripHtml(html) {
+  return (html || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ")
+    .trim();
+}
+
 function buildReport(a, programName) {
   const lines = [
+    "WIKIMEDIA COMMUNITY KILIMANJARO",
+    "Youth Technology",
+    "=".repeat(60),
     `ACTIVITY REPORT: ${(a.name || "").toUpperCase()}`,
     "=".repeat(60),
     `Date:        ${a.date || ""}`,
@@ -39,15 +53,15 @@ function buildReport(a, programName) {
     "",
     "NARRATIVE",
     "-".repeat(40),
-    `Summary:\n${a.summary || ""}`,
+    `Summary:\n${stripHtml(a.summary)}`,
     "",
-    `Challenges:\n${a.challenges || ""}`,
+    `Challenges:\n${stripHtml(a.challenges)}`,
     "",
-    `Lessons learned:\n${a.lessons || ""}`,
+    `Lessons learned:\n${stripHtml(a.lessons)}`,
     "",
-    `Impact stories:\n${a.stories || ""}`,
+    `Impact stories:\n${stripHtml(a.stories)}`,
     "",
-    `Next steps:\n${a.nextSteps || ""}`,
+    `Next steps:\n${stripHtml(a.nextSteps)}`,
     "",
     `Report link: ${a.link || ""}`,
   ];
@@ -374,7 +388,7 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
       {toast && <div style={{ position: "fixed", bottom: 24, right: 24, background: "#2d7a4f", color: "#fff", padding: "10px 18px", borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 9999 }}>✓ {toast}</div>}
 
       <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
-        <button className="btn" onClick={() => goPage("activities")}>← Back to activities</button>
+        <button className="btn" onClick={() => goPage("activities")}>Back to activities</button>
         <button className="btn btn-primary" onClick={downloadReport}>Download report (.txt)</button>
       </div>
 
@@ -395,8 +409,8 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-          {activity.link         && <a href={activity.link}         target="_blank" rel="noreferrer" className="btn btn-sm">Open Meta-Wiki report →</a>}
-          {activity.wikiEventUrl && <a href={activity.wikiEventUrl} target="_blank" rel="noreferrer" className="btn btn-sm">Open WEP event →</a>}
+          {activity.link         && <a href={activity.link}         target="_blank" rel="noreferrer" className="btn btn-sm">Open Meta-Wiki report</a>}
+          {activity.wikiEventUrl && <a href={activity.wikiEventUrl} target="_blank" rel="noreferrer" className="btn btn-sm">Open WEP event</a>}
         </div>
       </div>
 
@@ -461,10 +475,13 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
             ["Lessons learned",  activity.lessons],
             ["Impact stories",   activity.stories],
             ["Next steps",       activity.nextSteps],
-          ].filter(([, v]) => v).map(([title, val]) => (
+          ].filter(([, v]) => v && stripHtml(v)).map(([title, val]) => (
             <div key={title} className="panel">
               <div className="panel-title" style={{ marginBottom: 6 }}>{title}</div>
-              <div style={{ fontSize: 13, color: "#333", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{val}</div>
+              <div
+                style={{ fontSize: 13, color: "#333", lineHeight: 1.6 }}
+                dangerouslySetInnerHTML={{ __html: renderHtml(val) }}
+              />
             </div>
           ))}
         </div>
@@ -520,7 +537,7 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
                     {ev.addedBy ? ` · Added by ${ev.addedBy}` : ""}
                   </div>
                 </div>
-                <a href={ev.url} target="_blank" rel="noreferrer" className="btn btn-sm">Open →</a>
+                <a href={ev.url} target="_blank" rel="noreferrer" className="btn btn-sm">Open</a>
                 {canEdit && <button className="btn btn-sm btn-danger" onClick={() => removeLink(ev)}>Remove</button>}
               </div>
             ))}

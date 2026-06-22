@@ -1,4 +1,4 @@
-const CACHE = "gsf-v1";
+const CACHE = "gsf-v3";
 const OFFLINE_URLS = ["/", "/index.html"];
 
 self.addEventListener("install", (e) => {

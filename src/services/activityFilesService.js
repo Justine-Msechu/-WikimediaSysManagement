@@ -2,12 +2,8 @@ import { addDocument, deleteDocument, listenCollection } from "../firebase/fires
 import { where, orderBy } from "../firebase/firestore";
 
 export function listenActivityFiles(activityId, callback) {
-  return listenCollection(
-    "activityFiles",
-    callback,
-    where("activityId", "==", activityId),
-    orderBy("createdAt", "asc")
-  );
+  // No orderBy — where(activityId) + orderBy(createdAt) requires a composite index. Sort client-side.
+  return listenCollection("activityFiles", callback, where("activityId", "==", activityId));
 }
 
 export async function addActivityFile(activityId, { fileId, name, url, mimeType, size, uploadedBy }) {

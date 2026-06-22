@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { getForm, submitRegistration } from "../services/registrationService";
+import { renderHtml } from "../components/RichTextEditor";
 import logo from "../assets/logo.png";
 
 // ─── Sanitizers ────────────────────────────────────────────────────────────────
@@ -9,7 +10,11 @@ function sanitizeName(v) {
 }
 
 function sanitizeWikiUsername(v) {
-  let s = v.trim();
+  // Only strip leading whitespace — NOT trailing. If we also trim the end,
+  // the onChange handler kills the space mid-typing (e.g. "Justine " → "Justine")
+  // so the user can never type a two-word username like "Justine Msechu".
+  // The submit handler does a final .trim() after the value is complete.
+  let s = v.replace(/^\s+/, "");
   // Strip full Wikipedia URLs (any language: en, sw, fr, de, …)
   const urlMatch = s.match(/^https?:\/\/[a-z\-]+\.wikipedia\.org\/wiki\//i);
   if (urlMatch) {
@@ -22,9 +27,9 @@ function sanitizeWikiUsername(v) {
   s = s.replace(/^\w+:/, "");
   // Decode URI encoding (e.g. %20 → space, underscores stay as underscores)
   try { s = decodeURIComponent(s); } catch (_) {}
-  // Trim whitespace — do NOT replace underscores with spaces;
-  // Wikipedia treats them as equivalent but we preserve what the user typed.
-  return s.trim();
+  // Do NOT replace underscores with spaces; Wikipedia treats them as equivalent
+  // but we preserve what the user typed.
+  return s.replace(/^\s+/, ""); // strip any leading space left after namespace strip
 }
 
 function sanitizeEmail(v) {
@@ -54,15 +59,15 @@ function validateWikiUsername(v) {
 }
 
 function validateEmail(v) {
-  if (!v) return null; // optional
+  if (!v) return "Email address is required.";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "Enter a valid email address.";
   return null;
 }
 
 function validatePhone(v) {
-  if (!v) return null;
+  if (!v) return "Phone number is required.";
   const digits = v.replace(/\D/g, "");
-  if (digits.length > 0 && digits.length < 6) return "Phone number looks too short.";
+  if (digits.length < 6) return "Phone number looks too short.";
   return null;
 }
 
@@ -98,14 +103,24 @@ export default function PublicRegister({ formId }) {
     getForm(formId).then(f => {
       if (!f) { setNotFound(true); }
       else if (f.status === "closed") { setForm(f); setClosed(true); }
-      else { setForm(f); }
+      else {
+        setForm(f);
+        // Check registration limit using counter stored on the form document (no auth needed)
+        if (f.maxRegistrations && (f.registrationCount || 0) >= Number(f.maxRegistrations)) {
+          setClosed(true);
+        }
+      }
       setLoading(false);
+      if (f?.title) document.title = `${f.title} — Wikimedians of Kilimanjaro`;
     });
+    return () => { document.title = "Wiki Kilimanjaro — GSF Manager"; };
   }, [formId]);
 
-  const setV = (key, raw) => {
+  // setV: apply sanitizer. For wikimediaUsername we skip sanitization on onChange
+  // (so typing "Justine Msechu" keeps the space); sanitization happens only on blur/submit.
+  const setV = (key, raw, { sanitize = true } = {}) => {
     const sanitizers = { name: sanitizeName, wikimediaUsername: sanitizeWikiUsername, email: sanitizeEmail, phone: sanitizePhone, age: v => v.replace(/\D/g, ""), skills: sanitizeText, wikistatus: v => v };
-    const val = (sanitizers[key] || (v => v))(raw);
+    const val = sanitize ? (sanitizers[key] || (v => v))(raw) : raw;
     setVals(v => ({ ...v, [key]: val }));
     setErrors(e => ({ ...e, [key]: null }));
   };
@@ -172,7 +187,10 @@ export default function PublicRegister({ formId }) {
     <div style={containerStyle}><div style={panelStyle}>
       <img src={logo} alt="logo" style={{ width: 48, marginBottom: 16 }} />
       <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>{form?.title}</div>
-      <div style={{ fontSize: 14, color: "#888" }}>Registration for this event is now closed.</div>
+      {form?.maxRegistrations
+        ? <div style={{ fontSize: 14, color: "#c0392b", fontWeight: 600 }}>This event has reached its maximum number of registrations ({form.maxRegistrations} spots). Registration is now closed.</div>
+        : <div style={{ fontSize: 14, color: "#888" }}>Registration for this event is now closed.</div>
+      }
     </div></div>
   );
 
@@ -185,17 +203,41 @@ export default function PublicRegister({ formId }) {
         {form?.date && <span> We look forward to seeing you on {form.date}.</span>}
       </div>
       {form?.wikiEventUrl && (
-        <div style={{ background: "#f0f8f3", border: "1px solid #b7e0c8", borderRadius: 10, padding: "16px 20px", textAlign: "left", marginBottom: 20 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Enable Wikipedia edit tracking — optional</div>
-          <div style={{ fontSize: 13, color: "#555", marginBottom: 10 }}>
-            If you have a Wikipedia account, sign up on the Wikipedia Event Platform so your contributions can be tracked during this event. If you don't have one yet, you can skip this step.
+        vals.wikimediaUsername ? (
+          <div style={{ background: "#f0f8f3", border: "2px solid #4a9e6b", borderRadius: 10, padding: "16px 20px", textAlign: "left", marginBottom: 20 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, color: "#2d7a4f" }}>Join the event on Wikipedia — required</div>
+            <div style={{ fontSize: 13, color: "#555", marginBottom: 10 }}>
+              You provided your Wikipedia username (<strong>{vals.wikimediaUsername}</strong>). Please sign up on the Wikipedia Event Platform so your contributions during this event are tracked and counted.
+            </div>
+            <a href={form.wikiEventUrl} target="_blank" rel="noreferrer" style={{ display: "inline-block", background: "#2d7a4f", color: "#fff", borderRadius: 7, padding: "9px 18px", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+              Join on Wikipedia Event Platform
+            </a>
           </div>
-          <a href={form.wikiEventUrl} target="_blank" rel="noreferrer" style={{ display: "inline-block", background: "#2d7a4f", color: "#fff", borderRadius: 7, padding: "9px 18px", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
-            Join on Wikipedia Event Platform →
-          </a>
-        </div>
+        ) : (
+          <div style={{ background: "#f0f8f3", border: "1px solid #b7e0c8", borderRadius: 10, padding: "16px 20px", textAlign: "left", marginBottom: 20 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>New to Wikipedia? Create an account</div>
+            <div style={{ fontSize: 13, color: "#555", marginBottom: 10 }}>
+              You can create a free Wikipedia account and join this event so your contributions are tracked. This step is optional but encouraged.
+            </div>
+            <a href={form.wikiEventUrl} target="_blank" rel="noreferrer" style={{ display: "inline-block", background: "#2d7a4f", color: "#fff", borderRadius: 7, padding: "9px 18px", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+              Join on Wikipedia Event Platform 
+            </a>
+          </div>
+        )
       )}
-      <button onClick={() => window.close()} style={{ marginTop: 8, padding: "10px 28px", background: "#f5f4f0", color: "#333", fontSize: 14, fontWeight: 600, border: "1.5px solid #d0d0c8", borderRadius: 8, cursor: "pointer" }}>
+      <button
+        onClick={() => {
+          window.close();
+          // window.close() is blocked by most browsers when the page was opened via a link.
+          // Navigate to a blank thank-you state so the user isn't left on a broken button.
+          setTimeout(() => {
+            if (!window.closed) {
+              document.body.innerHTML = '<div style="font-family:system-ui,sans-serif;text-align:center;padding:60px 20px;color:#555;font-size:15px;">You are registered! You may now close this tab.</div>';
+            }
+          }, 400);
+        }}
+        style={{ marginTop: 8, padding: "10px 28px", background: "#f5f4f0", color: "#333", fontSize: 14, fontWeight: 600, border: "1.5px solid #d0d0c8", borderRadius: 8, cursor: "pointer" }}
+      >
         Close this page
       </button>
     </div></div>
@@ -208,7 +250,7 @@ export default function PublicRegister({ formId }) {
         <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>{form?.title || "Event registration"}</div>
         {form?.date     && <div style={{ fontSize: 13, color: "#888", marginBottom: 2 }}>📅 {form.date}</div>}
         {form?.location && <div style={{ fontSize: 13, color: "#888", marginBottom: 2 }}>📍 {form.location}</div>}
-        {form?.description && <div style={{ fontSize: 14, color: "#555", margin: "12px 0" }}>{form.description}</div>}
+        {form?.description && <div style={{ fontSize: 14, color: "#555", margin: "12px 0" }} dangerouslySetInnerHTML={{ __html: renderHtml(form.description) }} />}
         <div style={{ borderTop: "1px solid #eee", margin: "16px 0" }} />
 
         <form onSubmit={submit} noValidate>
@@ -223,10 +265,12 @@ export default function PublicRegister({ formId }) {
             <input
               style={{ ...inputStyle, borderColor: errors.wikimediaUsername ? "#c0392b" : undefined }}
               value={vals.wikimediaUsername}
-              onChange={e => setV("wikimediaUsername", e.target.value)}
-              onBlur={e => setV("wikimediaUsername", e.target.value)}
+              onChange={e => { const val = e.target.value; setVals(v => ({ ...v, wikimediaUsername: val })); }}
               placeholder="e.g. Justine Msechu"
               autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
             />
             <FieldError msg={errors.wikimediaUsername} />
             <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>
@@ -238,8 +282,8 @@ export default function PublicRegister({ formId }) {
             <label style={labelStyle}>Have you edited Wikipedia before? <span style={reqStyle}>*</span></label>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
               {[
-                { value: "no",  label: "No — this will be my first time editing Wikipedia" },
-                { value: "yes", label: "Yes — I have edited Wikipedia before" },
+                { value: "no",  label: "No this will be my first time editing Wikipedia" },
+                { value: "yes", label: "Yes I have edited Wikipedia before" },
               ].map(opt => (
                 <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 14, padding: "10px 14px", border: `1.5px solid ${vals.wikistatus === opt.value ? "#2d7a4f" : "#d0d0c8"}`, borderRadius: 8, background: vals.wikistatus === opt.value ? "#f0f8f3" : "#fff" }}>
                   <input type="radio" name="wikistatus" value={opt.value} checked={vals.wikistatus === opt.value} onChange={e => setV("wikistatus", e.target.value)} style={{ accentColor: "#2d7a4f" }} />
@@ -251,13 +295,13 @@ export default function PublicRegister({ formId }) {
           </div>
 
           <div style={fieldStyle}>
-            <label style={labelStyle}>Email address</label>
+            <label style={labelStyle}>Email address <span style={reqStyle}>*</span></label>
             <input type="email" style={{ ...inputStyle, borderColor: errors.email ? "#c0392b" : undefined }} value={vals.email} onChange={e => setV("email", e.target.value)} placeholder="you@example.com" autoComplete="email" />
             <FieldError msg={errors.email} />
           </div>
 
           <div style={fieldStyle}>
-            <label style={labelStyle}>Phone number</label>
+            <label style={labelStyle}>Phone number <span style={reqStyle}>*</span></label>
             <input type="tel" style={{ ...inputStyle, borderColor: errors.phone ? "#c0392b" : undefined }} value={vals.phone} onChange={e => setV("phone", e.target.value)} placeholder="+255 …" autoComplete="tel" />
             <FieldError msg={errors.phone} />
           </div>

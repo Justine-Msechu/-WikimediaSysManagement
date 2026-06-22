@@ -302,12 +302,31 @@ table input, table select { padding: 5px 7px; font-size: 12px; }
 
 /* ─── Print styles ───────────────────────────────── */
 @media print {
-  .sidebar { display: none; }
-  .main-content { overflow: visible; }
+  .sidebar, .mobile-topbar, .sidebar-overlay { display: none !important; }
+  .app-layout { display: block !important; }
+  .main-content { overflow: visible; margin: 0 !important; }
   .page-wrap { padding: 0; max-width: 100%; }
-  .btn-row, .btn { display: none !important; }
+  .btn-row, .btn, button { display: none !important; }
   .report-block { break-inside: avoid; }
+  .no-print { display: none !important; }
+
+  /* Show the print logo header on every printed page */
+  .print-logo-header {
+    display: flex !important;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 14px;
+    border-bottom: 2px solid #1c2b1e;
+    margin-bottom: 24px;
+  }
+  .print-logo-header img { height: 48px; width: auto; }
+  .print-logo-header .print-org-name { font-size: 16px; font-weight: 700; color: #1c2b1e; }
+  .print-logo-header .print-org-sub  { font-size: 11px; color: #555; margin-top: 2px; }
+  .print-logo-header .print-date     { margin-left: auto; font-size: 11px; color: #888; }
 }
+
+/* Hidden on screen, visible only in print */
+.print-logo-header { display: none; }
 
 /* ─── Modal overlay ──────────────────────────────── */
 .modal-overlay {
@@ -557,6 +576,13 @@ table input, table select { padding: 5px 7px; font-size: 12px; }
 
   /* Section label stays readable */
   .section-label { font-size: 10px; }
+}
+
+/* Rich text editor placeholder */
+[contenteditable][data-placeholder]:empty:before {
+  content: attr(data-placeholder);
+  color: #aaa;
+  pointer-events: none;
 }
 
 /* Extra small phones (≤ 400px) */

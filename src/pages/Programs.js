@@ -3,7 +3,9 @@ import { listenPrograms, addProgram, updateProgram, deleteProgram, submitProgram
 import { listenActivities } from "../services/activityService";
 import { listenSettings } from "../services/settingsService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import RichTextEditor, { renderHtml } from "../components/RichTextEditor";
 import { notifySubmission } from "../services/notificationService";
+import { batchWrite } from "../firebase/firestore";
 
 const STATUS_BADGE = {
   draft:     { label: "Draft",            color: "#2563eb", bg: "#eff6ff" },
@@ -33,15 +35,16 @@ function computeTotal(items) {
   return items.reduce((s, item) => s + (Number(item.unitCost) || 0) * (Number(item.quantity) || 1), 0);
 }
 
-export default function Programs({ profile }) {
-  const [programs,   setPrograms]   = useState([]);
-  const [activities, setActivities] = useState([]);
-  const [settings,   setSettings]   = useState(null);
-  const [showForm,   setShowForm]   = useState(false);
-  const [editId,     setEditId]     = useState(null);
-  const [form,       setForm]       = useState(emptyProgram(0.000438));
-  const [expanded,   setExpanded]   = useState(null); // program id showing budget detail
-  const [toast,      setToast]      = useState("");
+export default function Programs({ profile, grantId }) {
+  const [programs,    setPrograms]    = useState([]);
+  const [activities,  setActivities]  = useState([]);
+  const [settings,    setSettings]    = useState(null);
+  const [showForm,    setShowForm]    = useState(false);
+  const [editId,      setEditId]      = useState(null);
+  const [form,        setForm]        = useState(emptyProgram(0.000438));
+  const [expanded,    setExpanded]    = useState(null); // program id showing budget detail
+  const [toast,       setToast]       = useState("");
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
 
   useEffect(() => {
@@ -75,7 +78,7 @@ export default function Programs({ profile }) {
   const save = async () => {
     if (!form.name.trim()) { alert("Program name is required."); return; }
     const plannedBudget = computeTotal(form.budgetItems);
-    const data = { ...form, plannedBudget };
+    const data = { ...form, plannedBudget, grantId: grantId || "" };
     if (!editId) {
       const id = await addProgram(data);
       await addAudit(profile, AUDIT_ACTIONS.CREATE, "programs", { targetId: id, recordTitle: form.name });
@@ -86,6 +89,16 @@ export default function Programs({ profile }) {
       showToast("Program updated.");
     }
     setShowForm(false);
+  };
+
+  const assignUnassigned = async () => {
+    if (!grantId) return;
+    const unassigned = programs.filter(p => !p.grantId);
+    if (!unassigned.length) return;
+    if (!window.confirm(`Assign ${unassigned.length} unassigned programs to this grant?`)) return;
+    await batchWrite(unassigned.map(p => ({ type: "update", path: "programs", id: p.id, data: { grantId } })));
+    setBannerDismissed(true);
+    showToast(`${unassigned.length} programs assigned to grant.`);
   };
 
   const del = async (p) => {
@@ -120,9 +133,12 @@ export default function Programs({ profile }) {
 
   const seedDefaults = async () => {
     if (!window.confirm("Add the 9 default program areas? Existing programs will not be affected.")) return;
-    for (const p of DEFAULT_PROGRAMS) await addProgram({ ...p, exchangeRate: rate, budgetItems: [] });
+    for (const p of DEFAULT_PROGRAMS) await addProgram({ ...p, exchangeRate: rate, budgetItems: [], grantId: grantId || "" });
     showToast("Default programs added.");
   };
+
+  const unassignedCount = grantId ? programs.filter(p => !p.grantId).length : 0;
+  const visiblePrograms = grantId ? programs.filter(p => p.grantId === grantId) : programs;
 
   const formTotal    = computeTotal(form.budgetItems);
   const formTotalUSD = formTotal * (form.exchangeRate || rate);
@@ -131,6 +147,17 @@ export default function Programs({ profile }) {
     <div>
       {toast && <div style={{ position: "fixed", bottom: 24, right: 24, background: "#2d7a4f", color: "#fff", padding: "10px 18px", borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 9999 }}>✓ {toast}</div>}
       <div className="page-title">Programs</div>
+
+      {/* Legacy unassigned banner */}
+      {grantId && unassignedCount > 0 && !bannerDismissed && (
+        <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 8, padding: "10px 14px", fontSize: 13, marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <span><strong>{unassignedCount}</strong> program{unassignedCount !== 1 ? "s have" : " has"} no grant assigned — they are hidden while a grant is selected.</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            {canEdit && <button className="btn btn-sm btn-primary" onClick={assignUnassigned}>Assign {unassignedCount} to this grant</button>}
+            <button className="btn btn-sm" onClick={() => setBannerDismissed(true)}>Dismiss</button>
+          </div>
+        </div>
+      )}
 
       {canEdit && (
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginBottom: 16 }}>
@@ -163,7 +190,7 @@ export default function Programs({ profile }) {
               </div>
             </div>
           </div>
-          <div className="field"><label>Description</label><textarea rows={2} value={form.description} onChange={e => setF("description", e.target.value)} placeholder="Describe the goals and approach of this program" /></div>
+          <div className="field"><label>Description</label><RichTextEditor value={form.description} onChange={v => setF("description", v)} placeholder="Describe the goals and approach of this program" rows={2} /></div>
 
           {/* Budget line items */}
           <div style={{ marginTop: 18 }}>
@@ -232,11 +259,11 @@ export default function Programs({ profile }) {
         </div>
       )}
 
-      {programs.length === 0 ? (
+      {visiblePrograms.length === 0 ? (
         <div className="panel"><div className="empty">No programs yet. Add the default program areas or create a custom one.</div></div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {programs.map(p => {
+          {visiblePrograms.map(p => {
             const s      = statsFor(p.id);
             const total  = p.plannedBudget || computeTotal(p.budgetItems || []);
             const isExp  = expanded === p.id;
@@ -255,7 +282,7 @@ export default function Programs({ profile }) {
                       })()}
                     </div>
                     <div style={{ fontSize: 11, color: p.color || "#4a9e6b", fontWeight: 600, marginBottom: 4 }}>{p.category}</div>
-                    {p.description && <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>{p.description}</div>}
+                    {p.description && <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }} dangerouslySetInnerHTML={{ __html: renderHtml(p.description) }} />}
                     {p.rejectionComment && (
                       <div style={{ fontSize: 12, color: "#c0392b", background: "#fdf0ee", border: "1px solid #f5c6c0", borderRadius: 5, padding: "4px 10px", marginBottom: 4 }}>
                         Returned: {p.rejectionComment}

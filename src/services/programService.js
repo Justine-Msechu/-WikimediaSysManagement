@@ -2,7 +2,7 @@ import {
   addDocument, updateDocument, deleteDocument,
   listenCollection, getCollection, getDocument, setDocument,
 } from "../firebase/firestore";
-import { orderBy } from "firebase/firestore";
+import { orderBy, where } from "../firebase/firestore";
 
 export async function getPrograms() {
   return getCollection("programs", orderBy("name"));
@@ -47,6 +47,12 @@ export async function rejectProgram(id, comment) {
 
 export function listenPrograms(callback) {
   return listenCollection("programs", callback, orderBy("name"));
+}
+
+// Note: this query uses where("grantId","==",grantId) + orderBy("name").
+// Firestore handles simple equality + single orderBy without a composite index.
+export function listenProgramsByGrant(grantId, callback) {
+  return listenCollection("programs", callback, where("grantId", "==", grantId), orderBy("name"));
 }
 
 export async function getProgramById(id) {

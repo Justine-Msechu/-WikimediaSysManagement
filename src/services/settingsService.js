@@ -35,6 +35,15 @@ export const DEFAULT_SETTINGS = {
     status: "active",
   },
   team: [],
+  paymentDetails: {
+    accountHolderName: "",
+    accountHolderAddress: "",
+    bankName: "",
+    branchAddress: "",
+    accountNumber: "",
+    swift: "",
+    currency: "USD",
+  },
   sms: {
     enabled: false,
     sandbox: true,

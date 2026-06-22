@@ -167,7 +167,7 @@ export default function Programs({ profile, grantId }) {
 
       {canEdit && (
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-          <a className="btn btn-sm" href="/templates/wkk-budget-template.xlsx" download>Download budget template</a>
+          <a className="btn btn-sm" href={`${process.env.PUBLIC_URL}/templates/wkk-budget-template.xlsx`} download>Download budget template</a>
           {canImport && <button className="btn" onClick={() => setShowImport(true)}>Import budget (Excel)</button>}
           {programs.length === 0 && <button className="btn" onClick={seedDefaults}>Add default programs</button>}
           <button className="btn btn-primary" onClick={openCreate}>+ New program</button>

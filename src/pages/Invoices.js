@@ -12,6 +12,13 @@ const STATUS_BADGE = { draft: "badge-gray", sent: "badge-blue", paid: "badge-gre
 function fmtUSD(n) {
   return `$${(Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+function fmtTZS(n) {
+  return `TZS ${Math.round(Number(n) || 0).toLocaleString()}`;
+}
+// conversionRate is stored as USD per TZS (same convention as Budget/Dashboard), so TZS = USD / rate.
+function toTZS(usd, rate) {
+  return rate ? (Number(usd) || 0) / rate : 0;
+}
 function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
 function nextInvoiceNumber(invoices, cycle) {
@@ -28,6 +35,7 @@ function emptyInvoice(invoices, grant, paymentDetails) {
     recipientNote: "",
     description: "",
     amountUSD: "",
+    conversionRate: Number(grant?.conversionRate) || 0.000413,
     status: "draft",
     paymentDetails: { ...paymentDetails },
   };
@@ -95,10 +103,11 @@ function invoicePrintHtml(inv, orgName, grant, logoSrc) {
 
   <h3>Disbursement requested</h3>
   <table>
-    <tr><th>Description</th><th style="text-align:right">Amount (USD)</th></tr>
-    <tr><td>${esc(inv.description || "Disbursement request")}</td><td style="text-align:right">${fmtUSD(inv.amountUSD)}</td></tr>
-    <tr class="total-row"><td>Total amount requested</td><td style="text-align:right">${fmtUSD(inv.amountUSD)}</td></tr>
+    <tr><th>Description</th><th style="text-align:right">Amount (USD)</th><th style="text-align:right">Equivalent (TZS)</th></tr>
+    <tr><td>${esc(inv.description || "Disbursement request")}</td><td style="text-align:right">${fmtUSD(inv.amountUSD)}</td><td style="text-align:right">${fmtTZS(toTZS(inv.amountUSD, inv.conversionRate))}</td></tr>
+    <tr class="total-row"><td>Total amount requested</td><td style="text-align:right">${fmtUSD(inv.amountUSD)}</td><td style="text-align:right">${fmtTZS(toTZS(inv.amountUSD, inv.conversionRate))}</td></tr>
   </table>
+  <div style="font-size:11px;color:#888;margin-top:4px">Converted at a rate of 1 TZS = ${(Number(inv.conversionRate) || 0).toFixed(7)} USD.</div>
 
   <h3>Payment instructions</h3>
   <table>
@@ -145,7 +154,11 @@ export default function Invoices({ profile, grantId, currentGrant }) {
     setShowForm(true);
   };
   const openEdit = (inv) => {
-    setForm({ ...inv, paymentDetails: { ...(inv.paymentDetails || settings?.paymentDetails || {}) } });
+    setForm({
+      ...inv,
+      conversionRate: Number(inv.conversionRate) || Number(grant?.conversionRate) || 0.000413,
+      paymentDetails: { ...(inv.paymentDetails || settings?.paymentDetails || {}) },
+    });
     setEditId(inv.id);
     setShowForm(true);
   };
@@ -153,7 +166,7 @@ export default function Invoices({ profile, grantId, currentGrant }) {
   const save = async () => {
     if (!form.recipientName.trim()) { alert("Recipient name is required."); return; }
     if (!form.amountUSD || Number(form.amountUSD) <= 0) { alert("Amount must be greater than zero."); return; }
-    const data = { ...form, amountUSD: Number(form.amountUSD), grantId: grantId || "" };
+    const data = { ...form, amountUSD: Number(form.amountUSD), conversionRate: Number(form.conversionRate) || 0, grantId: grantId || "" };
     if (!editId) {
       const id = await addInvoice(data);
       await addAudit(profile, AUDIT_ACTIONS.CREATE, "invoices", { targetId: id, recordTitle: data.invoiceNumber });
@@ -218,6 +231,8 @@ export default function Invoices({ profile, grantId, currentGrant }) {
             <div className="field"><label>Recipient (e.g. fiscal sponsor)</label><input value={form.recipientName} onChange={e => setF("recipientName", e.target.value)} placeholder="Dunia Salama Foundation" /></div>
             <div className="field"><label>Recipient note</label><input value={form.recipientNote} onChange={e => setF("recipientNote", e.target.value)} placeholder="Fiscal sponsor" /></div>
             <div className="field"><label>Amount requested (USD)</label><input type="number" min="0" step="0.01" value={form.amountUSD} onChange={e => setF("amountUSD", e.target.value)} /></div>
+            <div className="field"><label>USD to TZS conversion rate</label><input type="number" min="0" step="0.000001" value={form.conversionRate} onChange={e => setF("conversionRate", Number(e.target.value))} placeholder="0.000413" /></div>
+            <div className="field"><label>Equivalent in TZS</label><input value={fmtTZS(toTZS(form.amountUSD, form.conversionRate))} disabled /></div>
             <div className="field"><label>Status</label>
               <select value={form.status} onChange={e => setF("status", e.target.value)}>
                 {INVOICE_STATUSES.map(s => <option key={s}>{s}</option>)}
@@ -256,7 +271,10 @@ export default function Invoices({ profile, grantId, currentGrant }) {
                     <td style={{ fontSize: 12 }}>{inv.date}</td>
                     <td style={{ fontSize: 12 }}>{inv.recipientName}</td>
                     <td style={{ fontSize: 12 }}>{inv.description}</td>
-                    <td style={{ textAlign: "right", fontWeight: 600 }}>{fmtUSD(inv.amountUSD)}</td>
+                    <td style={{ textAlign: "right" }}>
+                      <div style={{ fontWeight: 600 }}>{fmtUSD(inv.amountUSD)}</div>
+                      <div style={{ fontSize: 11, color: "#888" }}>{fmtTZS(toTZS(inv.amountUSD, inv.conversionRate))}</div>
+                    </td>
                     <td>
                       {canEdit ? (
                         <select value={inv.status} onChange={e => setStatus(inv, e.target.value)} style={{ fontSize: 11 }}>

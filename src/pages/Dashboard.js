@@ -7,6 +7,10 @@ import { listenMetrics, listenMetricsByGrant, DEFAULT_METRICS } from "../service
 import { listenBudgetEntries } from "../services/budgetService";
 import { listenAnnouncements } from "../services/announcementService";
 import { listenDeadlines } from "../services/deadlineService";
+import { listenInvoices } from "../services/invoiceService";
+import { listenPrograms } from "../services/programService";
+import { spendingReportHtml } from "../utils/spendingReport";
+import logo from "../assets/logo.png";
 
 function pct(r, t) { if (!t) return 0; return Math.min(999, Math.round((r / t) * 100)); }
 function fmt(n)    { return (n || 0).toLocaleString(); }
@@ -59,6 +63,8 @@ export default function Dashboard({ profile, goPage, grantId, grants }) {
   const [budgetEntries,  setBudgetEntries]  = useState([]);
   const [announcements,  setAnnouncements]  = useState([]);
   const [deadlines,      setDeadlines]      = useState([]);
+  const [invoices,       setInvoices]       = useState([]);
+  const [programs,       setPrograms]       = useState([]);
 
   useEffect(() => {
     const u1 = listenActivities(setActivities);
@@ -70,7 +76,9 @@ export default function Dashboard({ profile, goPage, grantId, grants }) {
     const u5 = listenBudgetEntries(setBudgetEntries);
     const u6 = listenAnnouncements(setAnnouncements);
     const u7 = listenDeadlines(setDeadlines);
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
+    const u8 = listenInvoices(setInvoices);
+    const u9 = listenPrograms(setPrograms);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); };
   }, [grantId]);
 
   // Filter in JS when a grant is selected (keep subscriptions unfiltered for simplicity)
@@ -96,6 +104,18 @@ export default function Dashboard({ profile, goPage, grantId, grants }) {
   // Money totals (grant size, budget utilisation) are finance-only — coordinators run
   // programs/activities but should not see overall grant money figures.
   const showFinancials = profile?.role !== "coordinator";
+
+  const printSpendingReport = () => {
+    const visibleInvoices = grantId ? invoices.filter(i => i.grantId === grantId) : invoices;
+    const visiblePrograms = grantId ? programs.filter(p => p.grantId === grantId) : programs;
+    const approvedEntries = filteredEntries.filter(e => e.status === "approved");
+    const orgName = settings?.org?.name || "Wikimedia Community Kilimanjaro";
+    const reportGrant = { conversionRate: grantRate, title: currentGrant?.title || grant.title || "" };
+    const html = spendingReportHtml(visibleInvoices, approvedEntries, visiblePrograms, orgName, reportGrant, logo);
+    const w = window.open("", "_blank", "width=1000,height=800");
+    w.document.write(html);
+    w.document.close();
+  };
   const pendingEntries = filteredEntries.filter(e => e.status === "submitted");
   const myDrafts       = filteredEntries.filter(e => e.status === "draft" && e.requestedBy === profile?.name);
   const actionItems    = [
@@ -281,7 +301,10 @@ export default function Dashboard({ profile, goPage, grantId, grants }) {
       {/* Budget */}
       {showFinancials && totalBudgetTZS > 0 && (
         <div className="panel">
-          <div className="panel-title">Budget utilisation</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <div className="panel-title" style={{ marginBottom: 0 }}>Budget utilisation</div>
+            <button className="btn btn-sm" onClick={printSpendingReport}>Spending report</button>
+          </div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
             <span>TZS {fmt(approvedSpend)} approved</span>
             <span style={{ color: "#888" }}>of TZS {fmt(totalBudgetTZS)} total</span>

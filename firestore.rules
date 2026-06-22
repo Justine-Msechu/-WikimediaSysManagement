@@ -58,7 +58,10 @@ service cloud.firestore {
     // Grant config, org details, report answers. All staff read; only admins write.
     match /settings/{docId} {
       allow read:   if isAnyStaff();
-      allow write:  if isAdmin();
+      // isFinance() also covers admin. Needed because Settings → Payment details
+      // is editable by admin or finance_officer in the app, and the budget importer
+      // (admin/finance only) writes personnel rows here too.
+      allow write:  if isFinance();
     }
 
     // ── /grants ────────────────────────────────────────────────────────────

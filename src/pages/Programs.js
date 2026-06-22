@@ -6,6 +6,7 @@ import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import RichTextEditor, { renderHtml } from "../components/RichTextEditor";
 import { notifySubmission } from "../services/notificationService";
 import { batchWrite } from "../firebase/firestore";
+import ImportBudgetModal from "../components/ImportBudgetModal";
 
 const STATUS_BADGE = {
   draft:     { label: "Draft",            color: "#2563eb", bg: "#eff6ff" },
@@ -45,7 +46,12 @@ export default function Programs({ profile, grantId }) {
   const [expanded,    setExpanded]    = useState(null); // program id showing budget detail
   const [toast,       setToast]       = useState("");
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
+  // The importer writes programs, settings.personnel, and budget entries in one action —
+  // each has a different Firestore role boundary (coordinator/finance/admin respectively),
+  // so the only role that passes every one of them is admin. Keep this admin-only.
+  const canImport = profile?.role === "admin";
 
   useEffect(() => {
     const u1 = listenPrograms(setPrograms);
@@ -160,10 +166,25 @@ export default function Programs({ profile, grantId }) {
       )}
 
       {canEdit && (
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+          <a className="btn btn-sm" href="/templates/wkk-budget-template.xlsx" download>Download budget template</a>
+          {canImport && <button className="btn" onClick={() => setShowImport(true)}>Import budget (Excel)</button>}
           {programs.length === 0 && <button className="btn" onClick={seedDefaults}>Add default programs</button>}
           <button className="btn btn-primary" onClick={openCreate}>+ New program</button>
         </div>
+      )}
+
+      {showImport && (
+        <ImportBudgetModal
+          profile={profile}
+          grantId={grantId}
+          settings={settings}
+          conversionRate={rate}
+          onClose={() => setShowImport(false)}
+          onImported={({ programs: pCount, personnel: perCount, opsEntries: opsCount }) => {
+            showToast(`Imported ${pCount} program(s), ${perCount} personnel role(s), ${opsCount} operational entr${opsCount === 1 ? "y" : "ies"}.`);
+          }}
+        />
       )}
 
       {showForm && (
@@ -283,6 +304,11 @@ export default function Programs({ profile, grantId }) {
                     </div>
                     <div style={{ fontSize: 11, color: p.color || "#4a9e6b", fontWeight: 600, marginBottom: 4 }}>{p.category}</div>
                     {p.description && <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }} dangerouslySetInnerHTML={{ __html: renderHtml(p.description) }} />}
+                    {p.requestedBudgetUSD > 0 && !(p.budgetItems?.length > 0) && (
+                      <div style={{ fontSize: 12, color: "#d97706", background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 5, padding: "4px 10px", marginBottom: 4, display: "inline-block" }}>
+                        Requested budget (from import): {fmtUSD(p.requestedBudgetUSD)} ({fmt(p.requestedBudgetTZS)} TZS) — add the budget line item below to confirm it.
+                      </div>
+                    )}
                     {p.rejectionComment && (
                       <div style={{ fontSize: 12, color: "#c0392b", background: "#fdf0ee", border: "1px solid #f5c6c0", borderRadius: 5, padding: "4px 10px", marginBottom: 4 }}>
                         Returned: {p.rejectionComment}

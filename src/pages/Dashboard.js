@@ -299,19 +299,25 @@ export default function Dashboard({ profile, goPage, grantId, grants }) {
       </div>
 
       {/* Budget */}
-      {showFinancials && totalBudgetTZS > 0 && (
+      {showFinancials && (
         <div className="panel">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: totalBudgetTZS > 0 ? 6 : 0 }}>
             <div className="panel-title" style={{ marginBottom: 0 }}>Budget utilisation</div>
             <button className="btn btn-sm" onClick={printSpendingReport}>Spending report</button>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
-            <span>TZS {fmt(approvedSpend)} approved</span>
-            <span style={{ color: "#888" }}>of TZS {fmt(totalBudgetTZS)} total</span>
-          </div>
-          <div style={{ background: "#e8e8e4", borderRadius: 5, height: 10, overflow: "hidden" }}>
-            <div style={{ width: `${budgetPct}%`, height: 10, borderRadius: 5, background: budgetPct > 90 ? "#c0392b" : "#4a9e6b", transition: "width 0.3s" }} />
-          </div>
+          {totalBudgetTZS > 0 ? (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+                <span>TZS {fmt(approvedSpend)} approved</span>
+                <span style={{ color: "#888" }}>of TZS {fmt(totalBudgetTZS)} total</span>
+              </div>
+              <div style={{ background: "#e8e8e4", borderRadius: 5, height: 10, overflow: "hidden" }}>
+                <div style={{ width: `${budgetPct}%`, height: 10, borderRadius: 5, background: budgetPct > 90 ? "#c0392b" : "#4a9e6b", transition: "width 0.3s" }} />
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 12, color: "#888" }}>No total grant amount set for this grant yet — set it on the Grants page to see a utilisation bar here.</div>
+          )}
         </div>
       )}
     </div>

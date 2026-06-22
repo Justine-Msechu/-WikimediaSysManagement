@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { listenActivities } from "../services/activityService";
 import { listenPrograms } from "../services/programService";
+import { plannedScheduleFor, monthLabel } from "../data/plannedTimeline";
+import ImportTimelineModal from "../components/ImportTimelineModal";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const WEEKDAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
@@ -14,6 +16,8 @@ export default function Timeline({ profile, goPage, grantId }) {
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
+  const [showImport, setShowImport] = useState(false);
+  const canImport = ["admin", "coordinator"].includes(profile?.role);
 
   useEffect(() => {
     const u1 = listenActivities(setActivities);
@@ -50,6 +54,29 @@ export default function Timeline({ profile, goPage, grantId }) {
     .filter(a => { if (!a.date) return false; const d = new Date(a.date); return d.getFullYear() === year && d.getMonth() === month; })
     .sort((a, b) => a.date.localeCompare(b.date));
 
+  // Planned vs actual — compares each program's planned schedule against logged activities
+  // for the full grant cycle, regardless of which month the calendar above is showing.
+  // A program's planned schedule comes from an imported timeline file (program.plannedMonths)
+  // when one has been set; otherwise it falls back to the official 2026-2027 document's
+  // schedule, matched by program name, so this still works before anything is imported.
+  const visiblePrograms = grantId ? programs.filter(p => p.grantId === grantId) : programs;
+  const comparisonRows = visiblePrograms
+    .map(p => {
+      const months = p.plannedMonths?.length ? p.plannedMonths : plannedScheduleFor(p.name)?.months;
+      if (!months?.length) return null;
+      const actualMonths = new Set(
+        visibleActivities.filter(a => a.programId === p.id && a.date).map(a => a.date.slice(0, 7))
+      );
+      const plannedSet = new Set(months);
+      const done = months.filter(m => actualMonths.has(m)).length;
+      const extra = [...actualMonths].filter(m => !plannedSet.has(m));
+      return { program: p, months, actualMonths, done, extra };
+    })
+    .filter(Boolean);
+  const allMonths = new Set();
+  comparisonRows.forEach(r => { r.months.forEach(m => allMonths.add(m)); r.actualMonths.forEach(m => allMonths.add(m)); });
+  const timelineColumns = [...allMonths].sort();
+
   return (
     <div>
       <div className="page-title">Activity timeline</div>
@@ -60,6 +87,66 @@ export default function Timeline({ profile, goPage, grantId }) {
         <button className="btn" onClick={next}>Next</button>
         <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth()); }}>Today</button>
       </div>
+
+      {/* Planned vs actual — imported schedule (or the official 2026-2027 document) vs logged activities */}
+      <div className="panel" style={{ marginBottom: 20, overflowX: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <div className="panel-title">Planned vs actual</div>
+          {canImport && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <a className="btn btn-sm" href={`${process.env.PUBLIC_URL}/templates/wkk-timeline-template.xlsx`} download>Download timeline template</a>
+              <button className="btn btn-sm" onClick={() => setShowImport(true)}>Import timeline (Excel)</button>
+            </div>
+          )}
+        </div>
+        <div style={{ fontSize: 11, color: "#888", margin: "6px 0 10px" }}>
+          A filled green dot means a planned month has a matching logged activity; an empty amber ring means it's still pending; a blue dot marks an activity logged in a month that wasn't part of the plan.
+        </div>
+        {comparisonRows.length === 0 ? (
+          <div className="empty">No planned schedule yet — import the timeline template above, or create programs that match the official 2026-2027 document.</div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid #e8e8e4" }}>Program</th>
+                {timelineColumns.map(m => (
+                  <th key={m} style={{ textAlign: "center", padding: "6px 4px", borderBottom: "1px solid #e8e8e4", fontSize: 10, color: "#888" }}>{monthLabel(m)}</th>
+                ))}
+                <th style={{ textAlign: "center", padding: "6px 8px", borderBottom: "1px solid #e8e8e4", fontSize: 10, color: "#888" }}>On track</th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparisonRows.map(({ program, months, actualMonths, done, extra }) => (
+                <tr key={program.id}>
+                  <td style={{ padding: "6px 8px", borderBottom: "1px solid #f5f4f0", whiteSpace: "nowrap" }}>{program.name}</td>
+                  {timelineColumns.map(m => {
+                    const planned = months.includes(m);
+                    const actual  = actualMonths.has(m);
+                    let dot = null;
+                    if (planned && actual)      dot = <span title={`Planned and done in ${monthLabel(m)}`} style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#2d7a4f" }} />;
+                    else if (planned && !actual) dot = <span title={`Planned for ${monthLabel(m)}, not yet logged`} style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", border: "2px solid #d68a1a" }} />;
+                    else if (!planned && actual) dot = <span title={`Logged in ${monthLabel(m)} but not in the original plan`} style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#3a7bd5" }} />;
+                    return <td key={m} style={{ textAlign: "center", padding: "6px 4px", borderBottom: "1px solid #f5f4f0" }}>{dot}</td>;
+                  })}
+                  <td style={{ textAlign: "center", padding: "6px 8px", borderBottom: "1px solid #f5f4f0", whiteSpace: "nowrap" }}>
+                    {done}/{months.length}{extra.length > 0 && <span style={{ color: "#3a7bd5" }}> +{extra.length}</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {showImport && (
+        <ImportTimelineModal
+          profile={profile}
+          grantId={grantId}
+          programs={visiblePrograms}
+          onClose={() => setShowImport(false)}
+          onImported={() => setShowImport(false)}
+        />
+      )}
 
       {/* Calendar grid */}
       <div className="panel" style={{ marginBottom: 20 }}>

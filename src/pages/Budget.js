@@ -168,7 +168,9 @@ export default function Budget({ profile, grantId, currentGrant }) {
     const u4 = listenActivities(setActivities);
     const u2 = listenSettings(s => {
       setSettings(s);
-      setPersonnel(s?.personnel?.length ? s.personnel : DEFAULT_PERSONNEL);
+      // Only fall back to the sample defaults when the field has never been set —
+      // an explicit empty array (user cleared it) should stay empty, not reappear.
+      setPersonnel(s?.personnel !== undefined ? s.personnel : DEFAULT_PERSONNEL);
       setCashFlow(s?.cashFlow || {});
     });
     return () => { u1(); u2(); u3(); u4(); };

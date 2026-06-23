@@ -12,10 +12,24 @@ import { batchWrite } from "../firebase/firestore";
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
+// Our programs run on weekends — suggest the coming Saturday (or today, if today
+// already falls on a Saturday/Sunday) as the default date for a new activity.
+function nextWeekendDate() {
+  const d = new Date();
+  const dow = d.getDay(); // 0 = Sunday, 6 = Saturday
+  if (dow !== 0 && dow !== 6) d.setDate(d.getDate() + (6 - dow));
+  return d.toISOString().slice(0, 10);
+}
+function isWeekend(dateStr) {
+  if (!dateStr) return true;
+  const dow = new Date(dateStr).getDay();
+  return dow === 0 || dow === 6;
+}
+
 function emptyActivity(programs) {
   return {
     programId: programs[0]?.id || "",
-    name: "", type: ACTIVITY_TYPES[0], date: today(), location: "", reportedBy: "",
+    name: "", type: ACTIVITY_TYPES[0], date: nextWeekendDate(), location: "", reportedBy: "",
     assignedTo: "",
     participants: "", women: "", newEditors: "", retainedEditors: "", youth: "", pwd: "",
     organizers: "", newOrganizers: "",
@@ -92,6 +106,7 @@ export default function Activities({ profile, goPage, grantId }) {
   const save = async () => {
     if (!form.name?.trim()) { alert("Activity name is required."); return; }
     if (!form.date)         { alert("Date is required."); return; }
+    if (!isWeekend(form.date) && !window.confirm("This date falls on a weekday — programs are usually scheduled for Saturday or Sunday. Save anyway?")) return;
 
     // Conflict protection: check if someone else saved while we were editing
     if (editId && editVersion) {
@@ -323,6 +338,7 @@ export default function Activities({ profile, goPage, grantId }) {
             <div className="field">
               <label>Date <span className="req">★</span></label>
               <input type="date" value={form.date || ""} onChange={e => setF("date", e.target.value)} />
+              {!isWeekend(form.date) && <div style={{ fontSize: 11, color: "#d68a1a", marginTop: 4 }}>Not a weekend — programs are usually scheduled for Saturday or Sunday.</div>}
             </div>
             <div className="field">
               <label>Location</label>

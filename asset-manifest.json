@@ -1,0 +1,14 @@
+{
+  "files": {
+    "main.css": "/-WikimediaSysManagement/static/css/main.dd72be35.css",
+    "main.js": "/-WikimediaSysManagement/static/js/main.190c32f7.js",
+    "static/media/logo.png": "/-WikimediaSysManagement/static/media/logo.50a58f1dee6ba5a4eefa.png",
+    "index.html": "/-WikimediaSysManagement/index.html",
+    "main.dd72be35.css.map": "/-WikimediaSysManagement/static/css/main.dd72be35.css.map",
+    "main.190c32f7.js.map": "/-WikimediaSysManagement/static/js/main.190c32f7.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.dd72be35.css",
+    "static/js/main.190c32f7.js"
+  ]
+}

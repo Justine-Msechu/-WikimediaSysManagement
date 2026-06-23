@@ -245,7 +245,7 @@ function AppShell() {
       case "grant":        return role === "admin" ? <Grant profile={profile} currentGrantId={currentGrantId} onSelectGrant={setCurrentGrant} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} currentGrant={currentGrant} />;
       case "programs":     return <Programs     key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} />;
       case "activities":   return <Activities   key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} />;
-      case "timeline":     return <Timeline     key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} />;
+      case "timeline":     return <Timeline     key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} currentGrant={currentGrant} />;
       case "budget":       return <Budget       key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} />;
       case "invoices":     return ["admin","finance_officer"].includes(role) ? <Invoices key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} currentGrant={currentGrant} />;
       case "review":       return <Review       key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} />;

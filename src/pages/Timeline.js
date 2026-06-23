@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { listenActivities } from "../services/activityService";
 import { listenPrograms } from "../services/programService";
+import { listenSettings } from "../services/settingsService";
 import { plannedScheduleFor, monthLabel } from "../data/plannedTimeline";
+import { timelineReportHtml } from "../utils/timelineReport";
 import ImportTimelineModal from "../components/ImportTimelineModal";
+import logo from "../assets/logo.png";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const WEEKDAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
@@ -10,9 +13,10 @@ const WEEKDAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 function daysInMonth(year, month) { return new Date(year, month + 1, 0).getDate(); }
 function startDow(year, month) { let d = new Date(year, month, 1).getDay(); return d === 0 ? 6 : d - 1; }
 
-export default function Timeline({ profile, goPage, grantId }) {
+export default function Timeline({ profile, goPage, grantId, currentGrant }) {
   const [activities, setActivities] = useState([]);
   const [programs,   setPrograms]   = useState([]);
+  const [settings,   setSettings]   = useState(null);
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -22,7 +26,8 @@ export default function Timeline({ profile, goPage, grantId }) {
   useEffect(() => {
     const u1 = listenActivities(setActivities);
     const u2 = listenPrograms(setPrograms);
-    return () => { u1(); u2(); };
+    const u3 = listenSettings(setSettings);
+    return () => { u1(); u2(); u3 && u3(); };
   }, []);
 
   const prev = () => { if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1); };
@@ -77,6 +82,15 @@ export default function Timeline({ profile, goPage, grantId }) {
   comparisonRows.forEach(r => { r.months.forEach(m => allMonths.add(m)); r.actualMonths.forEach(m => allMonths.add(m)); });
   const timelineColumns = [...allMonths].sort();
 
+  const orgName = settings?.org?.name || "Wikimedia Community Kilimanjaro";
+  const grant   = currentGrant || settings?.grant || {};
+  const printTimelineReport = () => {
+    const html = timelineReportHtml(comparisonRows, timelineColumns, orgName, grant, logo);
+    const w = window.open("", "_blank", "width=1000,height=800");
+    w.document.write(html);
+    w.document.close();
+  };
+
   return (
     <div>
       <div className="page-title">Activity timeline</div>
@@ -92,12 +106,15 @@ export default function Timeline({ profile, goPage, grantId }) {
       <div className="panel" style={{ marginBottom: 20, overflowX: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
           <div className="panel-title">Planned vs actual</div>
-          {canImport && (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <a className="btn btn-sm" href={`${process.env.PUBLIC_URL}/templates/wkk-timeline-template.xlsx`} download>Download timeline template</a>
-              <button className="btn btn-sm" onClick={() => setShowImport(true)}>Import timeline (Excel)</button>
-            </div>
-          )}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn btn-sm" onClick={printTimelineReport}>Print timeline report</button>
+            {canImport && (
+              <>
+                <a className="btn btn-sm" href={`${process.env.PUBLIC_URL}/templates/wkk-timeline-template.xlsx`} download>Download timeline template</a>
+                <button className="btn btn-sm" onClick={() => setShowImport(true)}>Import timeline (Excel)</button>
+              </>
+            )}
+          </div>
         </div>
         <div style={{ fontSize: 11, color: "#888", margin: "6px 0 10px" }}>
           A filled green dot means a planned month has a matching logged activity; an empty amber ring means it's still pending; a blue dot marks an activity logged in a month that wasn't part of the plan.

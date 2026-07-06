@@ -29,8 +29,12 @@ function emptyItem(rate) {
   return { id: Date.now().toString() + Math.random(), description: "", note: "", unitCost: 0, quantity: 1, expenseType: "Food and drinks", exchangeRate: rate };
 }
 
+function emptySubProgram() {
+  return { id: Date.now().toString() + Math.random(), name: "", description: "", budgetItems: [] };
+}
+
 function emptyProgram(rate) {
-  return { name: "", category: "Content Creation", description: "", plannedSessions: 1, color: PROGRAM_COLORS[0], exchangeRate: rate, budgetItems: [] };
+  return { name: "", category: "Content Creation", description: "", plannedSessions: 1, color: PROGRAM_COLORS[0], exchangeRate: rate, budgetItems: [], subPrograms: [] };
 }
 
 function computeTotal(items) {
@@ -75,6 +79,7 @@ export default function Programs({ profile, grantId, currentGrant }) {
       plannedSessions: p.plannedSessions || 1, color: p.color || PROGRAM_COLORS[0],
       exchangeRate: p.exchangeRate || rate,
       budgetItems: (p.budgetItems || []).map(it => ({ ...it })),
+      subPrograms: (p.subPrograms || []).map(sp => ({ ...sp, budgetItems: (sp.budgetItems || []).map(it => ({ ...it })) })),
     });
     setEditId(p.id); setShowForm(true);
   };
@@ -84,9 +89,18 @@ export default function Programs({ profile, grantId, currentGrant }) {
   const removeItem = (i) => setF("budgetItems", form.budgetItems.filter((_, j) => j !== i));
   const setItem    = (i, k, v) => setF("budgetItems", form.budgetItems.map((it, j) => j === i ? { ...it, [k]: v } : it));
 
+  // Sub-program handlers
+  const addSubProgram    = () => setF("subPrograms", [...(form.subPrograms || []), emptySubProgram()]);
+  const removeSubProgram = (si) => setF("subPrograms", form.subPrograms.filter((_, j) => j !== si));
+  const setSubP          = (si, k, v) => setF("subPrograms", form.subPrograms.map((sp, j) => j === si ? { ...sp, [k]: v } : sp));
+  const addSubItem       = (si) => setSubP(si, "budgetItems", [...(form.subPrograms[si].budgetItems || []), emptyItem(form.exchangeRate || rate)]);
+  const removeSubItem    = (si, ii) => setSubP(si, "budgetItems", form.subPrograms[si].budgetItems.filter((_, j) => j !== ii));
+  const setSubItem       = (si, ii, k, v) => setSubP(si, "budgetItems", form.subPrograms[si].budgetItems.map((it, j) => j === ii ? { ...it, [k]: v } : it));
+
   const save = async () => {
     if (!form.name.trim()) { alert("Program name is required."); return; }
-    const plannedBudget = computeTotal(form.budgetItems);
+    const subTotal = (form.subPrograms || []).reduce((s, sp) => s + computeTotal(sp.budgetItems || []), 0);
+    const plannedBudget = computeTotal(form.budgetItems) + subTotal;
     const data = { ...form, plannedBudget, grantId: grantId || "" };
     if (!editId) {
       const id = await addProgram(data);
@@ -149,8 +163,11 @@ export default function Programs({ profile, grantId, currentGrant }) {
   const unassignedCount = grantId ? programs.filter(p => !p.grantId).length : 0;
   const visiblePrograms = grantId ? programs.filter(p => p.grantId === grantId) : programs;
 
-  const formTotal    = computeTotal(form.budgetItems);
-  const formTotalUSD = formTotal * (form.exchangeRate || rate);
+  const formTotal      = computeTotal(form.budgetItems);
+  const formTotalUSD   = formTotal * (form.exchangeRate || rate);
+  const formSubTotal   = (form.subPrograms || []).reduce((s, sp) => s + computeTotal(sp.budgetItems || []), 0);
+  const formGrandTotal = formTotal + formSubTotal;
+  const formGrandUSD   = formGrandTotal * (form.exchangeRate || rate);
 
   return (
     <div>
@@ -275,6 +292,110 @@ export default function Programs({ profile, grantId, currentGrant }) {
               </div>
             )}
           </div>
+
+          {/* Sub-programs / Sessions */}
+          <div style={{ marginTop: 22, borderTop: "1px solid #e8e8e4", paddingTop: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>Sub-programs / Sessions</div>
+                <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>Break the program into sessions, each with its own budget (e.g. Session 1 — Editathon Basics).</div>
+              </div>
+              <button className="btn btn-sm btn-primary" onClick={addSubProgram}>+ Add session</button>
+            </div>
+            {(!form.subPrograms || form.subPrograms.length === 0) ? (
+              <div className="empty" style={{ padding: "10px 0", fontSize: 12 }}>No sessions yet — click "+ Add session" to define per-session budgets.</div>
+            ) : (
+              form.subPrograms.map((sp, si) => {
+                const spTotal    = computeTotal(sp.budgetItems || []);
+                const spTotalUSD = spTotal * (form.exchangeRate || rate);
+                return (
+                  <div key={sp.id} style={{ border: "1px solid #d8d8d2", borderRadius: 8, padding: 14, marginBottom: 12, background: "#fafaf8" }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#888", minWidth: 20 }}>#{si + 1}</span>
+                      <input
+                        value={sp.name}
+                        onChange={e => setSubP(si, "name", e.target.value)}
+                        placeholder={`Session ${si + 1} name`}
+                        style={{ flex: 1, minWidth: 160 }}
+                      />
+                      <input
+                        value={sp.description || ""}
+                        onChange={e => setSubP(si, "description", e.target.value)}
+                        placeholder="Short description (optional)"
+                        style={{ flex: 2, minWidth: 200 }}
+                      />
+                      <button className="btn btn-sm btn-danger" onClick={() => removeSubProgram(si)}>✕</button>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, color: "#666", fontWeight: 600 }}>Budget items</div>
+                      <button className="btn btn-sm" onClick={() => addSubItem(si)}>+ Add item</button>
+                    </div>
+                    {(sp.budgetItems || []).length === 0 ? (
+                      <div style={{ fontSize: 12, color: "#aaa", padding: "4px 0" }}>No budget items yet.</div>
+                    ) : (
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ fontSize: 12 }}>
+                          <thead>
+                            <tr>
+                              <th>Description</th>
+                              <th>Note</th>
+                              <th style={{ textAlign: "right" }}>Unit cost (TZS)</th>
+                              <th style={{ textAlign: "center" }}>Qty</th>
+                              <th style={{ textAlign: "right" }}>Total (TZS)</th>
+                              <th>Expense type</th>
+                              <th style={{ textAlign: "right" }}>USD</th>
+                              <th></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sp.budgetItems.map((item, ii) => {
+                              const itemTotal = (Number(item.unitCost) || 0) * (Number(item.quantity) || 1);
+                              const itemUSD   = itemTotal * (form.exchangeRate || rate);
+                              return (
+                                <tr key={item.id}>
+                                  <td><input value={item.description} onChange={e => setSubItem(si, ii, "description", e.target.value)} placeholder="e.g. Food and drinks" style={{ minWidth: 140 }} /></td>
+                                  <td><input value={item.note} onChange={e => setSubItem(si, ii, "note", e.target.value)} placeholder="e.g. Refreshments" style={{ minWidth: 160 }} /></td>
+                                  <td><input type="number" min="0" value={item.unitCost || ""} onChange={e => setSubItem(si, ii, "unitCost", Number(e.target.value) || 0)} style={{ width: 110, textAlign: "right" }} /></td>
+                                  <td><input type="number" min="1" value={item.quantity || ""} onChange={e => setSubItem(si, ii, "quantity", Number(e.target.value) || 1)} style={{ width: 60, textAlign: "center" }} /></td>
+                                  <td style={{ textAlign: "right", fontWeight: 600 }}>{fmt(itemTotal)}</td>
+                                  <td>
+                                    <select value={item.expenseType} onChange={e => setSubItem(si, ii, "expenseType", e.target.value)} style={{ minWidth: 130 }}>
+                                      {EXPENSE_TYPES.map(t => <option key={t}>{t}</option>)}
+                                    </select>
+                                  </td>
+                                  <td style={{ textAlign: "right", color: "#555" }}>{fmtUSD(itemUSD)}</td>
+                                  <td><button className="btn btn-sm btn-danger" onClick={() => removeSubItem(si, ii)}>✕</button></td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr style={{ fontWeight: 700, background: "#f0f0eb" }}>
+                              <td colSpan={4} style={{ textAlign: "right", fontSize: 12 }}>Session total:</td>
+                              <td style={{ textAlign: "right" }}>{fmt(spTotal)} TZS</td>
+                              <td style={{ textAlign: "right", fontSize: 12, color: "#555" }}>USD</td>
+                              <td style={{ textAlign: "right" }}>{fmtUSD(spTotalUSD)}</td>
+                              <td></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Grand total */}
+          {(form.subPrograms || []).length > 0 && (
+            <div style={{ background: "#f0f7f3", border: "1px solid #b8ddc8", borderRadius: 8, padding: "10px 16px", marginTop: 10, display: "flex", justifyContent: "flex-end", gap: 24, fontSize: 13 }}>
+              <span style={{ color: "#666" }}>Grand total (program + all sessions):</span>
+              <span style={{ fontWeight: 700, color: "#2d7a4f" }}>{fmt(formGrandTotal)} TZS</span>
+              <span style={{ fontWeight: 700, color: "#2d7a4f" }}>{fmtUSD(formGrandUSD)}</span>
+            </div>
+          )}
 
           <div className="btn-row" style={{ marginTop: 16 }}>
             <button className="btn btn-primary" onClick={save}>Save program</button>
@@ -413,6 +534,65 @@ export default function Programs({ profile, grantId, currentGrant }) {
                         </tfoot>
                       </table>
                     </div>
+                  </div>
+                )}
+
+                {/* Sub-programs breakdown */}
+                {isExp && (p.subPrograms || []).length > 0 && (
+                  <div style={{ marginTop: 16, borderTop: "1px solid #e8e8e4", paddingTop: 14 }}>
+                    <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px", color: "#555" }}>Sessions / Sub-programs</div>
+                    {p.subPrograms.map((sp, si) => {
+                      const spTotal    = computeTotal(sp.budgetItems || []);
+                      const spTotalUSD = spTotal * pRate;
+                      return (
+                        <div key={sp.id || si} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #f0f0ea" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                            <div style={{ fontWeight: 700, fontSize: 13 }}>
+                              <span style={{ color: "#aaa", marginRight: 6 }}>#{si + 1}</span>
+                              {sp.name || `Session ${si + 1}`}
+                            </div>
+                            <div style={{ fontWeight: 700, fontSize: 13, color: p.color || "#2d7a4f" }}>
+                              {fmt(spTotal)} TZS <span style={{ fontSize: 11, color: "#888", fontWeight: 400 }}>({fmtUSD(spTotalUSD)})</span>
+                            </div>
+                          </div>
+                          {sp.description && <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>{sp.description}</div>}
+                          {(sp.budgetItems || []).length > 0 && (
+                            <div style={{ overflowX: "auto" }}>
+                              <table style={{ fontSize: 12 }}>
+                                <thead>
+                                  <tr>
+                                    <th>Description</th>
+                                    <th>Note</th>
+                                    <th style={{ textAlign: "right" }}>Unit cost (TZS)</th>
+                                    <th style={{ textAlign: "right" }}>Total (TZS)</th>
+                                    <th>Expense type</th>
+                                    <th style={{ textAlign: "center" }}>Qty</th>
+                                    <th style={{ textAlign: "right" }}>USD</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {sp.budgetItems.map((item, ii) => {
+                                    const itemTotal = (Number(item.unitCost) || 0) * (Number(item.quantity) || 1);
+                                    const itemUSD   = itemTotal * (item.exchangeRate || pRate);
+                                    return (
+                                      <tr key={ii}>
+                                        <td style={{ fontWeight: 500 }}>{item.description || ""}</td>
+                                        <td style={{ color: "#555" }}>{item.note || ""}</td>
+                                        <td style={{ textAlign: "right" }}>{fmt(item.unitCost)}</td>
+                                        <td style={{ textAlign: "right", fontWeight: 600 }}>{fmt(itemTotal)}</td>
+                                        <td>{item.expenseType}</td>
+                                        <td style={{ textAlign: "center" }}>{item.quantity}</td>
+                                        <td style={{ textAlign: "right", fontWeight: 600 }}>{fmtUSD(itemUSD)}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 

@@ -190,6 +190,103 @@ export async function fetchEventParticipants(eventUrl) {
   };
 }
 
+// ── Content metrics (articles created/edited, bytes added) ────────────────────
+
+const METRICS_BATCH = 50; // safe batch size for unprivileged (non-bot) API access
+
+/**
+ * Fetch aggregate content metrics for a list of Wikipedia usernames within
+ * [dateFrom, dateTo] (YYYY-MM-DD, inclusive), on the given wiki origin.
+ *
+ * Uses the public MediaWiki API — list=usercontribs for edits (read-only,
+ * CORS-enabled via origin=*, no auth needed, unlike the Campaign Events REST
+ * API) and list=users for registration dates, to flag brand-new accounts.
+ * Batched 50 usernames per call, with pagination via uccontinue.
+ *
+ * Returns { perUser: { [username]: { created, edited, bytesAdded, isNewAccount } },
+ *           totals: { created, edited, bytesAdded, newAccounts } }
+ */
+export async function fetchParticipantMetrics(origin, usernames, dateFrom, dateTo) {
+  const apiBase = `${origin}/w/api.php`;
+  const ucstart = `${dateTo}T23:59:59Z`;   // newer boundary — usercontribs walks backward from here
+  const ucend   = `${dateFrom}T00:00:00Z`; // older boundary
+
+  const perUser = {};
+  usernames.forEach(u => {
+    perUser[u] = { created: 0, edited: 0, bytesAdded: 0, isNewAccount: false, _createdTitles: new Set(), _editedTitles: new Set() };
+  });
+
+  // ── contributions, batched + paginated ────────────────────────────────────
+  for (let i = 0; i < usernames.length; i += METRICS_BATCH) {
+    const batch = usernames.slice(i, i + METRICS_BATCH);
+    let uccontinue = null;
+    for (;;) {
+      const params = new URLSearchParams({
+        action: "query", list: "usercontribs",
+        ucuser: batch.join("|"),
+        ucnamespace: "0", // articles only
+        ucstart, ucend, ucdir: "older",
+        uclimit: "500",
+        ucprop: "title|timestamp|flags|sizediff",
+        format: "json", origin: "*",
+      });
+      if (uccontinue) params.set("uccontinue", uccontinue);
+      const res = await fetch(`${apiBase}?${params.toString()}`);
+      if (!res.ok) break;
+      const data = await res.json();
+      (data?.query?.usercontribs || []).forEach(item => {
+        const bucket = perUser[item.user];
+        if (!bucket) return;
+        if ("new" in item) bucket._createdTitles.add(item.title);
+        else bucket._editedTitles.add(item.title);
+        if (typeof item.sizediff === "number" && item.sizediff > 0) bucket.bytesAdded += item.sizediff;
+      });
+      uccontinue = data?.continue?.uccontinue || null;
+      if (!uccontinue) break;
+    }
+  }
+
+  // Distinct-article counts — an article edited further by the same user
+  // after they created it counts once, as "created".
+  Object.values(perUser).forEach(b => {
+    b.created = b._createdTitles.size;
+    b.edited  = [...b._editedTitles].filter(t => !b._createdTitles.has(t)).length;
+    delete b._createdTitles;
+    delete b._editedTitles;
+  });
+
+  // ── registration dates, to flag accounts that are new around this event ───
+  const THIRTY_DAYS_MS = 30 * 86400000;
+  const evtMs = new Date(`${dateTo}T00:00:00Z`).getTime();
+  for (let i = 0; i < usernames.length; i += METRICS_BATCH) {
+    const batch = usernames.slice(i, i + METRICS_BATCH);
+    const params = new URLSearchParams({
+      action: "query", list: "users",
+      ususers: batch.join("|"),
+      usprop: "registration",
+      format: "json", origin: "*",
+    });
+    const res = await fetch(`${apiBase}?${params.toString()}`);
+    if (!res.ok) continue;
+    const data = await res.json();
+    (data?.query?.users || []).forEach(u => {
+      const bucket = perUser[u.name];
+      if (!bucket || !u.registration) return;
+      const regMs = new Date(u.registration).getTime();
+      bucket.isNewAccount = regMs <= evtMs && (evtMs - regMs) <= THIRTY_DAYS_MS;
+    });
+  }
+
+  const totals = Object.values(perUser).reduce((acc, b) => ({
+    created:     acc.created + b.created,
+    edited:      acc.edited + b.edited,
+    bytesAdded:  acc.bytesAdded + b.bytesAdded,
+    newAccounts: acc.newAccounts + (b.isNewAccount ? 1 : 0),
+  }), { created: 0, edited: 0, bytesAdded: 0, newAccounts: 0 });
+
+  return { perUser, totals };
+}
+
 // ── Outreach Dashboard CSV ────────────────────────────────────────────────────
 
 /**

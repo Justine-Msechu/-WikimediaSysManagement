@@ -3,7 +3,7 @@ import { renderHtml } from "../components/RichTextEditor";
 import {
   listenBudgetEntries, updateBudgetEntry, addBudgetEntry, BUDGET_STATUS_BADGE,
 } from "../services/budgetService";
-import { listenPrograms, approveProgram, rejectProgram } from "../services/programService";
+import { listenPrograms, approveProgram, rejectProgram, approveSubProgram, rejectSubProgram } from "../services/programService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { notifyDecision } from "../services/notificationService";
 import { addComment, listenComments, ROLE_COLOR } from "../services/commentService";
@@ -20,6 +20,17 @@ const EXPENSE_TYPE_MAP = {
 };
 
 function fmt(n) { return (n || 0).toLocaleString(); }
+
+// Program-level items plus every sub-program (session) item, tagged with
+// which session it came from — a program's budget can live entirely in
+// sessions, so reading p.budgetItems alone misses it.
+function programBudgetItems(p) {
+  const own = (p.budgetItems || []).map(it => ({ ...it, subProgramId: null, _session: null }));
+  const fromSessions = (p.subPrograms || []).flatMap(sp =>
+    (sp.budgetItems || []).map(it => ({ ...it, subProgramId: sp.id, _session: sp.name || "Session" }))
+  );
+  return [...own, ...fromSessions];
+}
 
 const SECTIONS = [
   { id: "submitted", label: "Pending approval", color: "#d97706", bg: "#fff8e1", border: "#ffe082" },
@@ -42,6 +53,8 @@ export default function Review({ profile, goPage, grantId }) {
 
   const [progReviewId,      setProgReviewId]      = useState(null);
   const [progReviewComment, setProgReviewComment] = useState("");
+  const [sessReviewId,      setSessReviewId]      = useState(null); // `${programId}:${subProgramId}`
+  const [sessReviewComment, setSessReviewComment] = useState("");
 
   useEffect(() => {
     const u1 = listenBudgetEntries(setEntries);
@@ -55,7 +68,11 @@ export default function Review({ profile, goPage, grantId }) {
   const approveProgram_ = async (p) => {
     await approveProgram(p.id, profile?.name || "");
 
-    // Create an approved budget entry for each line item
+    // Create an approved budget entry for each program-level line item only.
+    // Sub-program (session) items go through their own independent submit →
+    // approve cycle below, so they're deliberately excluded here — otherwise
+    // approving the program would double-create expenses for sessions that
+    // are also submitted/approved individually.
     const today = new Date().toISOString().slice(0, 10);
     const items = p.budgetItems || [];
     for (const it of items) {
@@ -65,6 +82,7 @@ export default function Review({ profile, goPage, grantId }) {
         description:     it.note || "",
         category:        EXPENSE_TYPE_MAP[it.expenseType] || "Food & refreshments",
         programId:       p.id,
+        subProgramId:    "",
         amount,
         date:            today,
         requestedBy:     p.submittedBy || "",
@@ -91,6 +109,47 @@ export default function Review({ profile, goPage, grantId }) {
     notifyDecision({ recipientRole: "coordinator", itemType: "Program", itemTitle: p.name, decision: "returned for revision", comment }).catch(() => {});
     showToast(`"${p.name}" returned for revision.`);
     setProgReviewId(null); setProgReviewComment("");
+  };
+
+  const approveSession_ = async (p, sp) => {
+    await approveSubProgram(p.id, sp.id, profile?.name || "");
+
+    const today = new Date().toISOString().slice(0, 10);
+    const items = sp.budgetItems || [];
+    for (const it of items) {
+      const amount = (Number(it.unitCost) || 0) * (Number(it.quantity) || 1);
+      await addBudgetEntry({
+        title:           it.description || `${p.name} — ${sp.name || "session"}`,
+        description:     it.note || "",
+        category:        EXPENSE_TYPE_MAP[it.expenseType] || "Food & refreshments",
+        programId:       p.id,
+        subProgramId:    sp.id,
+        amount,
+        date:            today,
+        requestedBy:     sp.submittedBy || "",
+        status:          "approved",
+        reviewedBy:      profile?.name || "",
+        reviewedAt:      today,
+        reviewerComment: "",
+        fromProgramApproval: true,
+      });
+    }
+
+    await addAudit(profile, AUDIT_ACTIONS.APPROVE, "programs", {
+      targetId: p.id, recordTitle: `${p.name} — ${sp.name || "session"}`,
+      details: `${items.length} budget line items created as approved expenses`,
+    });
+    notifyDecision({ recipientRole: "coordinator", itemType: "Program session", itemTitle: `${p.name} — ${sp.name || "session"}`, decision: "approved" }).catch(() => {});
+    showToast(`Session "${sp.name || "session"}" approved: ${items.length} expense ${items.length === 1 ? "entry" : "entries"} created.`);
+    setSessReviewId(null); setSessReviewComment("");
+  };
+
+  const rejectSession_ = async (p, sp, comment) => {
+    await rejectSubProgram(p.id, sp.id, comment);
+    await addAudit(profile, AUDIT_ACTIONS.REJECT, "programs", { targetId: p.id, recordTitle: `${p.name} — ${sp.name || "session"}`, details: comment });
+    notifyDecision({ recipientRole: "coordinator", itemType: "Program session", itemTitle: `${p.name} — ${sp.name || "session"}`, decision: "returned for revision", comment }).catch(() => {});
+    showToast(`Session "${sp.name || "session"}" returned for revision.`);
+    setSessReviewId(null); setSessReviewComment("");
   };
 
   const approve = async (entry, ok, comment) => {
@@ -154,7 +213,7 @@ export default function Review({ profile, goPage, grantId }) {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {submitted.map(p => {
-                const items    = p.budgetItems || [];
+                const items    = programBudgetItems(p);
                 const totalTZS = p.plannedBudget || items.reduce((s, i) => s + (Number(i.unitCost)||0)*(Number(i.quantity)||1), 0);
                 const pRate    = Number(p.exchangeRate || 0.000438);
                 const isRev    = progReviewId === p.id;
@@ -167,6 +226,108 @@ export default function Review({ profile, goPage, grantId }) {
                           {p.category} · Submitted by {p.submittedBy || ""} · Budget: <strong>TZS {fmt(totalTZS)} / ${((totalTZS * pRate)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                         </div>
                         {p.description && <div style={{ fontSize: 12, color: "#555", marginTop: 4 }} dangerouslySetInnerHTML={{ __html: renderHtml(p.description) }} />}
+                        {items.length > 0 && (
+                          <div style={{ marginTop: 10, overflowX: "auto" }}>
+                            <table style={{ fontSize: 11 }}>
+                              <thead>
+                                <tr>
+                                  <th>Description</th><th>Session</th><th>Note</th>
+                                  <th style={{ textAlign: "right" }}>Unit cost</th>
+                                  <th style={{ textAlign: "center" }}>Qty</th>
+                                  <th style={{ textAlign: "right" }}>Total (TZS)</th>
+                                  <th>Expense type</th>
+                                  <th style={{ textAlign: "right" }}>USD</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {items.map((it, i) => {
+                                  const tot = (Number(it.unitCost)||0)*(Number(it.quantity)||1);
+                                  return (
+                                    <tr key={i}>
+                                      <td>{it.description}</td>
+                                      <td style={{ color: it._session ? "#555" : "#bbb" }}>{it._session || "Program-level"}</td>
+                                      <td style={{ color: "#555" }}>{it.note}</td>
+                                      <td style={{ textAlign: "right" }}>{fmt(it.unitCost)}</td>
+                                      <td style={{ textAlign: "center" }}>{it.quantity}</td>
+                                      <td style={{ textAlign: "right", fontWeight: 600 }}>{fmt(tot)}</td>
+                                      <td>{it.expenseType}</td>
+                                      <td style={{ textAlign: "right" }}>${(tot*(it.exchangeRate||pRate)).toFixed(2)}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                              <tfoot>
+                                <tr style={{ fontWeight: 700, background: "#fff8e1" }}>
+                                  <td colSpan={5} style={{ textAlign: "right" }}>Total:</td>
+                                  <td style={{ textAlign: "right" }}>TZS {fmt(totalTZS)}</td>
+                                  <td>USD</td>
+                                  <td style={{ textAlign: "right" }}>${(totalTZS * pRate).toFixed(2)}</td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                      {isAdmin && !isRev && (
+                        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                          <button className="btn btn-sm btn-primary" onClick={() => approveProgram_(p)}>Approve &amp; lock</button>
+                          <button className="btn btn-sm btn-danger"  onClick={() => { setProgReviewId(p.id); setProgReviewComment(""); }}>Return for revision</button>
+                        </div>
+                      )}
+                    </div>
+                    {isRev && (
+                      <div style={{ marginTop: 12, padding: "12px 14px", background: "#fdf0ee", border: "1px solid #f5c6c0", borderRadius: 7 }}>
+                        <div style={{ fontWeight: 600, color: "#c0392b", fontSize: 13, marginBottom: 8 }}>Reason for returning (optional)</div>
+                        <textarea rows={2} value={progReviewComment} onChange={e => setProgReviewComment(e.target.value)}
+                          placeholder="Explain what needs to be changed…"
+                          style={{ width: "100%", fontSize: 13, padding: "6px 8px", border: "1px solid #f5c6c0", borderRadius: 5, boxSizing: "border-box" }} />
+                        <div className="btn-row" style={{ marginTop: 8 }}>
+                          <button className="btn btn-sm btn-danger" onClick={() => rejectProgram_(p, progReviewComment)}>Confirm: return for revision</button>
+                          <button className="btn btn-sm" onClick={() => setProgReviewId(null)}>Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Submitted sub-program sessions ───────────────────────────────── */}
+      {(() => {
+        // Flatten every submitted session, across every visible program, into one list.
+        const submittedSessions = visiblePrograms.flatMap(p =>
+          (p.subPrograms || [])
+            .filter(sp => sp.status === "submitted")
+            .map(sp => ({ p, sp }))
+        );
+        if (submittedSessions.length === 0) return null;
+        return (
+          <div className="panel" style={{ border: "2px solid #d97706", marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+              <div className="panel-title" style={{ marginBottom: 0, color: "#d97706" }}>Sessions pending approval</div>
+              <span style={{ background: "#d97706", color: "#fff", borderRadius: 10, padding: "1px 8px", fontSize: 11, fontWeight: 700 }}>{submittedSessions.length}</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {submittedSessions.map(({ p, sp }) => {
+                const items    = sp.budgetItems || [];
+                const totalTZS = items.reduce((s, i) => s + (Number(i.unitCost)||0)*(Number(i.quantity)||1), 0);
+                const pRate    = Number(p.exchangeRate || 0.000438);
+                const key      = `${p.id}:${sp.id}`;
+                const isRev    = sessReviewId === key;
+                return (
+                  <div key={key} style={{ border: "1px solid #ffe082", borderLeft: "4px solid #d97706", borderRadius: 8, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>
+                          {sp.name || "Untitled session"} <span style={{ fontWeight: 400, color: "#888" }}>— {p.name}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#888" }}>
+                          Submitted by {sp.submittedBy || ""} · Budget: <strong>TZS {fmt(totalTZS)} / ${(totalTZS * pRate).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                        </div>
+                        {sp.description && <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>{sp.description}</div>}
                         {items.length > 0 && (
                           <div style={{ marginTop: 10, overflowX: "auto" }}>
                             <table style={{ fontSize: 11 }}>
@@ -209,20 +370,20 @@ export default function Review({ profile, goPage, grantId }) {
                       </div>
                       {isAdmin && !isRev && (
                         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                          <button className="btn btn-sm btn-primary" onClick={() => approveProgram_(p)}>Approve &amp; lock</button>
-                          <button className="btn btn-sm btn-danger"  onClick={() => { setProgReviewId(p.id); setProgReviewComment(""); }}>Return for revision</button>
+                          <button className="btn btn-sm btn-primary" onClick={() => approveSession_(p, sp)}>Approve session</button>
+                          <button className="btn btn-sm btn-danger"  onClick={() => { setSessReviewId(key); setSessReviewComment(""); }}>Return for revision</button>
                         </div>
                       )}
                     </div>
                     {isRev && (
                       <div style={{ marginTop: 12, padding: "12px 14px", background: "#fdf0ee", border: "1px solid #f5c6c0", borderRadius: 7 }}>
                         <div style={{ fontWeight: 600, color: "#c0392b", fontSize: 13, marginBottom: 8 }}>Reason for returning (optional)</div>
-                        <textarea rows={2} value={progReviewComment} onChange={e => setProgReviewComment(e.target.value)}
+                        <textarea rows={2} value={sessReviewComment} onChange={e => setSessReviewComment(e.target.value)}
                           placeholder="Explain what needs to be changed…"
                           style={{ width: "100%", fontSize: 13, padding: "6px 8px", border: "1px solid #f5c6c0", borderRadius: 5, boxSizing: "border-box" }} />
                         <div className="btn-row" style={{ marginTop: 8 }}>
-                          <button className="btn btn-sm btn-danger" onClick={() => rejectProgram_(p, progReviewComment)}>Confirm: return for revision</button>
-                          <button className="btn btn-sm" onClick={() => setProgReviewId(null)}>Cancel</button>
+                          <button className="btn btn-sm btn-danger" onClick={() => rejectSession_(p, sp, sessReviewComment)}>Confirm: return for revision</button>
+                          <button className="btn btn-sm" onClick={() => setSessReviewId(null)}>Cancel</button>
                         </div>
                       </div>
                     )}

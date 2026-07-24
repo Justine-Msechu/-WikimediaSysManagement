@@ -45,6 +45,46 @@ export async function rejectProgram(id, comment) {
   });
 }
 
+// ── Sub-program (session) approval ─────────────────────────────────────────
+// Sessions live nested inside program.subPrograms[] rather than their own
+// collection, so submit/approve/reject read the program, patch the matching
+// session's status fields, and write the whole array back — Firestore has no
+// partial-update for one element of an array field.
+
+async function patchSubProgram(programId, subProgramId, patch) {
+  const prog = await getDocument("programs", programId);
+  if (!prog) throw new Error("Program not found.");
+  const subPrograms = (prog.subPrograms || []).map(sp =>
+    sp.id === subProgramId ? { ...sp, ...patch } : sp
+  );
+  return updateDocument("programs", programId, { subPrograms });
+}
+
+export async function submitSubProgram(programId, subProgramId, submitterName) {
+  return patchSubProgram(programId, subProgramId, {
+    status:      "submitted",
+    submittedBy: submitterName,
+    submittedAt: new Date().toISOString(),
+  });
+}
+
+export async function approveSubProgram(programId, subProgramId, approverName) {
+  return patchSubProgram(programId, subProgramId, {
+    status:           "approved",
+    approvedBy:        approverName,
+    approvedAt:        new Date().toISOString(),
+    rejectionComment: "",
+  });
+}
+
+export async function rejectSubProgram(programId, subProgramId, comment) {
+  return patchSubProgram(programId, subProgramId, {
+    status:           "draft",
+    rejectionComment: comment,
+    rejectedAt:        new Date().toISOString(),
+  });
+}
+
 export function listenPrograms(callback) {
   return listenCollection("programs", callback, orderBy("name"));
 }

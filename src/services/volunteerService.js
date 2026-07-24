@@ -46,12 +46,27 @@ export function listenTasks(callback) {
 }
 
 export function listenTasksForVolunteer(volunteerId, callback) {
-  // No orderBy here — combining where() + orderBy() on different fields requires
-  // a composite Firestore index. Sort client-side instead.
-  return listenCollection(
-    "volunteerTasks", callback,
+  // Tasks assign volunteers via the `volunteerIds` array (current format), but
+  // some older tasks still only have the legacy singular `volunteerId` field.
+  // Run both queries and merge so neither format is missed. No orderBy — combining
+  // where() + orderBy() on different fields requires a composite Firestore index;
+  // sort client-side instead.
+  let current = [];
+  let legacy = [];
+  const emit = () => {
+    const byId = new Map();
+    for (const t of [...current, ...legacy]) byId.set(t.id, t);
+    callback([...byId.values()]);
+  };
+  const u1 = listenCollection(
+    "volunteerTasks", (rows) => { current = rows; emit(); },
+    where("volunteerIds", "array-contains", volunteerId)
+  );
+  const u2 = listenCollection(
+    "volunteerTasks", (rows) => { legacy = rows; emit(); },
     where("volunteerId", "==", volunteerId)
   );
+  return () => { u1(); u2(); };
 }
 
 export async function addTask(data) {

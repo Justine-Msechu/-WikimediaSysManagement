@@ -29,6 +29,7 @@ function isWeekend(dateStr) {
 function emptyActivity(programs) {
   return {
     programId: programs[0]?.id || "",
+    subProgramId: "",
     name: "", type: ACTIVITY_TYPES[0], date: nextWeekendDate(), location: "", reportedBy: "",
     assignedTo: "",
     participants: "", women: "", newEditors: "", retainedEditors: "", youth: "", pwd: "",
@@ -75,6 +76,7 @@ export default function Activities({ profile, goPage, grantId }) {
   const visiblePrograms  = grantId ? programs.filter(p => p.grantId === grantId) : programs;
   const approvedPrograms = visiblePrograms.filter(p => p.status === "approved");
   const hasApproved      = approvedPrograms.length > 0;
+  const selectedProgramSubPrograms = programs.find(p => p.id === form.programId)?.subPrograms || [];
 
   const openCreate = () => {
     setForm({ ...emptyActivity(approvedPrograms), reportedBy: profile?.name || "", assignedTo: profile?.name || "" });
@@ -85,7 +87,7 @@ export default function Activities({ profile, goPage, grantId }) {
 
   const openEdit = (a) => {
     setForm({
-      programId: a.programId || "", name: a.name, type: a.type, date: a.date,
+      programId: a.programId || "", subProgramId: a.subProgramId || "", name: a.name, type: a.type, date: a.date,
       location: a.location || "", reportedBy: a.reportedBy || "",
       assignedTo: a.assignedTo || "",
       participants: a.participants ?? "", women: a.women ?? "", newEditors: a.newEditors ?? "",
@@ -217,6 +219,12 @@ export default function Activities({ profile, goPage, grantId }) {
 
   const myTaskCount = activities.filter(a => a.assignedTo === profile?.name).length;
   const programName = (id) => programs.find(p => p.id === id)?.name || "";
+  const sessionName = (a) => {
+    if (!a.subProgramId) return "";
+    const prog = programs.find(p => p.id === a.programId);
+    const sp   = prog?.subPrograms?.find(s => s.id === a.subProgramId);
+    return sp?.name || "";
+  };
 
   const exportCSV = () => {
     const headers = ["Date", "Activity name", "Type", "Program", "Assigned to", "Location", "Participants", "Women", "New editors", "Youth", "PWD", "Articles created", "Articles improved", "Commons", "Wikidata"];
@@ -311,11 +319,20 @@ export default function Activities({ profile, goPage, grantId }) {
             </div>
             <div className="field">
               <label>Program</label>
-              <select value={form.programId || ""} onChange={e => setF("programId", e.target.value)}>
+              <select value={form.programId || ""} onChange={e => { setF("programId", e.target.value); setF("subProgramId", ""); }}>
                 <option value="">(No program — general/admin task)</option>
                 {approvedPrograms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
+            {selectedProgramSubPrograms.length > 0 && (
+              <div className="field">
+                <label>Session (sub-program)</label>
+                <select value={form.subProgramId || ""} onChange={e => setF("subProgramId", e.target.value)}>
+                  <option value="">(No specific session)</option>
+                  {selectedProgramSubPrograms.map((sp, i) => <option key={sp.id} value={sp.id}>{sp.name || `Session ${i + 1}`}</option>)}
+                </select>
+              </div>
+            )}
             <div className="field">
               <label>Assigned to</label>
               <select value={form.assignedTo || ""} onChange={e => setF("assignedTo", e.target.value)}>
@@ -461,7 +478,10 @@ export default function Activities({ profile, goPage, grantId }) {
                         ? <span style={{ background: a.assignedTo === profile?.name ? "#e6f4ec" : "#f5f4f0", color: a.assignedTo === profile?.name ? "#2d7a4f" : "#555", borderRadius: 10, padding: "1px 8px", fontSize: 11, fontWeight: 500 }}>{a.assignedTo}</span>
                         : <span style={{ color: "#bbb", fontSize: 11 }}>Unassigned</span>}
                     </td>
-                    <td style={{ fontSize: 12, color: "#666" }}>{programName(a.programId)}</td>
+                    <td style={{ fontSize: 12, color: "#666" }}>
+                      {programName(a.programId)}
+                      {sessionName(a) && <div style={{ fontSize: 11, color: "#aaa" }}>{sessionName(a)}</div>}
+                    </td>
                     <td style={{ fontSize: 12 }}>{a.type}</td>
                     <td style={{ textAlign: "center" }}>{a.participants ?? ""}</td>
                     <td style={{ textAlign: "center" }}>{a.women ?? ""}</td>

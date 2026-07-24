@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { listenPrograms, addProgram, updateProgram, deleteProgram, submitProgram, DEFAULT_PROGRAMS, PROGRAM_CATEGORIES } from "../services/programService";
+import { listenPrograms, addProgram, updateProgram, deleteProgram, submitProgram, submitSubProgram, DEFAULT_PROGRAMS, PROGRAM_CATEGORIES } from "../services/programService";
 import { listenActivities } from "../services/activityService";
 import { listenBudgetEntries } from "../services/budgetService";
 import { listenSettings } from "../services/settingsService";
@@ -39,6 +39,20 @@ function emptyProgram(rate) {
 
 function computeTotal(items) {
   return items.reduce((s, item) => s + (Number(item.unitCost) || 0) * (Number(item.quantity) || 1), 0);
+}
+
+// Once a program defines sub-programs (sessions), that list is the source of
+// truth for "how many sessions" — the old manually-typed plannedSessions
+// number is only used as a fallback for programs that don't use sub-programs.
+function effectivePlannedSessions(p) {
+  return (p.subPrograms && p.subPrograms.length > 0) ? p.subPrograms.length : (p.plannedSessions || 1);
+}
+
+// A program "has a budget" if it has program-level line items OR any
+// sub-program (session) has line items of its own — submission, the
+// "View budget" toggle, etc. shouldn't only look at the program-level list.
+function hasBudget(p) {
+  return (p.budgetItems?.length > 0) || (p.subPrograms || []).some(sp => (sp.budgetItems || []).length > 0);
 }
 
 export default function Programs({ profile, grantId, currentGrant }) {
@@ -132,12 +146,21 @@ export default function Programs({ profile, grantId, currentGrant }) {
   };
 
   const submit = async (p) => {
-    if (!p.budgetItems?.length) { alert("Add at least one budget item before submitting."); return; }
+    if (!hasBudget(p)) { alert("Add at least one budget item (or sub-program session budget) before submitting."); return; }
     if (!window.confirm(`Submit "${p.name}" for approval? You will not be able to edit it until it is reviewed.`)) return;
     await submitProgram(p.id, profile?.name || "");
     await addAudit(profile, AUDIT_ACTIONS.SUBMIT, "programs", { targetId: p.id, recordTitle: p.name });
     notifySubmission({ submitterName: profile?.name || "A coordinator", itemType: "Program", itemTitle: p.name, itemId: p.id }).catch(() => {});
     showToast(`"${p.name}" submitted for approval.`);
+  };
+
+  const submitSession = async (p, sp) => {
+    if (!(sp.budgetItems || []).length) { alert("Add at least one budget item to this session before submitting."); return; }
+    if (!window.confirm(`Submit session "${sp.name || "Untitled session"}" for approval?`)) return;
+    await submitSubProgram(p.id, sp.id, profile?.name || "");
+    await addAudit(profile, AUDIT_ACTIONS.SUBMIT, "programs", { targetId: p.id, recordTitle: `${p.name} — ${sp.name || "session"}` });
+    notifySubmission({ submitterName: profile?.name || "A coordinator", itemType: "Program session", itemTitle: `${p.name} — ${sp.name || "session"}`, itemId: p.id }).catch(() => {});
+    showToast(`Session "${sp.name || "session"}" submitted for approval.`);
   };
 
   const isAdmin = profile?.role === "admin";
@@ -219,7 +242,13 @@ export default function Programs({ profile, grantId, currentGrant }) {
                 {PROGRAM_CATEGORIES.map(c => <option key={c}>{c}</option>)}
               </select>
             </div>
-            <div className="field"><label>Planned sessions</label><input type="number" min="1" value={form.plannedSessions} onChange={e => setF("plannedSessions", Number(e.target.value))} /></div>
+            <div className="field">
+              <label>Planned sessions</label>
+              <input type="number" min="1" value={form.plannedSessions} onChange={e => setF("plannedSessions", Number(e.target.value))} disabled={(form.subPrograms || []).length > 0} />
+              {(form.subPrograms || []).length > 0 && (
+                <div style={{ fontSize: 11, color: "#888", marginTop: 3 }}>Overridden to {form.subPrograms.length} by the sub-programs defined below.</div>
+              )}
+            </div>
             <div className="field"><label>Exchange rate (USD per TZS)</label>
               <input type="number" step="0.000001" value={form.exchangeRate || rate} onChange={e => setF("exchangeRate", Number(e.target.value) || rate)} placeholder={rate} />
             </div>
@@ -409,10 +438,11 @@ export default function Programs({ profile, grantId, currentGrant }) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {visiblePrograms.map(p => {
-            const s      = statsFor(p.id);
-            const total  = p.plannedBudget || computeTotal(p.budgetItems || []);
-            const isExp  = expanded === p.id;
-            const pRate  = p.exchangeRate || rate;
+            const s        = statsFor(p.id);
+            const total    = p.plannedBudget || computeTotal(p.budgetItems || []);
+            const isExp    = expanded === p.id;
+            const pRate    = p.exchangeRate || rate;
+            const plannedSess = effectivePlannedSessions(p);
             return (
               <div key={p.id} className="panel" style={{ borderTop: `4px solid ${p.color || "#4a9e6b"}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -428,7 +458,7 @@ export default function Programs({ profile, grantId, currentGrant }) {
                     </div>
                     <div style={{ fontSize: 11, color: p.color || "#4a9e6b", fontWeight: 600, marginBottom: 4 }}>{p.category}</div>
                     {p.description && <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }} dangerouslySetInnerHTML={{ __html: renderHtml(p.description) }} />}
-                    {p.requestedBudgetUSD > 0 && !(p.budgetItems?.length > 0) && (
+                    {p.requestedBudgetUSD > 0 && !hasBudget(p) && (
                       <div style={{ fontSize: 12, color: "#d97706", background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 5, padding: "4px 10px", marginBottom: 4, display: "inline-block" }}>
                         Requested budget (from import): {fmtUSD(p.requestedBudgetUSD)} ({fmt(p.requestedBudgetTZS)} TZS) total
                         {p.requestedPerSessionTZS > 0 && ` — ${fmtUSD(p.requestedPerSessionUSD)} (${fmt(p.requestedPerSessionTZS)} TZS) per session`}
@@ -440,6 +470,11 @@ export default function Programs({ profile, grantId, currentGrant }) {
                         Returned: {p.rejectionComment}
                       </div>
                     )}
+                    {canEdit && isDraft(p) && !hasBudget(p) && !(p.requestedBudgetUSD > 0) && (
+                      <div style={{ fontSize: 12, color: "#888", background: "#f5f4f0", border: "1px solid #e8e8e4", borderRadius: 5, padding: "4px 10px", marginBottom: 4, display: "inline-block" }}>
+                        No budget yet — this program can't be submitted until you add at least one budget line item, either directly on the program or inside one of its sessions. Click <strong>Edit</strong> to add one.
+                      </div>
+                    )}
                     {p.status === "approved" && (
                       <div style={{ fontSize: 11, color: "#2d7a4f" }}>
                         Approved by {p.approvedBy} · {p.approvedAt ? new Date(p.approvedAt).toLocaleDateString("en-GB") : ""}
@@ -448,13 +483,14 @@ export default function Programs({ profile, grantId, currentGrant }) {
                     )}
                   </div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 12, flexWrap: "wrap" }}>
-                    {(p.budgetItems?.length > 0 || activities.some(a => a.programId === p.id)) && (
+                    {(hasBudget(p) || activities.some(a => a.programId === p.id)) && (
                       <button className="btn btn-sm" onClick={() => setExpanded(isExp ? null : p.id)}>
                         {isExp ? "Hide budget" : "View budget"}
                       </button>
                     )}
-                    {/* Submit for approval — draft (or no status) programs with budget items */}
-                    {canEdit && (!p.status || p.status === "draft") && (p.budgetItems?.length > 0) && (
+                    {/* Submit for approval — draft (or no status) programs with a budget, whether
+                        defined at the program level or entirely through sub-program sessions */}
+                    {canEdit && (!p.status || p.status === "draft") && hasBudget(p) && (
                       <button className="btn btn-sm btn-primary" onClick={() => submit(p)}>Submit for approval</button>
                     )}
                     {canEditProgram(p) && <button className="btn btn-sm" onClick={() => openEdit(p)}>Edit</button>}
@@ -465,7 +501,7 @@ export default function Programs({ profile, grantId, currentGrant }) {
                 {/* Stats row */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, borderTop: "1px solid #f0f0ec", paddingTop: 10, marginTop: 6 }}>
                   {[
-                    { label: "Sessions",       value: `${s.sessions} / ${p.plannedSessions || ""}` },
+                    { label: "Sessions",       value: `${s.sessions} / ${plannedSess}` },
                     { label: "Budget (TZS)",   value: total ? fmt(total) : "" },
                     { label: "Participants",   value: s.participants },
                     { label: "Women",          value: s.women },
@@ -481,9 +517,12 @@ export default function Programs({ profile, grantId, currentGrant }) {
                 {/* Session progress bar */}
                 <div style={{ marginTop: 10 }}>
                   <div style={{ background: "#e8e8e4", borderRadius: 4, height: 5 }}>
-                    <div style={{ width: `${Math.min(100, Math.round((s.sessions / (p.plannedSessions || 1)) * 100))}%`, height: 5, borderRadius: 4, background: p.color || "#4a9e6b" }} />
+                    <div style={{ width: `${Math.min(100, Math.round((s.sessions / plannedSess) * 100))}%`, height: 5, borderRadius: 4, background: p.color || "#4a9e6b" }} />
                   </div>
-                  <div style={{ fontSize: 10, color: "#aaa", marginTop: 3 }}>{Math.round((s.sessions / (p.plannedSessions || 1)) * 100)}% of planned sessions complete</div>
+                  <div style={{ fontSize: 10, color: "#aaa", marginTop: 3 }}>
+                    {Math.round((s.sessions / plannedSess) * 100)}% of planned sessions complete
+                    {(p.subPrograms || []).length > 0 && <span style={{ marginLeft: 4 }}>(based on the {p.subPrograms.length} sub-programs defined)</span>}
+                  </div>
                 </div>
 
                 {/* Budget breakdown table */}
@@ -540,21 +579,78 @@ export default function Programs({ profile, grantId, currentGrant }) {
                 {/* Sub-programs breakdown */}
                 {isExp && (p.subPrograms || []).length > 0 && (
                   <div style={{ marginTop: 16, borderTop: "1px solid #e8e8e4", paddingTop: 14 }}>
-                    <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px", color: "#555" }}>Sessions / Sub-programs</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.5px", color: "#555" }}>Sessions / Sub-programs</div>
+                      <div style={{ fontSize: 11, color: "#888" }}>
+                        {p.subPrograms.filter(sp => activities.some(a => a.programId === p.id && a.subProgramId === sp.id)).length} of {p.subPrograms.length} logged
+                      </div>
+                    </div>
                     {p.subPrograms.map((sp, si) => {
                       const spTotal    = computeTotal(sp.budgetItems || []);
                       const spTotalUSD = spTotal * pRate;
+                      const spActivities = activities.filter(a => a.programId === p.id && a.subProgramId === sp.id);
+                      const isLogged = spActivities.length > 0;
+                      // Spend attribution: prefer entries tagged directly with this
+                      // sub-program; fall back to entries linked via an Activity that
+                      // is itself tagged to this sub-program (older entries created
+                      // before subProgramId existed on budget entries).
+                      const spActivityIds = new Set(spActivities.map(a => a.id));
+                      const spSpent = budgetEntries
+                        .filter(e => e.programId === p.id && e.status === "approved")
+                        .filter(e => e.subProgramId ? e.subProgramId === sp.id : spActivityIds.has(e.activityId))
+                        .reduce((s, e) => s + (e.amount || 0), 0);
+                      const spRemaining  = spTotal - spSpent;
+                      const spOverBudget = spRemaining < 0;
+                      const spStatus     = sp.status || "draft";
+                      const spBadge      = STATUS_BADGE[spStatus];
+                      const spIsDraft    = spStatus === "draft";
                       return (
                         <div key={sp.id || si} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #f0f0ea" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-                            <div style={{ fontWeight: 700, fontSize: 13 }}>
-                              <span style={{ color: "#aaa", marginRight: 6 }}>#{si + 1}</span>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
+                            <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                              <span style={{ color: "#aaa" }}>#{si + 1}</span>
                               {sp.name || `Session ${si + 1}`}
+                              {isLogged ? (
+                                <span style={{ fontSize: 10, fontWeight: 700, color: "#2d7a4f", background: "#e6f4ec", borderRadius: 5, padding: "2px 8px" }}>✓ Logged ({spActivities.length})</span>
+                              ) : (
+                                <span style={{ fontSize: 10, fontWeight: 700, color: "#d97706", background: "#fff8e1", borderRadius: 5, padding: "2px 8px" }}>Not logged yet</span>
+                              )}
+                              {spBadge && (
+                                <span style={{ fontSize: 10, fontWeight: 700, color: spBadge.color, background: spBadge.bg, border: `1px solid ${spBadge.color}33`, borderRadius: 5, padding: "2px 8px" }}>
+                                  {spStatus === "approved" ? "Session approved" : spBadge.label}
+                                </span>
+                              )}
                             </div>
-                            <div style={{ fontWeight: 700, fontSize: 13, color: p.color || "#2d7a4f" }}>
-                              {fmt(spTotal)} TZS <span style={{ fontSize: 11, color: "#888", fontWeight: 400 }}>({fmtUSD(spTotalUSD)})</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: p.color || "#2d7a4f" }}>
+                                {fmt(spTotal)} TZS <span style={{ fontSize: 11, color: "#888", fontWeight: 400 }}>({fmtUSD(spTotalUSD)})</span>
+                              </div>
+                              {canEdit && spIsDraft && (sp.budgetItems || []).length > 0 && (
+                                <button className="btn btn-sm btn-primary" onClick={() => submitSession(p, sp)}>Submit for approval</button>
+                              )}
                             </div>
                           </div>
+                          {sp.rejectionComment && (
+                            <div style={{ fontSize: 11, color: "#c0392b", background: "#fdf0ee", border: "1px solid #f5c6c0", borderRadius: 5, padding: "4px 10px", marginBottom: 6 }}>
+                              Returned: {sp.rejectionComment}
+                            </div>
+                          )}
+                          {spStatus === "approved" && (
+                            <div style={{ fontSize: 11, color: "#2d7a4f", marginBottom: 6 }}>
+                              Approved by {sp.approvedBy} · {sp.approvedAt ? new Date(sp.approvedAt).toLocaleDateString("en-GB") : ""}
+                            </div>
+                          )}
+                          {isLogged && (
+                            <div style={{ fontSize: 11, color: "#555", marginBottom: 6 }}>
+                              {spActivities.map(a => a.date).sort().join(", ")}
+                            </div>
+                          )}
+                          {spTotal > 0 && (
+                            <div style={{ display: "flex", gap: 16, fontSize: 11, marginBottom: 6 }}>
+                              <span style={{ color: "#888" }}>Spent: <strong style={{ color: spOverBudget ? "#c0392b" : "#2d7a4f" }}>TZS {fmt(spSpent)}</strong></span>
+                              <span style={{ color: "#888" }}>Remaining: <strong style={{ color: spOverBudget ? "#c0392b" : "#2d7a4f" }}>TZS {fmt(spRemaining)}</strong>{spOverBudget ? " — over budget" : ""}</span>
+                            </div>
+                          )}
                           {sp.description && <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>{sp.description}</div>}
                           {(sp.budgetItems || []).length > 0 && (
                             <div style={{ overflowX: "auto" }}>
@@ -596,8 +692,9 @@ export default function Programs({ profile, grantId, currentGrant }) {
                   </div>
                 )}
 
-                {/* Spending by session */}
-                {isExp && (() => {
+                {/* Spending by session — only for programs that don't break their budget
+                    into sub-programs; those get per-session Spent/Remaining above instead. */}
+                {isExp && (p.subPrograms || []).length === 0 && (() => {
                   const sessions = activities.filter(a => a.programId === p.id).sort((a, b) => (a.date || "").localeCompare(b.date || ""));
                   if (sessions.length === 0) return null;
                   const fallbackPlan = (p.plannedBudget || computeTotal(p.budgetItems || [])) / (p.plannedSessions || 1);

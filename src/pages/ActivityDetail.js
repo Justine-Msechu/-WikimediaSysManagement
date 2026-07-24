@@ -8,6 +8,8 @@ import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { addComment, listenComments, ROLE_COLOR } from "../services/commentService";
 import { uploadToDrive, deleteFromDrive, fileIcon, preAuthorize } from "../services/driveService";
 import { listenActivityFiles, addActivityFile, removeActivityFile } from "../services/activityFilesService";
+import { fetchEventParticipants, fetchParticipantMetrics } from "../utils/wikiImport";
+import { getParticipants, addParticipant } from "../services/participantService";
 import logo from "../assets/logo.png";
 
 function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
@@ -316,6 +318,134 @@ function ChecklistPanel({ activity, canEdit }) {
   );
 }
 
+function WikiMetricsPanel({ activity, canEdit, showToast }) {
+  const [url,       setUrl]       = useState(activity.wikiEventUrl || "");
+  const [fetching,  setFetching]  = useState(false);
+  const [error,     setError]     = useState("");
+  const [result,    setResult]    = useState(null); // { pageTitle, participants, wikitextFallback, origin, metrics }
+  const [applying,  setApplying]  = useState(false);
+  const [addingReg, setAddingReg] = useState(false);
+
+  const fetchAll = async () => {
+    if (!url.trim()) { setError("Paste the Wikipedia event page URL first."); return; }
+    setFetching(true); setError(""); setResult(null);
+    try {
+      const evt = await fetchEventParticipants(url.trim());
+      const origin = new URL(url.trim()).origin;
+      const usernames = evt.participants.map(p => p.username);
+      const metrics = usernames.length > 0
+        ? await fetchParticipantMetrics(origin, usernames, activity.date, activity.date)
+        : { perUser: {}, totals: { created: 0, edited: 0, bytesAdded: 0, newAccounts: 0 } };
+      setResult({ ...evt, origin, metrics });
+    } catch (err) {
+      const msg = err.message || "";
+      setError(msg.startsWith("CROSS_ORIGIN_BLOCKED")
+        ? "Wikipedia's Campaign Events API blocks direct browser access for this URL. Try the plain Event:… page URL instead of the EventDetails URL."
+        : (msg || "Failed to fetch. Check the URL and your internet connection."));
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  const applyToActivity = async () => {
+    if (!result) return;
+    setApplying(true);
+    try {
+      const isEnglish = result.origin.includes("en.wikipedia.org");
+      const patch = {
+        participants: result.participants.length,
+        newEditors:   result.metrics.totals.newAccounts,
+      };
+      if (isEnglish) { patch.createdEnglish = result.metrics.totals.created; patch.improvedEnglish = result.metrics.totals.edited; }
+      else            { patch.created        = result.metrics.totals.created; patch.improved        = result.metrics.totals.edited; }
+      if (!activity.wikiEventUrl) patch.wikiEventUrl = url.trim();
+      await updateActivity(activity.id, patch);
+      showToast("Activity updated from Wikipedia event data.");
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const addToRegistry = async () => {
+    if (!result?.participants?.length) return;
+    setAddingReg(true);
+    try {
+      const existing = await getParticipants();
+      const existingUsernames = new Set(existing.map(p => (p.wikimediaUsername || "").toLowerCase()).filter(Boolean));
+      const toAdd = result.participants.filter(p => !existingUsernames.has(p.username.toLowerCase()));
+      for (const p of toAdd) {
+        await addParticipant({
+          name: p.displayName || p.username, wikimediaUsername: p.username,
+          email: "", phone: "", gender: "", region: "",
+          isNew: !!result.metrics.perUser[p.username]?.isNewAccount,
+          programId: activity.programId || "", activityId: activity.id, notes: "",
+        });
+      }
+      showToast(`${toAdd.length} new participant${toAdd.length !== 1 ? "s" : ""} added to the registry (${result.participants.length - toAdd.length} already existed).`);
+    } finally {
+      setAddingReg(false);
+    }
+  };
+
+  if (!canEdit) return null;
+
+  return (
+    <div className="panel" style={{ marginBottom: 20 }}>
+      <div className="panel-title">Fetch results from Wikipedia event</div>
+      <div style={{ fontSize: 12, color: "#666", marginBottom: 12, lineHeight: 1.5 }}>
+        Paste the event page URL (e.g. <code>sw.wikipedia.org/wiki/Event:…</code>, or the more accurate <code>Maalum:EventDetails/…</code> URL) to pull participants and content metrics for {activity.date}.
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <input
+          value={url}
+          onChange={e => { setUrl(e.target.value); setResult(null); setError(""); }}
+          placeholder="https://sw.wikipedia.org/wiki/Event:…"
+          style={{ flex: 1, fontFamily: "monospace", fontSize: 12 }}
+          onKeyDown={e => e.key === "Enter" && fetchAll()}
+        />
+        <button className="btn btn-primary" onClick={fetchAll} disabled={fetching}>{fetching ? "Fetching…" : "Fetch"}</button>
+      </div>
+
+      {error && <div style={{ color: "#c0392b", fontSize: 13, background: "#fdf0ee", padding: "8px 12px", borderRadius: 6, marginBottom: 12 }}>{error}</div>}
+
+      {result && (
+        <div>
+          {result.wikitextFallback && (
+            <div style={{ background: "#fff8e8", border: "1px solid #f0c060", borderRadius: 6, padding: "6px 12px", fontSize: 12, color: "#92600a", marginBottom: 10 }}>
+              ⚠ Wikitext fallback — participant list may include organizers. Paste the <strong>Maalum:EventDetails/…</strong> URL for accurate data.
+            </div>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10, marginBottom: 12 }}>
+            {[
+              ["Participants",     result.participants.length,                          "#2d7a4f"],
+              ["New accounts",     result.metrics.totals.newAccounts,                    "#7c3aed"],
+              ["Articles created", result.metrics.totals.created,                        "#2563eb"],
+              ["Articles edited",  result.metrics.totals.edited,                         "#d97706"],
+              ["Bytes added",      result.metrics.totals.bytesAdded.toLocaleString(),    "#555"],
+            ].map(([label, val, color]) => (
+              <div key={label} style={{ background: "#f9f9f7", border: "1px solid #e8e8e4", borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 17, fontWeight: 700, color }}>{val}</div>
+                <div style={{ fontSize: 10, color: "#888" }}>{label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn btn-sm btn-primary" onClick={applyToActivity} disabled={applying}>
+              {applying ? "Applying…" : "Apply counts to this activity"}
+            </button>
+            <button className="btn btn-sm" onClick={addToRegistry} disabled={addingReg || result.participants.length === 0}>
+              {addingReg ? "Adding…" : "Add participants to registry"}
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: "#aaa", marginTop: 8 }}>
+            "New accounts" = registered within 30 days of {activity.date}. Metrics count article-namespace edits on {result.origin.replace("https://", "")} between {activity.date} 00:00 and 23:59 UTC.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ActivityDetail({ activityId, profile, goPage }) {
   const [activity, setActivity] = useState(null);
   const [program,  setProgram]  = useState(null);
@@ -456,6 +586,9 @@ export default function ActivityDetail({ activityId, profile, goPage }) {
           </div>
         );
       })()}
+
+      {/* Fetch results from Wikipedia event */}
+      <WikiMetricsPanel activity={activity} canEdit={canEdit} showToast={showToast} />
 
       {/* Stats + Narrative */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 20, marginBottom: 20 }}>

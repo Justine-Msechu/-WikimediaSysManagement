@@ -85,8 +85,15 @@ service cloud.firestore {
     match /programs/{docId} {
       allow read:   if isAnyStaff() || isVolunteer();
       allow create: if isCoordinator();
+      // A program locks once approved — only admins can edit it further, with
+      // one exception: coordinators can still submit sub-program (session)
+      // budgets for approval on an already-approved program, since sessions
+      // get added and approved incrementally over the grant year. That's only
+      // safe because it's restricted to touching just the subPrograms field.
       allow update: if isAdmin() ||
-        (isCoordinator() && resource.data.status != "approved");
+        (isCoordinator() && resource.data.status != "approved") ||
+        (isCoordinator() && resource.data.status == "approved" &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(["subPrograms", "updatedAt"]));
       allow delete: if isAdmin() ||
         (isCoordinator() && resource.data.status == "draft");
     }

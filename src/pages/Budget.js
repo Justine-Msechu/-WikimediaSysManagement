@@ -23,6 +23,7 @@ function budgetPrintHtml(programs, approvedEntries, orgName, logoSrc) {
     const usd   = total * pRate;
     return `<tr>
       <td>${esc(it.description)}</td>
+      <td>${esc(it._session || "")}</td>
       <td>${esc(it.note)}</td>
       <td style="text-align:right">${fmt(it.unitCost)}</td>
       <td style="text-align:center">${it.quantity}</td>
@@ -35,8 +36,14 @@ function budgetPrintHtml(programs, approvedEntries, orgName, logoSrc) {
 
   const progHtml = programs.map(p => {
     const pRate   = Number(p.exchangeRate || 0.000438);
-    const items   = p.budgetItems || [];
-    const totalTZS = items.reduce((s,i) => s + (Number(i.unitCost)||0)*(Number(i.quantity)||1), 0);
+    // Program-level items plus every sub-program (session) item, tagged with
+    // which session it belongs to — a program's budget can live entirely in
+    // sessions, so printing just p.budgetItems would show "no line items".
+    const items = [
+      ...(p.budgetItems || []),
+      ...(p.subPrograms || []).flatMap(sp => (sp.budgetItems || []).map(it => ({ ...it, _session: sp.name || "Session" }))),
+    ];
+    const totalTZS = p.plannedBudget || items.reduce((s,i) => s + (Number(i.unitCost)||0)*(Number(i.quantity)||1), 0);
     const totalUSD = totalTZS * pRate;
     const actual   = approvedEntries.filter(e => e.programId === p.id).reduce((s,e) => s+(e.amount||0), 0);
     return `
@@ -47,7 +54,7 @@ function budgetPrintHtml(programs, approvedEntries, orgName, logoSrc) {
       ${items.length === 0 ? "<p style='color:#aaa;font-size:12px'>No budget line items.</p>" : `
       <table>
         <thead><tr>
-          <th>Description</th><th>Note</th>
+          <th>Description</th><th>Session</th><th>Note</th>
           <th style="text-align:right">Unit cost (TZS)</th>
           <th style="text-align:center">Qty</th>
           <th style="text-align:right">Total (TZS)</th>
@@ -57,7 +64,7 @@ function budgetPrintHtml(programs, approvedEntries, orgName, logoSrc) {
         </tr></thead>
         <tbody>${rows(items, pRate)}</tbody>
         <tfoot><tr class="total-row">
-          <td colspan="4" style="text-align:right">You wish to be reimbursed in TZS:</td>
+          <td colspan="5" style="text-align:right">You wish to be reimbursed in TZS:</td>
           <td style="text-align:right">${fmt(totalTZS)}</td>
           <td style="text-align:right">USD</td>
           <td></td>
@@ -116,7 +123,7 @@ function getMonthName(dateStr) {
 function emptyEntry(profile) {
   return {
     title: "", description: "", category: "Food & refreshments",
-    programId: "", activityId: "", amount: 0, date: new Date().toISOString().slice(0, 10),
+    programId: "", activityId: "", subProgramId: "", amount: 0, date: new Date().toISOString().slice(0, 10),
     requestedBy: profile?.name || "", status: "draft", reviewerComment: "",
   };
 }
@@ -319,8 +326,19 @@ export default function Budget({ profile, grantId, currentGrant }) {
     "Bank charges":     "Bank fees",
   };
 
+  // Flattens a program's own budget items plus every sub-program (session)
+  // budget item into one list, tagging each with which sub-program it came
+  // from (if any) so entries stay traceable back to the session.
+  function allBudgetItems(prog) {
+    const own = (prog.budgetItems || []).map(it => ({ ...it, subProgramId: null, subProgramName: null }));
+    const fromSessions = (prog.subPrograms || []).flatMap(sp =>
+      (sp.budgetItems || []).map(it => ({ ...it, subProgramId: sp.id, subProgramName: sp.name || "Session" }))
+    );
+    return [...own, ...fromSessions];
+  }
+
   const useAll = async (prog) => {
-    const items = prog.budgetItems || [];
+    const items = allBudgetItems(prog);
     if (!items.length) return;
     if (!window.confirm(`Create ${items.length} draft budget entries for "${prog.name}"?`)) return;
     const today = new Date().toISOString().slice(0, 10);
@@ -331,6 +349,7 @@ export default function Budget({ profile, grantId, currentGrant }) {
         description:     it.note || "",
         category:        EXPENSE_TYPE_MAP[it.expenseType] || "Food & refreshments",
         programId:       prog.id,
+        subProgramId:    it.subProgramId || "",
         amount:          total,
         date:            today,
         requestedBy:     profile?.name || "",
@@ -490,7 +509,7 @@ export default function Budget({ profile, grantId, currentGrant }) {
               {(() => {
                 const selProg = form.programId ? programs.find(p => p.id === form.programId) : null;
                 if (!selProg) return null;
-                const items      = selProg.budgetItems || [];
+                const items      = allBudgetItems(selProg);
                 const pRate      = Number(selProg.exchangeRate || rate);
                 const planned    = selProg.plannedBudget || items.reduce((s,i) => s+(Number(i.unitCost)||0)*(Number(i.quantity)||1), 0);
                 const spent      = approved.filter(e => e.programId === selProg.id).reduce((s,e) => s+(e.amount||0), 0);
@@ -516,6 +535,7 @@ export default function Budget({ profile, grantId, currentGrant }) {
                             <thead>
                               <tr>
                                 <th>Description</th>
+                                <th>Sub-program</th>
                                 <th>Note</th>
                                 <th style={{ textAlign: "right" }}>Unit cost</th>
                                 <th style={{ textAlign: "center" }}>Qty</th>
@@ -533,6 +553,7 @@ export default function Budget({ profile, grantId, currentGrant }) {
                                   <tr key={i} style={{ cursor: "pointer" }} onClick={() => {
                                     setF("title",  it.description || "");
                                     setF("amount", total);
+                                    setF("subProgramId", it.subProgramId || "");
                                     // map expenseType to a matching budget category
                                     const typeMap = {
                                       "Food and drinks": "Food & refreshments",
@@ -549,20 +570,21 @@ export default function Budget({ profile, grantId, currentGrant }) {
                                     if (it.note) setF("description", it.note);
                                   }}>
                                     <td style={{ fontWeight: 500 }}>{it.description || ""}</td>
+                                    <td style={{ color: it.subProgramName ? "#555" : "#bbb" }}>{it.subProgramName || "Program-level"}</td>
                                     <td style={{ color: "#555" }}>{it.note || ""}</td>
                                     <td style={{ textAlign: "right" }}>{fmt(it.unitCost)}</td>
                                     <td style={{ textAlign: "center" }}>{it.quantity}</td>
                                     <td style={{ textAlign: "right", fontWeight: 600 }}>{fmt(total)}</td>
                                     <td>{it.expenseType}</td>
                                     <td style={{ textAlign: "right", color: "#555" }}>{fmtUSD(usd)}</td>
-                                    <td><button className="btn btn-sm btn-primary" style={{ fontSize: 10 }} tabIndex={-1} onClick={e => { e.stopPropagation(); setF("title", it.description||""); setF("amount", total); setF("description", it.note||""); }}>Use</button></td>
+                                    <td><button className="btn btn-sm btn-primary" style={{ fontSize: 10 }} tabIndex={-1} onClick={e => { e.stopPropagation(); setF("title", it.description||""); setF("amount", total); setF("description", it.note||""); setF("subProgramId", it.subProgramId || ""); }}>Use</button></td>
                                   </tr>
                                 );
                               })}
                             </tbody>
                             <tfoot>
                               <tr style={{ fontWeight: 700, background: "#e8f5ee" }}>
-                                <td colSpan={4} style={{ textAlign: "right" }}>Total planned:</td>
+                                <td colSpan={5} style={{ textAlign: "right" }}>Total planned:</td>
                                 <td style={{ textAlign: "right" }}>{fmt(planned)}</td>
                                 <td>USD</td>
                                 <td style={{ textAlign: "right" }}>{fmtUSD(planned * pRate)}</td>
@@ -749,7 +771,7 @@ export default function Budget({ profile, grantId, currentGrant }) {
                           <div><div style={{ fontSize: 11, color: "#888" }}>Spent</div><div style={{ fontWeight: 600, color: overBudget ? "#c0392b" : "#2d7a4f" }}>TZS {fmt(actualSpend)}</div></div>
                           <div><div style={{ fontSize: 11, color: "#888" }}>Remaining</div><div style={{ fontWeight: 600, color: overBudget ? "#c0392b" : "#2d7a4f" }}>TZS {fmt(remaining)}</div></div>
                         </div>
-                        {(p.budgetItems?.length > 0) && (
+                        {(p.budgetItems?.length > 0 || (p.subPrograms || []).some(sp => (sp.budgetItems || []).length > 0)) && (
                           <button className="btn btn-sm" style={{ whiteSpace: "nowrap" }} onClick={() => printBudgets([p])}>Print budget</button>
                         )}
                       </div>

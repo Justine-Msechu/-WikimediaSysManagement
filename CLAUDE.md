@@ -187,6 +187,12 @@ index — services usually skip `orderBy` and sort client-side instead.
   contributor (60+ in any month) > Retained (still editing in
   `RETAINED_MIN_MONTHS` = 3+ months) > Participated. Quarters count from the
   grant's start month; wikis are combined per month; missing months are flagged.
+- **Best contributor of the month** = most different articles (ties share it,
+  nobody wins an empty month) — `bestContributors()` / `summary.bestByMonth`.
+- **Printing** (`utils/contributorPrint.js`): monthly report, year/quarter
+  summary and community member certificates (wording follows the recognition
+  label; best-of-month is printed on the certificate). HTML opened in a new
+  window with a Print / Save PDF button, like Participants certificates.
 - **Metrics** row `activeContributors` is filled from saved reports (latest
   finished month, or different people active at least once). It is the group's
   own metric — don't merge it into the Foundation's editor metrics.

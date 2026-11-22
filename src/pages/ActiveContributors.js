@@ -6,10 +6,13 @@ import {
 import { listenVolunteers } from "../services/volunteerService";
 import { listenParticipants } from "../services/participantService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import { listenSettings } from "../services/settingsService";
+import { monthReportHtml, yearReportHtml, certificatesHtml, openPrintWindow } from "../utils/contributorPrint";
+import logo from "../assets/logo.png";
 import {
   WIKIS, DEFAULT_WIKI, DEFAULT_THRESHOLD,
   normalizeUsername, currentMonth, lastFullMonth, isPartialMonth, previousMonths,
-  fetchMonthStats, checkUsernames, buildReportRows, rowsToCsv, isEditing, STILL_EDITING_MIN,
+  fetchMonthStats, checkUsernames, buildReportRows, rowsToCsv, isEditing, bestContributors, STILL_EDITING_MIN,
 } from "../utils/wikiContribs";
 import {
   RETAINED_MIN_MONTHS, LABELS as YEAR_LABELS, defaultPeriod, quarters, buildYearSummary, yearSummaryToCsv,
@@ -56,7 +59,7 @@ function WikiSelect({ value, onChange }) {
 }
 
 // ── Report tab ─────────────────────────────────────────────────────────────────
-function Report({ members, reports, profile, canEdit, showToast }) {
+function Report({ members, reports, profile, canEdit, showToast, org }) {
   const [month,     setMonth]     = useState(lastFullMonth());
   const [wiki,      setWiki]      = useState(DEFAULT_WIKI);
   const [threshold, setThreshold] = useState(DEFAULT_THRESHOLD);
@@ -131,6 +134,18 @@ function Report({ members, reports, profile, canEdit, showToast }) {
     }
   };
 
+  const best = view ? bestContributors(view.rows) : [];
+
+  const printReport = async () => {
+    if (!view) return;
+    openPrintWindow(monthReportHtml({
+      rows: view.rows, month, wikiLabel: wikiLabel(wiki), threshold: view.threshold, partial: view.partial, ...org,
+    }));
+    await addAudit(profile, AUDIT_ACTIONS.EXPORT, "contributors", {
+      recordTitle: `${wikiLabel(wiki)} ${month}`, details: "Printed active contributors report",
+    });
+  };
+
   const exportCsv = async () => {
     if (!view) return;
     const host = wiki.split(".")[0];
@@ -156,6 +171,7 @@ function Report({ members, reports, profile, canEdit, showToast }) {
         <div className="btn-row">
           <button className="btn btn-primary" onClick={runFetch} disabled={busy}>{busy ? "Fetching…" : "Fetch from Wikipedia"}</button>
           {view && <button className="btn" onClick={exportCsv} disabled={busy}>Export CSV</button>}
+          {view && <button className="btn" onClick={printReport} disabled={busy}>🖨 Print report</button>}
           {view && !view.isSaved && canEdit && (
             <button className="btn" onClick={save} disabled={saving || busy}>{saving ? "Saving…" : saved ? "Save report (replace saved copy)" : "Save report"}</button>
           )}
@@ -185,6 +201,14 @@ function Report({ members, reports, profile, canEdit, showToast }) {
             <span style={{ color: "#666" }}>Rule: active if ≥ {view.threshold} different articles in {monthLabel(month)}; still editing if ≥ {STILL_EDITING_MIN}</span>
           </div>
 
+          {best.length > 0 && (
+            <div className="panel" style={{ border: "2px solid #d97706", background: "#fffaf0", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#b45309", letterSpacing: 1, textTransform: "uppercase" }}>★ Best contributor of the month{best.length > 1 ? " (shared)" : ""}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#1c2b1e", marginTop: 4 }}>{best.map(b => b.name).join(" & ")}</div>
+              <div style={{ fontSize: 13, color: "#666" }}>{best[0].articles} different articles in {monthLabel(month)}{view.partial ? " so far" : ""} · {best.map(b => b.username).join(", ")}</div>
+            </div>
+          )}
+
           <div className="card-grid">
             {[
               ["Members checked",            memberCount,               "#1c2b1e"],
@@ -209,7 +233,7 @@ function Report({ members, reports, profile, canEdit, showToast }) {
                     {view.rows.map((r, i) => (
                       <tr key={r.memberId || r.username}>
                         <td style={{ fontSize: 12, color: "#888" }}>{i + 1}</td>
-                        <td style={{ fontWeight: 500 }}>{r.name}</td>
+                        <td style={{ fontWeight: 500 }}>{r.name}{best.includes(r) && <span title="Best contributor of the month" style={{ color: "#d97706", marginLeft: 4 }}>★</span>}</td>
                         <td style={{ fontSize: 12 }}><a href={contribsLink(wiki, r.username)} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb" }}>{r.username}</a></td>
                         <td style={{ fontWeight: 600 }}>{r.articles}</td>
                         <td style={{ fontSize: 12 }}>{r.edits}</td>
@@ -284,7 +308,7 @@ function History({ reports }) {
         {sorted.length === 0 ? <div className="empty">No saved reports for {wikiLabel(wiki)} yet. Save one from the Report tab.</div> : (
           <div style={{ overflowX: "auto" }}>
             <table>
-              <thead><tr><th>Month</th><th>Members</th><th>Still editing</th><th>Active</th><th>Rate</th><th>Rule</th><th>Saved by</th></tr></thead>
+              <thead><tr><th>Month</th><th>Members</th><th>Still editing</th><th>Active</th><th>Rate</th><th>Best contributor</th><th>Rule</th><th>Saved by</th></tr></thead>
               <tbody>
                 {sorted.map(r => (
                   <tr key={r.id}>
@@ -293,6 +317,7 @@ function History({ reports }) {
                     <td style={{ color: "#2563eb" }}>{reportEditing(r)}</td>
                     <td style={{ fontWeight: 600, color: "#2d7a4f" }}>{r.activeCount}</td>
                     <td>{pctText(r.activeCount, r.memberCount)}</td>
+                    <td style={{ fontSize: 12 }}>{(() => { const b = bestContributors(r.rows || []); return b.length ? <>★ {b.map(x => x.name).join(" & ")} <span style={{ color: "#888" }}>({b[0].articles})</span></> : ""; })()}</td>
                     <td style={{ fontSize: 12 }}>≥ {r.threshold} articles</td>
                     <td style={{ fontSize: 12 }}>{r.generatedBy || ""}{r.generatedAt ? `, ${r.generatedAt.slice(0, 10)}` : ""}</td>
                   </tr>
@@ -338,7 +363,7 @@ function MonthStrip({ months, byMonth, covered }) {
   );
 }
 
-function YearSummary({ members, reports, currentGrant, profile }) {
+function YearSummary({ members, reports, currentGrant, profile, org }) {
   const base = useMemo(() => defaultPeriod(currentGrant), [currentGrant]);
   const qs   = useMemo(() => quarters(base.start, base.end), [base]);
   const [mode,   setMode]   = useState("year");      // "year" | "Q1".. | "custom"
@@ -366,6 +391,24 @@ function YearSummary({ members, reports, currentGrant, profile }) {
 
   const q = search.toLowerCase();
   const rows = summary.rows.filter(r => !q || r.name.toLowerCase().includes(q) || r.username.toLowerCase().includes(q));
+
+  const wikiName = wiki === "all" ? "All wikis" : wikiLabel(wiki);
+
+  const printSummary = async () => {
+    openPrintWindow(yearReportHtml({ summary, start: period.start, end: period.end, wikiLabel: wikiName, quarterRows: mode === "year" ? quarterRows : [], ...org }));
+    await addAudit(profile, AUDIT_ACTIONS.EXPORT, "contributors", {
+      recordTitle: `Summary ${period.start} to ${period.end}`, details: "Printed contributor summary",
+    });
+  };
+
+  const printCertificates = async (list) => {
+    if (summary.missing.length > 0 && !window.confirm(`${summary.missing.length} month${summary.missing.length === 1 ? " has" : "s have"} no saved report in this period, so some certificates may show lower numbers. Print anyway?`)) return;
+    openPrintWindow(certificatesHtml(list, { ...org, start: period.start, end: period.end }));
+    await addAudit(profile, AUDIT_ACTIONS.EXPORT, "contributors", {
+      recordTitle: list.length === 1 ? list[0].name : `${list.length} certificates`,
+      details: `Printed ${list.length} community member certificate${list.length === 1 ? "" : "s"} (${period.start} to ${period.end})`,
+    });
+  };
 
   const exportCsv = async () => {
     const tag = mode === "year" ? "year" : mode === "custom" ? "custom" : mode;
@@ -447,6 +490,21 @@ function YearSummary({ members, reports, currentGrant, profile }) {
         </div>
       )}
 
+      {summary.bestByMonth.some(b => b.people.length) && (
+        <div className="panel" style={{ border: "1px solid #f0d5b0", background: "#fffaf0", marginBottom: 20 }}>
+          <div className="panel-title" style={{ color: "#b45309" }}>★ Best contributor of each month</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
+            {summary.bestByMonth.map(b => (
+              <div key={b.month} style={{ fontSize: 13 }}>
+                <div style={{ fontSize: 11, color: "#888" }}>{monthLabel(b.month)}</div>
+                <div style={{ fontWeight: 600 }}>{b.people.length ? b.people.map(p => p.name).join(" & ") : "No edits"}</div>
+                {b.articles > 0 && <div style={{ fontSize: 12, color: "#b45309" }}>{b.articles} articles</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {summary.missing.length > 0 && (
         <div className="alert alert-warn">
           No saved report for {summary.missing.map(monthLabel).join(", ")}. Fetch and save {summary.missing.length === 1 ? "that month" : "those months"} on the Report tab, or this summary will undercount.
@@ -472,6 +530,10 @@ function YearSummary({ members, reports, currentGrant, profile }) {
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or username..." style={{ flex: 1, minWidth: 200, fontSize: 13 }} />
         <button className="btn" onClick={exportCsv} disabled={summary.rows.length === 0}>Export CSV</button>
+        <button className="btn" onClick={printSummary} disabled={summary.rows.length === 0}>🖨 Print summary</button>
+        <button className="btn btn-primary" onClick={() => printCertificates(rows)} disabled={rows.length === 0}>
+          Print {rows.length} certificate{rows.length === 1 ? "" : "s"}{search ? " (filtered)" : ""}
+        </button>
       </div>
 
       <div className="panel" style={{ padding: 0 }}>
@@ -480,12 +542,12 @@ function YearSummary({ members, reports, currentGrant, profile }) {
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table>
-              <thead><tr><th>#</th><th>Name</th><th>Username</th><th>Recognition</th><th>Months active</th><th>Months still editing</th><th>Total articles</th><th>Best month</th><th>Month by month</th></tr></thead>
+              <thead><tr><th>#</th><th>Name</th><th>Username</th><th>Recognition</th><th>Months active</th><th>Months still editing</th><th>Total articles</th><th>Best month</th><th>Month by month</th><th></th></tr></thead>
               <tbody>
                 {rows.map((r, i) => (
                   <tr key={r.username}>
                     <td style={{ fontSize: 12, color: "#888" }}>{i + 1}</td>
-                    <td style={{ fontWeight: 500 }}>{r.name}</td>
+                    <td style={{ fontWeight: 500 }}>{r.name}{r.bestOfMonth.length > 0 && <span title={`Best contributor: ${r.bestOfMonth.map(m => monthLabel(m)).join(", ")}`} style={{ color: "#d97706", marginLeft: 4 }}>★</span>}</td>
                     <td style={{ fontSize: 12 }}>{r.username}</td>
                     <td><span className={`badge ${LABEL_BADGE[r.label]}`}>{YEAR_LABELS[r.label]}</span></td>
                     <td>{r.monthsActive}</td>
@@ -493,6 +555,7 @@ function YearSummary({ members, reports, currentGrant, profile }) {
                     <td style={{ fontWeight: 600 }}>{r.totalArticles.toLocaleString()}</td>
                     <td style={{ fontSize: 12 }}>{r.bestMonth.month ? `${monthLabel(r.bestMonth.month)} (${r.bestMonth.articles})` : ""}</td>
                     <td><MonthStrip months={summary.months} byMonth={r.byMonth} covered={covered} /></td>
+                    <td><button className="btn btn-sm" onClick={() => printCertificates([r])}>Certificate</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -712,6 +775,7 @@ export default function ActiveContributors({ profile, currentGrant }) {
   const [reports,    setReports]    = useState([]);
   const [volunteers, setVolunteers] = useState([]);
   const [participants, setParticipants] = useState([]);
+  const [settings,   setSettings]   = useState(null);
   const [toast,      setToast]      = useState("");
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
   // Matches the Firestore rules: only admins may delete (same as volunteers).
@@ -722,10 +786,13 @@ export default function ActiveContributors({ profile, currentGrant }) {
     const u2 = listenContributorReports(setReports);
     const u3 = listenVolunteers(setVolunteers);
     const u4 = listenParticipants(setParticipants);
-    return () => { u1(); u2(); u3(); u4(); };
+    const u5 = listenSettings(setSettings);
+    return () => { u1(); u2(); u3(); u4(); u5(); };
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
+  // Name and logo for printed reports and certificates (same as Participants certificates)
+  const org = { orgName: settings?.org?.name || "Wikimedians of Kilimanjaro", logoUrl: window.location.origin + logo };
 
   return (
     <div>
@@ -742,9 +809,9 @@ export default function ActiveContributors({ profile, currentGrant }) {
         ))}
       </div>
 
-      {tab === "Report"  && <Report  members={members} reports={reports} profile={profile} canEdit={canEdit} showToast={showToast} />}
+      {tab === "Report"  && <Report  members={members} reports={reports} profile={profile} canEdit={canEdit} showToast={showToast} org={org} />}
       {tab === "History" && <History reports={reports} />}
-      {tab === "Year summary" && <YearSummary members={members} reports={reports} currentGrant={currentGrant} profile={profile} />}
+      {tab === "Year summary" && <YearSummary members={members} reports={reports} currentGrant={currentGrant} profile={profile} org={org} />}
       {tab === "Members" && <Members members={members} volunteers={volunteers} participants={participants} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
     </div>
   );

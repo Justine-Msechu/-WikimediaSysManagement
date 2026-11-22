@@ -1,5 +1,5 @@
 import {
-  isEditing, normalizeUsername, monthBounds, previousMonths, isPartialMonth,
+  bestContributors, isEditing, normalizeUsername, monthBounds, previousMonths, isPartialMonth,
   fetchMonthStats, buildReportRows, rowsToCsv,
 } from "./wikiContribs";
 
@@ -128,6 +128,15 @@ describe("buildReportRows", () => {
     expect(rows[1]).toMatchObject({ articles: 59, active: false });
     expect(rows[2]).toMatchObject({ articles: 0, edits: 0, active: false, editing: false });
     expect(rows[1]).toMatchObject({ editing: true });   // 59 articles: not active, but still editing
+  });
+});
+
+describe("bestContributors", () => {
+  test("most articles wins, ties share it, nobody wins an empty month", () => {
+    expect(bestContributors([{ name: "A", articles: 5 }, { name: "B", articles: 9 }]).map(r => r.name)).toEqual(["B"]);
+    expect(bestContributors([{ name: "A", articles: 9 }, { name: "B", articles: 9 }]).map(r => r.name)).toEqual(["A", "B"]);
+    expect(bestContributors([{ name: "A", articles: 0 }])).toEqual([]);
+    expect(bestContributors([])).toEqual([]);
   });
 });
 

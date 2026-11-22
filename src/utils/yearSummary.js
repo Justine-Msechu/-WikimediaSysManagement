@@ -101,12 +101,24 @@ export function buildYearSummary(reports, members, { start, end, wiki = "all", n
     return { ...p, monthsActive, monthsEditing, totalArticles, totalEdits, bestMonth: best, isActiveContributor, isRetained, label };
   });
 
+  // Best contributor of each saved month (wikis combined; ties share it)
+  const coveredMonths = months.filter(m => covered.has(m));
+  const bestByMonth = coveredMonths.map(m => {
+    const max = Math.max(0, ...rows.map(r => r.byMonth[m]?.articles || 0));
+    const people = max > 0 ? rows.filter(r => (r.byMonth[m]?.articles || 0) === max) : [];
+    return { month: m, articles: max, people: people.map(r => ({ name: r.name, username: r.username })) };
+  });
+  const wins = new Map();
+  for (const b of bestByMonth) for (const p of b.people) wins.set(p.username, [...(wins.get(p.username) || []), b.month]);
+  rows.forEach(r => { r.bestOfMonth = wins.get(r.username) || []; });
+
   const order = { active: 0, retained: 1, participated: 2 };
   rows.sort((a, b) => order[a.label] - order[b.label] || b.totalArticles - a.totalArticles || a.name.localeCompare(b.name));
 
   return {
     months,
-    covered: months.filter(m => covered.has(m)),
+    covered: coveredMonths,
+    bestByMonth,
     missing,
     future,
     rows,

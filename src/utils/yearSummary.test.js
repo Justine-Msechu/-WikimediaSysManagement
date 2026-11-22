@@ -68,6 +68,16 @@ describe("buildYearSummary", () => {
     expect(s.future).toEqual(["2026-11", "2026-12"]);
   });
 
+  test("best contributor of each saved month, wikis combined", () => {
+    expect(s.bestByMonth.map(b => [b.month, b.articles, b.people.map(p => p.username)])).toEqual([
+      ["2026-07", 70, ["Amina"]],
+      ["2026-08", 65, ["Amina"]],
+      ["2026-09", 1, ["Baraka"]],
+    ]);
+    expect(s.rows.find(r => r.username === "Amina").bestOfMonth).toEqual(["2026-07", "2026-08"]);
+    expect(s.rows.find(r => r.username === "Dora").bestOfMonth).toEqual([]);
+  });
+
   test("totals and sort order", () => {
     expect(s.totals).toMatchObject({ people: 4, active: 1, retained: 1, editedOnce: 3, participated: 2 });
     expect(s.rows.map(r => r.username)).toEqual(["Amina", "Baraka", "Chausiku", "Dora"]);

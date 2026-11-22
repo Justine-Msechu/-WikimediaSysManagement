@@ -200,6 +200,13 @@ export function buildReportRows(members, stats, threshold = DEFAULT_THRESHOLD) {
     .sort((a, b) => b.articles - a.articles || b.edits - a.edits || a.name.localeCompare(b.name));
 }
 
+// Best contributor(s) of a month: most different articles (ties share it).
+// Nobody wins a month where no one edited.
+export function bestContributors(rows) {
+  const max = Math.max(0, ...(rows || []).map(r => Number(r.articles) || 0));
+  return max > 0 ? rows.filter(r => (Number(r.articles) || 0) === max) : [];
+}
+
 // Works for rows saved before the `editing` field existed.
 export function isEditing(row) {
   return row.editing ?? (Number(row.articles) || 0) >= STILL_EDITING_MIN;

@@ -4,11 +4,12 @@ import {
   addCommunityMembersBulk, saveContributorReport, listenContributorReports, reportId,
 } from "../services/contributorService";
 import { listenVolunteers } from "../services/volunteerService";
+import { listenParticipants } from "../services/participantService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import {
   WIKIS, DEFAULT_WIKI, DEFAULT_THRESHOLD,
   normalizeUsername, currentMonth, lastFullMonth, isPartialMonth, previousMonths,
-  fetchMonthStats, checkUsernames, buildReportRows, rowsToCsv,
+  fetchMonthStats, checkUsernames, buildReportRows, rowsToCsv, isEditing, STILL_EDITING_MIN,
 } from "../utils/wikiContribs";
 
 const TABS = ["Report", "History", "Members"];
@@ -36,6 +37,11 @@ function downloadCsv(filename, text) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// Older saved reports have no stillEditingCount — derive it from their rows.
+function reportEditing(r) {
+  return r.stillEditingCount ?? (r.rows || []).filter(isEditing).length;
 }
 
 function WikiSelect({ value, onChange }) {
@@ -73,6 +79,7 @@ function Report({ members, reports, profile, canEdit, showToast }) {
   }, [freshMatches, fresh, saved, threshold, month]);
 
   const activeCount = view ? view.rows.filter(r => r.active).length : 0;
+  const editingCount = view ? view.rows.filter(isEditing).length : 0;
   const memberCount = view ? view.rows.length : 0;
   const busy = progress !== null;
 
@@ -102,6 +109,7 @@ function Report({ members, reports, profile, canEdit, showToast }) {
         threshold:   view.threshold,
         memberCount,
         activeCount,
+        stillEditingCount: editingCount,
         partial:     view.partial,
         rows:        view.rows,
         generatedBy: profile?.name || "",
@@ -109,7 +117,7 @@ function Report({ members, reports, profile, canEdit, showToast }) {
       });
       await addAudit(profile, AUDIT_ACTIONS.CREATE, "contributors", {
         targetId: reportId(wiki, month), recordTitle: `${wikiLabel(wiki)} ${month}`,
-        details: `Saved active contributors report: ${activeCount} of ${memberCount} active (≥${view.threshold} articles)`,
+        details: `Saved active contributors report: ${activeCount} of ${memberCount} active (≥${view.threshold} articles), ${editingCount} still editing`,
       });
       setFresh(null);
       showToast("Report saved.");
@@ -171,15 +179,16 @@ function Report({ members, reports, profile, canEdit, showToast }) {
             ) : (
               <span className="badge badge-amber">Not saved yet</span>
             )}
-            <span style={{ color: "#666" }}>Rule: active if ≥ {view.threshold} different articles in {monthLabel(month)}</span>
+            <span style={{ color: "#666" }}>Rule: active if ≥ {view.threshold} different articles in {monthLabel(month)}; still editing if ≥ {STILL_EDITING_MIN}</span>
           </div>
 
           <div className="card-grid">
             {[
               ["Members checked",            memberCount,               "#1c2b1e"],
               [`Active (≥${view.threshold})`, activeCount,               "#2d7a4f"],
-              ["Not yet active",             memberCount - activeCount, "#d97706"],
-              ["Active rate",                pctText(activeCount, memberCount), "#2563eb"],
+              [`Still editing (≥${STILL_EDITING_MIN})`, editingCount,      "#2563eb"],
+              ["Not editing",                memberCount - editingCount, "#d97706"],
+              ["Active rate",                pctText(activeCount, memberCount), "#1c2b1e"],
             ].map(([label, value, color]) => (
               <div key={label} className="stat-card">
                 <div className="stat-label">{label}</div>
@@ -206,7 +215,9 @@ function Report({ members, reports, profile, canEdit, showToast }) {
                             <div style={{ height: "100%", width: `${Math.min(100, (r.articles / (view.threshold || 1)) * 100)}%`, background: r.active ? "#4a9e6b" : "#d97706" }} />
                           </div>
                         </td>
-                        <td>{r.active ? <span className="badge badge-green">Active</span> : <span className="badge badge-amber">Not yet</span>}</td>
+                        <td>{r.active ? <span className="badge badge-green">Active</span>
+                          : isEditing(r) ? <span className="badge badge-blue">Still editing</span>
+                          : <span className="badge badge-amber">Not editing</span>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -239,6 +250,7 @@ function History({ reports }) {
         </div>
         <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#666", marginBottom: 10 }}>
           <span><span style={{ display: "inline-block", width: 10, height: 10, background: "#c9d8cd", borderRadius: 2, marginRight: 4 }} />Members checked</span>
+          <span><span style={{ display: "inline-block", width: 10, height: 10, background: "#2563eb", borderRadius: 2, marginRight: 4 }} />Still editing</span>
           <span><span style={{ display: "inline-block", width: 10, height: 10, background: "#2d7a4f", borderRadius: 2, marginRight: 4 }} />Active</span>
         </div>
         <div style={{ overflowX: "auto" }}>
@@ -247,13 +259,15 @@ function History({ reports }) {
               const r = byMonth[m];
               const mh = r ? (r.memberCount / maxMembers) * CHART_H : 0;
               const ah = r ? (r.activeCount / maxMembers) * CHART_H : 0;
+              const eh = r ? (reportEditing(r) / maxMembers) * CHART_H : 0;
               return (
                 <div key={m} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
-                  title={r ? `${monthLabel(m)}: ${r.activeCount} of ${r.memberCount} active` : `${monthLabel(m)}: no saved report`}>
+                  title={r ? `${monthLabel(m)}: ${r.activeCount} active, ${reportEditing(r)} still editing, of ${r.memberCount}` : `${monthLabel(m)}: no saved report`}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: "#2d7a4f", height: 14 }}>{r ? r.activeCount : ""}</div>
                   <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: CHART_H }}>
-                    <div style={{ width: 12, height: mh, background: "#c9d8cd", borderRadius: "2px 2px 0 0" }} />
-                    <div style={{ width: 12, height: ah, background: "#2d7a4f", borderRadius: "2px 2px 0 0" }} />
+                    <div style={{ width: 10, height: mh, background: "#c9d8cd", borderRadius: "2px 2px 0 0" }} />
+                    <div style={{ width: 10, height: eh, background: "#2563eb", borderRadius: "2px 2px 0 0" }} />
+                    <div style={{ width: 10, height: ah, background: "#2d7a4f", borderRadius: "2px 2px 0 0" }} />
                   </div>
                   <div style={{ fontSize: 10, color: r ? "#666" : "#bbb", whiteSpace: "nowrap" }}>{monthLabel(m)}</div>
                 </div>
@@ -267,12 +281,13 @@ function History({ reports }) {
         {sorted.length === 0 ? <div className="empty">No saved reports for {wikiLabel(wiki)} yet. Save one from the Report tab.</div> : (
           <div style={{ overflowX: "auto" }}>
             <table>
-              <thead><tr><th>Month</th><th>Members</th><th>Active</th><th>Rate</th><th>Rule</th><th>Saved by</th></tr></thead>
+              <thead><tr><th>Month</th><th>Members</th><th>Still editing</th><th>Active</th><th>Rate</th><th>Rule</th><th>Saved by</th></tr></thead>
               <tbody>
                 {sorted.map(r => (
                   <tr key={r.id}>
                     <td style={{ fontWeight: 500 }}>{monthLabel(r.month)}{r.partial && <span className="badge badge-amber" style={{ marginLeft: 6 }}>so far</span>}</td>
                     <td>{r.memberCount}</td>
+                    <td style={{ color: "#2563eb" }}>{reportEditing(r)}</td>
                     <td style={{ fontWeight: 600, color: "#2d7a4f" }}>{r.activeCount}</td>
                     <td>{pctText(r.activeCount, r.memberCount)}</td>
                     <td style={{ fontSize: 12 }}>≥ {r.threshold} articles</td>
@@ -288,8 +303,22 @@ function History({ reports }) {
   );
 }
 
+// People from another list (volunteers / event participants) whose Wikipedia
+// username isn't in the community list yet — one entry per username.
+function notYetMembers(list, existing, source) {
+  const seen = new Set(existing);
+  const out = [];
+  for (const v of list) {
+    const u = normalizeUsername(v.wikimediaUsername);
+    if (!u || seen.has(u)) continue;
+    seen.add(u);
+    out.push({ name: (v.name || "").trim() || u, wikimediaUsername: u, isActive: true, source });
+  }
+  return out;
+}
+
 // ── Members tab ────────────────────────────────────────────────────────────────
-function Members({ members, volunteers, profile, canEdit, isAdmin, showToast }) {
+function Members({ members, volunteers, participants, profile, canEdit, isAdmin, showToast }) {
   const [name,     setName]     = useState("");
   const [username, setUsername] = useState("");
   const [bulk,     setBulk]     = useState("");
@@ -302,17 +331,9 @@ function Members({ members, volunteers, profile, canEdit, isAdmin, showToast }) 
     [members],
   );
 
-  const importable = useMemo(() => {
-    const seen = new Set(existing);
-    const out = [];
-    for (const v of volunteers) {
-      const u = normalizeUsername(v.wikimediaUsername);
-      if (!u || seen.has(u)) continue;
-      seen.add(u);
-      out.push({ name: (v.name || "").trim() || u, wikimediaUsername: u, isActive: true, source: "volunteers" });
-    }
-    return out;
-  }, [volunteers, existing]);
+  const importable = useMemo(() => notYetMembers(volunteers, existing, "volunteers"), [volunteers, existing]);
+  const importableParticipants = useMemo(() => notYetMembers(participants, existing, "participants"), [participants, existing]);
+  const participantsNoUsername = participants.filter(p => !normalizeUsername(p.wikimediaUsername)).length;
 
   // Warn about usernames that don't exist on Swahili Wikipedia (likely typos)
   const verify = async (usernames) => {
@@ -385,6 +406,13 @@ function Members({ members, volunteers, profile, canEdit, isAdmin, showToast }) 
     showToast(`Imported ${n} from Volunteers.`);
   };
 
+  const importParticipants = async () => {
+    const n = importableParticipants.length;
+    if (!window.confirm(`Add ${n} past event participant${n === 1 ? "" : "s"} to the community list? They will be included in monthly reports.`)) return;
+    if (!(await addMany(importableParticipants, "Import from Participants", "participants"))) return;
+    showToast(`Imported ${n} from Participants.`);
+  };
+
   const toggleActive = async (m) => {
     await updateCommunityMember(m.id, { isActive: m.isActive === false });
   };
@@ -429,7 +457,16 @@ function Members({ members, volunteers, profile, canEdit, isAdmin, showToast }) 
                 title={importable.length === 0 ? "Every volunteer with a Wikipedia username is already in the list" : ""}>
                 Import {importable.length} from Volunteers
               </button>
+              <button className="btn" onClick={importParticipants} disabled={busy || importableParticipants.length === 0}
+                title={importableParticipants.length === 0 ? "Every event participant with a Wikipedia username is already in the list" : ""}>
+                Import {importableParticipants.length} from Participants
+              </button>
             </div>
+            {participantsNoUsername > 0 && (
+              <div style={{ fontSize: 12, color: "#888", marginTop: 8 }}>
+                {participantsNoUsername} participant{participantsNoUsername === 1 ? " has" : "s have"} no Wikipedia username and can't be checked. Add their username on the Participants page first.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -448,7 +485,7 @@ function Members({ members, volunteers, profile, canEdit, isAdmin, showToast }) 
 
       <div className="panel" style={{ padding: 0 }}>
         {filtered.length === 0 ? (
-          <div className="empty">{members.length === 0 ? "No community members yet. Add them above or import from Volunteers." : "No members match your search."}</div>
+          <div className="empty">{members.length === 0 ? "No community members yet. Add them above, or import from Volunteers or Participants." : "No members match your search."}</div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table>
@@ -480,6 +517,7 @@ export default function ActiveContributors({ profile }) {
   const [members,    setMembers]    = useState([]);
   const [reports,    setReports]    = useState([]);
   const [volunteers, setVolunteers] = useState([]);
+  const [participants, setParticipants] = useState([]);
   const [toast,      setToast]      = useState("");
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
   // Matches the Firestore rules: only admins may delete (same as volunteers).
@@ -489,7 +527,8 @@ export default function ActiveContributors({ profile }) {
     const u1 = listenCommunityMembers(setMembers);
     const u2 = listenContributorReports(setReports);
     const u3 = listenVolunteers(setVolunteers);
-    return () => { u1(); u2(); u3(); };
+    const u4 = listenParticipants(setParticipants);
+    return () => { u1(); u2(); u3(); u4(); };
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
@@ -511,7 +550,7 @@ export default function ActiveContributors({ profile }) {
 
       {tab === "Report"  && <Report  members={members} reports={reports} profile={profile} canEdit={canEdit} showToast={showToast} />}
       {tab === "History" && <History reports={reports} />}
-      {tab === "Members" && <Members members={members} volunteers={volunteers} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
+      {tab === "Members" && <Members members={members} volunteers={volunteers} participants={participants} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import {
-  normalizeUsername, monthBounds, previousMonths, isPartialMonth,
+  isEditing, normalizeUsername, monthBounds, previousMonths, isPartialMonth,
   fetchMonthStats, buildReportRows, rowsToCsv,
 } from "./wikiContribs";
 
@@ -126,7 +126,16 @@ describe("buildReportRows", () => {
     expect(rows.map(r => r.name)).toEqual(["Baraka", "Amina", "Chausiku"]);
     expect(rows[0]).toMatchObject({ username: "Baraka", articles: 65, active: true });
     expect(rows[1]).toMatchObject({ articles: 59, active: false });
-    expect(rows[2]).toMatchObject({ articles: 0, edits: 0, active: false });
+    expect(rows[2]).toMatchObject({ articles: 0, edits: 0, active: false, editing: false });
+    expect(rows[1]).toMatchObject({ editing: true });   // 59 articles: not active, but still editing
+  });
+});
+
+describe("isEditing", () => {
+  test("derives still-editing for rows saved before the field existed", () => {
+    expect(isEditing({ articles: 1 })).toBe(true);
+    expect(isEditing({ articles: 0 })).toBe(false);
+    expect(isEditing({ articles: 0, editing: true })).toBe(true);
   });
 });
 
@@ -135,7 +144,7 @@ describe("rowsToCsv", () => {
     const csv = rowsToCsv([{ name: "Juma, A.", username: "Juma", articles: 61, edits: 90, active: true }],
       { month: "2026-10", wiki: "sw.wikipedia.org", threshold: 60 });
     const lines = csv.split("\r\n");
-    expect(lines[0]).toBe("#,Name,Username,Different articles,Total edits,Active (>= 60),Month,Wiki");
-    expect(lines[1]).toBe('1,"Juma, A.",Juma,61,90,Yes,2026-10,sw.wikipedia.org');
+    expect(lines[0]).toBe("#,Name,Username,Different articles,Total edits,Active (>= 60),Still editing (>= 1),Month,Wiki");
+    expect(lines[1]).toBe('1,"Juma, A.",Juma,61,90,Yes,Yes,2026-10,sw.wikipedia.org');
   });
 });

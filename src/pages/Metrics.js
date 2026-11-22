@@ -138,6 +138,9 @@ export default function Metrics({ profile, grantId, currentGrant }) {
   const applyActiveContributors = async (value) => {
     await save({ activeContributors: { ...(metrics.activeContributors || {}), result: value } });
   };
+  const applyRetainedFromReports = async (value) => {
+    await save({ retainedEditors: { ...(metrics.retainedEditors || {}), result: value } });
+  };
 
   const applyRegistryCounts = async () => {
     await save({
@@ -434,14 +437,18 @@ export default function Metrics({ profile, grantId, currentGrant }) {
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, marginBottom: 12 }}>
             <div><span style={{ color: "#888" }}>Active in {latestContribMonth} (≥{latestContrib.threshold} articles):</span> <strong style={{ color: "#2d7a4f" }}>{latestContrib.active}</strong> of {latestContrib.checked} members</div>
             <div><span style={{ color: "#888" }}>Different people active in at least one month:</span> <strong>{contribOnce.people}</strong> ({contribOnce.months} month{contribOnce.months === 1 ? "" : "s"} saved)</div>
+            <div><span style={{ color: "#888" }}>Still editing in {latestContribMonth} (1+ article):</span> <strong style={{ color: "#2563eb" }}>{latestContrib.editing}</strong></div>
+            <div><span style={{ color: "#888" }}>Still edited in at least one month:</span> <strong style={{ color: "#2563eb" }}>{contribOnce.editing}</strong></div>
           </div>
           <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
             Counts come from reports saved on the Active contributors page (all wikis together). Save each month's report there first.
+            "Still editing" means at least 1 different article that month — a good measure of retained members.
           </div>
           {canEdit && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button className="btn btn-sm btn-primary" onClick={() => applyActiveContributors(latestContrib.active)}>Use latest month ({latestContrib.active})</button>
               <button className="btn btn-sm" onClick={() => applyActiveContributors(contribOnce.people)}>Use at least once ({contribOnce.people})</button>
+              <button className="btn btn-sm" style={{ color: "#2563eb" }} onClick={() => applyRetainedFromReports(latestContrib.editing)}>Retained editors = still editing ({latestContrib.editing})</button>
             </div>
           )}
         </div>

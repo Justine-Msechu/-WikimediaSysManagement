@@ -11,6 +11,9 @@ export const WIKIS = [
 ];
 export const DEFAULT_WIKI = WIKIS[0].id;
 export const DEFAULT_THRESHOLD = 60;
+// "Still editing" = edited at least this many different articles in the month.
+// Used for retained members; independent of the (much higher) active threshold.
+export const STILL_EDITING_MIN = 1;
 
 const BATCH_SIZE = 50;        // MediaWiki limit for ucuser / ususers (anonymous)
 const PAUSE_MS   = 150;       // be polite to the API between requests
@@ -191,9 +194,15 @@ export function buildReportRows(members, stats, threshold = DEFAULT_THRESHOLD) {
         articles: s.articles,
         edits:    s.edits,
         active:   s.articles >= t,
+        editing:  s.articles >= STILL_EDITING_MIN,
       };
     })
     .sort((a, b) => b.articles - a.articles || b.edits - a.edits || a.name.localeCompare(b.name));
+}
+
+// Works for rows saved before the `editing` field existed.
+export function isEditing(row) {
+  return row.editing ?? (Number(row.articles) || 0) >= STILL_EDITING_MIN;
 }
 
 function csvCell(v) {
@@ -203,10 +212,10 @@ function csvCell(v) {
 
 // Plain CSV text. The page adds a UTF-8 BOM when downloading so Excel reads it.
 export function rowsToCsv(rows, { month, wiki, threshold } = {}) {
-  const header = ["#", "Name", "Username", "Different articles", "Total edits", `Active (>= ${threshold})`, "Month", "Wiki"];
+  const header = ["#", "Name", "Username", "Different articles", "Total edits", `Active (>= ${threshold})`, `Still editing (>= ${STILL_EDITING_MIN})`, "Month", "Wiki"];
   const lines = [header.map(csvCell).join(",")];
   (rows || []).forEach((r, i) => {
-    lines.push([i + 1, r.name, r.username, r.articles, r.edits, r.active ? "Yes" : "No", month, wiki].map(csvCell).join(","));
+    lines.push([i + 1, r.name, r.username, r.articles, r.edits, r.active ? "Yes" : "No", isEditing(r) ? "Yes" : "No", month, wiki].map(csvCell).join(","));
   });
   return lines.join("\r\n");
 }

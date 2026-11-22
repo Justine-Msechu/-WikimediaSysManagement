@@ -6,7 +6,7 @@ const reg = (id, name, username, minute) => ({ id, name, wikimediaUsername: user
 
 const reports = [
   report("sw.wikipedia.org", "2026-09", [row("Amina", 10), row("Baraka", 90)]),
-  report("sw.wikipedia.org", "2026-10", [row("Amina", 80), row("Baraka", 20), row("Chausiku", 61)]),
+  report("sw.wikipedia.org", "2026-10", [row("Amina", 80), row("Baraka", 20), row("Chausiku", 61), row("Dora", 0)]),
   report("en.wikipedia.org", "2026-10", [row("Baraka", 70)]),
   report("sw.wikipedia.org", "2026-11", [row("Amina", 5)], { partial: true }),
 ];
@@ -24,11 +24,13 @@ describe("rankingMonth", () => {
 
 describe("activeSummary / activeAtLeastOnce", () => {
   test("counts each person once across wikis", () => {
-    // October: Amina (sw 80), Baraka (en 70), Chausiku (sw 61) → 3 active of 3 checked
-    expect(activeSummary(reports, "2026-10")).toMatchObject({ active: 3, checked: 3, threshold: 60 });
+    // October: Amina (sw 80), Baraka (en 70), Chausiku (sw 61) active; Dora 0 articles
+    expect(activeSummary(reports, "2026-10")).toMatchObject({ active: 3, editing: 3, checked: 4, threshold: 60 });
+    // September: Amina 10 (still editing, not active), Baraka 90 (active)
+    expect(activeSummary(reports, "2026-09")).toMatchObject({ active: 1, editing: 2, checked: 2 });
   });
   test("people active in at least one finished month", () => {
-    expect(activeAtLeastOnce(reports)).toEqual({ people: 3, months: 2 });
+    expect(activeAtLeastOnce(reports)).toEqual({ people: 3, editing: 3, months: 2 });
   });
 });
 

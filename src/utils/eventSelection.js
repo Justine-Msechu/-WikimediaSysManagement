@@ -3,7 +3,7 @@
 // registrants who are already community members, and keeps a share of the seats
 // for new members.
 
-import { normalizeUsername } from "./wikiContribs";
+import { normalizeUsername, isEditing } from "./wikiContribs";
 
 export const DEFAULT_NEW_MEMBER_PCT = 30;
 
@@ -32,9 +32,11 @@ export function articlesForMonth(reports, month) {
   return out;
 }
 
-// Summary for the Metrics page: active contributors in one month (any wiki).
+// Summary for the Metrics page: active contributors and people still editing
+// in one month (any wiki — each person counts once).
 export function activeSummary(reports, month) {
   const active = new Set();
+  const editing = new Set();
   const checked = new Set();
   let threshold = null;
   for (const r of reports || []) {
@@ -45,24 +47,28 @@ export function activeSummary(reports, month) {
       if (!u) continue;
       checked.add(u);
       if (row.active) active.add(u);
+      if (isEditing(row)) editing.add(u);
     }
   }
-  return { month, active: active.size, checked: checked.size, threshold };
+  return { month, active: active.size, editing: editing.size, checked: checked.size, threshold };
 }
 
-// Different people who were active in at least one finished month.
+// Different people who were active / still editing in at least one finished month.
 export function activeAtLeastOnce(reports) {
   const people = new Set();
+  const editing = new Set();
   const months = new Set();
   for (const r of reports || []) {
     if (r.partial) continue;
     months.add(r.month);
     for (const row of r.rows || []) {
-      if (row.active) people.add(normalizeUsername(row.username));
+      const u = normalizeUsername(row.username);
+      if (!u) continue;
+      if (row.active) people.add(u);
+      if (isEditing(row)) editing.add(u);
     }
   }
-  people.delete("");
-  return { people: people.size, months: months.size };
+  return { people: people.size, editing: editing.size, months: months.size };
 }
 
 /**

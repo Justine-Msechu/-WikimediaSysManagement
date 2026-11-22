@@ -5,9 +5,10 @@ import { listenParticipants } from "../services/participantService";
 import { listenSettings } from "../services/settingsService";
 import { listenActivities } from "../services/activityService";
 import { listenPrograms } from "../services/programService";
-import { listenContributorReports, listenCommunityMembers } from "../services/contributorService";
+import { listenContributorReports, listenCommunityMembers, listenContributorEvents } from "../services/contributorService";
+import { listenForms, getAllRegistrations } from "../services/registrationService";
 import { SCOPES, reportScope, normalizeUsername, isEditing } from "../utils/wikiContribs";
-import { participantsForGrant, grantMonthRange, belongsToGrant, isReturning, reportForMembers } from "../utils/grantScope";
+import { participantsForGrant, grantMonthRange, reportForMembers, grantParticipation, returningPeople } from "../utils/grantScope";
 import { rankingMonth, activeSummary, activeAtLeastOnce } from "../utils/eventSelection";
 
 function fmt(n) { return (n || 0).toLocaleString(); }
@@ -26,7 +27,7 @@ const METRIC_ROWS = [
 
 const PROJECT_FIELDS = ["Wikipedia", "Wikimedia Commons", "Wikidata", "Wiktionary", "Wikisource"];
 
-export default function Metrics({ profile, grantId, currentGrant, firstGrantId = "" }) {
+export default function Metrics({ profile, grantId, currentGrant, firstGrantId = "", grants = [] }) {
   const [metrics,      setMetrics]      = useState(DEFAULT_METRICS);
   const [participants, setParticipants] = useState([]);
   const [activities,   setActivities]   = useState([]);
@@ -34,7 +35,10 @@ export default function Metrics({ profile, grantId, currentGrant, firstGrantId =
   const [settings,     setSettings]     = useState(null);
   const [contribReports, setContribReports] = useState([]);
   const [contribScope, setContribScope] = useState("");
-  const [community,    setCommunity]    = useState([]);   // "" = pick automatically
+  const [community,    setCommunity]    = useState([]);
+  const [forms,        setForms]        = useState([]);
+  const [events,       setEvents]       = useState([]);
+  const [registrations, setRegistrations] = useState([]);   // "" = pick automatically
   const [wikiStats,    setWikiStats]    = useState({});
   const [fetchingAll,  setFetchingAll]  = useState(false);
   const [fetchingOD,   setFetchingOD]   = useState(false);
@@ -52,7 +56,10 @@ export default function Metrics({ profile, grantId, currentGrant, firstGrantId =
     const u5 = listenPrograms(setPrograms);
     const u6 = listenContributorReports(setContribReports);
     const u7 = listenCommunityMembers(setCommunity);
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
+    const u8 = listenForms(setForms);
+    const u9 = listenContributorEvents(setEvents);
+    getAllRegistrations().then(setRegistrations).catch(() => {});
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); };
   }, [grantId]);
 
   const save = async (patch) => {
@@ -138,13 +145,17 @@ export default function Metrics({ profile, grantId, currentGrant, firstGrantId =
   // Only months inside this grant's dates (a new grant has none yet).
   const grantMonths = grantMonthRange(currentGrant);
   // ...and only this grant's community members (saved reports list everyone).
-  const grantMembers = community.filter(m => belongsToGrant(m, grantId, { firstGrantId }));
+  // Grant members = community members who took part in this grant's activities.
+  const participation = grantParticipation({ grants, participants, programs, forms, registrations, events, firstGrantId });
+  const tookPart = participation.get(grantId) || new Set();
+  const grantMembers = community.filter(m => tookPart.has(normalizeUsername(m.wikimediaUsername)));
   const grantMemberSet = new Set(grantMembers.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean));
   const scopedReports = contribReports.filter(r => reportScope(r) === scope
     && (!currentGrant || (grantMonths && r.month >= grantMonths.start && r.month <= grantMonths.end)))
     .map(r => (currentGrant ? reportForMembers(r, grantMemberSet, isEditing) : r));
   // Retention: members who were also in an earlier grant, and those of them still editing this grant.
-  const returningMembers = grantMembers.filter(m => isReturning(m, grantId, firstGrantId)).map(m => normalizeUsername(m.wikimediaUsername));
+  const returningSet = returningPeople(participation, grants, grantId);
+  const returningMembers = [...grantMemberSet].filter(u => returningSet.has(u));
   const editedThisGrant = new Set(scopedReports.filter(r => !r.partial).flatMap(r => (r.rows || []).filter(isEditing).map(x => x.username)));
   const returningEditing = returningMembers.filter(u => editedThisGrant.has(u)).length;
   const latestContribMonth = rankingMonth(scopedReports);

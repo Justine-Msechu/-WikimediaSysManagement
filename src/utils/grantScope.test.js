@@ -94,3 +94,39 @@ test("reportForMembers keeps only the grant's members and recounts", () => {
   expect(v.rows.map(x => x.username)).toEqual(["B", "C"]);
   expect([v.memberCount, v.activeCount, v.stillEditingCount]).toEqual([2, 1, 1]);
 });
+
+describe("grant members come from participation", () => {
+  const { grantParticipation, returningPeople, earlierPeople, sortGrants } = require("./grantScope");
+  const grants = [
+    { id: "new", startDate: "2026-07-01", endDate: "2027-06-30" },
+    { id: "old", startDate: "2025-07-01", endDate: "2026-06-30" },
+  ];
+  const programs = [{ id: "pOld", grantId: "old" }, { id: "pNew", grantId: "new" }];
+  const participants = [
+    { wikimediaUsername: "amina", programId: "pOld" },
+    { wikimediaUsername: "Baraka", programId: "pOld" },
+    { wikimediaUsername: "Amina", programId: "pNew" },
+  ];
+  const forms = [{ id: "fNew", programId: "pNew" }];
+  const registrations = [
+    { formId: "fNew", wikimediaUsername: "Chausiku" },
+    { formId: "fNew", wikimediaUsername: "Dora", attendance: "absent" },
+  ];
+  const events = [
+    { start: "2026-11-01T00:00:00Z", end: "2026-11-20T00:00:00Z", participants: ["Eli"] },
+    { start: "2026-01-25T00:00:00Z", end: "2026-02-05T00:00:00Z", participants: ["Baraka", "Fatma"] },
+  ];
+  const map = grantParticipation({ grants, participants, programs, forms, registrations, events });
+
+  test("each grant has only the people who took part in it", () => {
+    expect([...map.get("old")].sort()).toEqual(["Amina", "Baraka", "Fatma"]);
+    expect([...map.get("new")].sort()).toEqual(["Amina", "Chausiku", "Eli"]);   // Dora was absent
+  });
+
+  test("returning = took part in this grant and an earlier one", () => {
+    expect(sortGrants(grants).map(g => g.id)).toEqual(["old", "new"]);
+    expect([...returningPeople(map, grants, "new")]).toEqual(["Amina"]);
+    expect([...returningPeople(map, grants, "old")]).toEqual([]);
+    expect(earlierPeople(map, grants, "new").has("Baraka")).toBe(true);
+  });
+});

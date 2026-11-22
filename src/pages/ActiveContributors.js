@@ -10,7 +10,7 @@ import {
 } from "../utils/eventContribs";
 import { listenForms, getAllRegistrations } from "../services/registrationService";
 import { listenPrograms } from "../services/programService";
-import { belongsToGrant, grantIdsWith, grantMonthRange, participantsForGrant, isReturning, reportForMembers } from "../utils/grantScope";
+import { belongsToGrant, grantMonthRange, participantsForGrant, reportForMembers, grantParticipation, returningPeople, earlierPeople, sortGrants } from "../utils/grantScope";
 import { listenVolunteers } from "../services/volunteerService";
 import { listenParticipants } from "../services/participantService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
@@ -28,7 +28,7 @@ import {
   RETAINED_MIN_MONTHS, LABELS as YEAR_LABELS, defaultPeriod, quarters, buildYearSummary, yearSummaryToCsv,
 } from "../utils/yearSummary";
 
-const TABS = ["Report", "History", "Year summary", "Events", "Members"];
+const TABS = ["Report", "History", "Year summary", "Events", "Community members"];
 const SCOPED_TABS = ["Report", "History", "Year summary"];
 
 function dateRange(start, end) {
@@ -151,7 +151,7 @@ async function withFormUsernames(events) {
   });
 }
 
-function Report({ members, reports, allReports = [], events, scope, profile, canEdit, showToast, org, nameFor, addMembers, monthRange, earlier }) {
+function Report({ members, community = [], reports, allReports = [], events, scope, profile, canEdit, showToast, org, nameFor, addMembers, monthRange, earlier }) {
   // Months are limited to the selected grant's dates.
   const maxMonth = monthRange && monthRange.end < currentMonth() ? monthRange.end : currentMonth();
   const minMonth = monthRange ? monthRange.start : "";
@@ -190,7 +190,7 @@ function Report({ members, reports, allReports = [], events, scope, profile, can
   const busy = progress !== null;
 
   const runFetch = async () => {
-    if (eligible.length === 0) { setError("No members with a Wikipedia username are marked \"In reports\". Add members on the Members tab first."); return; }
+    if (eligible.length === 0) { setError("No community members took part in this grant yet (participant list, registration forms or events), or none is marked \"In reports\". Add this grant's events or participants first."); return; }
     if (eventsOnly && events.length === 0) { setError("No Kilimanjaro events added yet. Add them on the Events tab first."); return; }
     setError("");
     setProgress({ done: 0, total: eventsOnly ? 0 : eligible.length });
@@ -336,7 +336,7 @@ function Report({ members, reports, allReports = [], events, scope, profile, can
           )}
 
           {eventsOnly && (
-            <NotMembersPanel people={view.notMembers} members={members} nameFor={nameFor} canEdit={canEdit} profile={profile} showToast={showToast} wiki={wiki} addMembers={addMembers} earlier={earlier}
+            <NotMembersPanel people={view.notMembers} members={community} nameFor={nameFor} canEdit={canEdit} profile={profile} showToast={showToast} wiki={wiki} addMembers={addMembers} earlier={earlier}
               title="Joined our events but not in the members list"
               note={`These people joined ${monthLabel(month)}'s Kilimanjaro events but aren't community members, so they are not in the report above. Counts are their edits during the events. Add them, then click "Fetch from Wikipedia" again to include them.`} />
           )}
@@ -943,8 +943,8 @@ function Events({ events, members, forms, profile, canEdit, isAdmin, showToast, 
       )}
 
       <NotMembersPanel people={outsiders} members={members} nameFor={nameFor} canEdit={canEdit} profile={profile} showToast={showToast} addMembers={addMembers} earlier={earlier}
-        title="People in this grant's events who aren't members of this grant yet"
-        note={`Everyone who joined this grant's events on the Outreach Dashboard (as of the last refresh) or on a linked registration form, but isn't in this grant's member list. Their edits aren't counted until you add them. Click "Refresh all from dashboard" first to catch late sign-ups.`} />
+        title="People in this grant's events who aren't community members yet"
+        note={`Everyone who joined this grant's events on the Outreach Dashboard (as of the last refresh) or on a linked registration form, but isn't in the community members list. Their edits aren't counted until you add them. Click "Refresh all from dashboard" first to catch late sign-ups.`} />
 
       <div className="panel" style={{ padding: 0 }}>
         {sorted.length === 0 ? <div className="empty">No Kilimanjaro events yet. Paste their Outreach Dashboard links above.</div> : (
@@ -1007,47 +1007,7 @@ function Events({ events, members, forms, profile, canEdit, isAdmin, showToast, 
 }
 
 // ── Members tab ────────────────────────────────────────────────────────────────
-// Members from earlier grants, ticked to join this grant (nothing is copied).
-function BringMembers({ earlier, bring }) {
-  const [open,   setOpen]   = useState(false);
-  const [picked, setPicked] = useState({});
-  const [busy,   setBusy]   = useState(false);
-  const [q,      setQ]      = useState("");
-  const chosen = earlier.filter(m => picked[m.id]);
-  const shown  = earlier.filter(m => !q || `${m.name} ${m.wikimediaUsername}`.toLowerCase().includes(q.toLowerCase()));
-  const go = async () => {
-    setBusy(true);
-    try { await bring(chosen); setPicked({}); setOpen(false); } finally { setBusy(false); }
-  };
-  return (
-    <div className="panel" style={{ marginBottom: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 13, color: "#666" }}>{earlier.length} member{earlier.length === 1 ? "" : "s"} from earlier grants {earlier.length === 1 ? "is" : "are"} not in this grant.</span>
-        <button className="btn btn-sm" onClick={() => setOpen(o => !o)}>{open ? "Close" : "Bring members from earlier grants"}</button>
-      </div>
-      {open && (
-        <div style={{ marginTop: 12 }}>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name or username..." style={{ width: "100%", fontSize: 13, marginBottom: 8 }} />
-          <div style={{ maxHeight: 280, overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 6 }}>
-            {shown.map(m => (
-              <label key={m.id} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
-                <input type="checkbox" checked={!!picked[m.id]} onChange={e => setPicked(p => ({ ...p, [m.id]: e.target.checked }))} />
-                {m.name}<span style={{ color: "#888", fontSize: 12 }}>({m.wikimediaUsername})</span>
-              </label>
-            ))}
-          </div>
-          <div className="btn-row" style={{ marginTop: 10 }}>
-            <button className="btn btn-sm" onClick={() => setPicked(p => ({ ...p, ...Object.fromEntries(shown.map(m => [m.id, true])) }))}>Select all{q ? " shown" : ""}</button>
-            <button className="btn btn-sm btn-primary" onClick={go} disabled={busy || chosen.length === 0}>{busy ? "Adding…" : `Add ${chosen.length} to this grant`}</button>
-          </div>
-          <div style={{ fontSize: 12, color: "#888", marginTop: 6 }}>They stay in their earlier grants too — nothing is copied or moved.</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Members({ members, volunteers, participants, profile, canEdit, isAdmin, showToast, addMembers, earlierMembers = [], bringMembers, returning = new Set() }) {
+function Members({ members, volunteers, participants, profile, canEdit, isAdmin, showToast, addMembers, returning = new Set(), grantPeople = null, grantsOf = () => [], grantTitle = "" }) {
   const [name,     setName]     = useState("");
   const [username, setUsername] = useState("");
   const [bulk,     setBulk]     = useState("");
@@ -1160,7 +1120,10 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
 
   return (
     <div>
-      {canEdit && earlierMembers.length > 0 && <BringMembers earlier={earlierMembers} bring={bringMembers} />}
+      <div className="alert alert-info">
+        This is the whole community, the same in every grant. A member shows up in a grant's reports, year summary and certificates only when they took part
+        in that grant — on its participant list, a registration form or one of its events. Taking part in this grant and an earlier one makes them <strong>Returning</strong> (retention).
+      </div>
       {canEdit && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 20 }}>
           <div className="panel" style={{ margin: 0 }}>
@@ -1211,6 +1174,7 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
       <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or username..." style={{ flex: 1, minWidth: 200, fontSize: 13 }} />
         <span style={{ fontSize: 12, color: "#888" }}>{members.length} member{members.length === 1 ? "" : "s"}, {members.filter(m => m.isActive !== false).length} in reports
+          {grantPeople && <>, <strong>{members.filter(m => grantPeople.has(normalizeUsername(m.wikimediaUsername))).length} took part in {grantTitle || "this grant"}</strong></>}
           {returning.size > 0 && <>, <strong style={{ color: "#2563eb" }}>{members.filter(m => returning.has(normalizeUsername(m.wikimediaUsername))).length} returning from earlier grants</strong> (retention)</>}</span>
       </div>
 
@@ -1220,13 +1184,17 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table>
-              <thead><tr><th>Name</th><th>Username</th><th>Source</th><th>In reports</th>{isAdmin && <th>Actions</th>}</tr></thead>
+              <thead><tr><th>Name</th><th>Username</th><th>Took part in</th><th>Source</th><th>In reports</th>{isAdmin && <th>Actions</th>}</tr></thead>
               <tbody>
                 {filtered.map(m => (
                   <tr key={m.id}>
                     <td style={{ fontWeight: 500 }}>{m.name}{returning.has(normalizeUsername(m.wikimediaUsername)) && <span className="badge badge-blue" style={{ marginLeft: 6, fontSize: 10 }} title="Also a member in an earlier grant — counts as retention">Returning</span>}</td>
                     <td style={{ fontSize: 12 }}>
                       <a href={contribsLink(WIKIS[0].id, m.wikimediaUsername || "")} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb" }}>{m.wikimediaUsername}</a>
+                    </td>
+                    <td style={{ fontSize: 12 }}>
+                      {grantsOf(m).length ? grantsOf(m).join(", ") : <span style={{ color: "#aaa" }}>no grant activity recorded</span>}
+                      {grantPeople && grantPeople.has(normalizeUsername(m.wikimediaUsername)) && <span className="badge badge-green" style={{ marginLeft: 6, fontSize: 10 }}>this grant</span>}
                     </td>
                     <td style={{ fontSize: 12, color: "#666" }}>{m.source || "manual"}</td>
                     <td><input type="checkbox" checked={m.isActive !== false} disabled={!canEdit} onChange={() => toggleActive(m)} /></td>
@@ -1243,11 +1211,12 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────────
-export default function ActiveContributors({ profile, currentGrant, grantId = "", firstGrantId = "" }) {
+export default function ActiveContributors({ profile, currentGrant, grantId = "", firstGrantId = "", grants = [] }) {
   const [tab,        setTab]        = useState("Report");
   const [allMembers, setMembers]    = useState([]);
   const [allReports, setReports]    = useState([]);
   const [programs,   setPrograms]   = useState([]);
+  const [registrations, setRegistrations] = useState([]);
   const [allVolunteers, setVolunteers] = useState([]);
   const [participants, setParticipants] = useState([]);
   const [settings,   setSettings]   = useState(null);
@@ -1268,6 +1237,7 @@ export default function ActiveContributors({ profile, currentGrant, grantId = ""
     const u6 = listenContributorEvents(setEvents);
     const u7 = listenForms(setForms);
     const u8 = listenPrograms(setPrograms);
+    getAllRegistrations().then(setRegistrations).catch(() => {});
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
   }, []);
 
@@ -1286,30 +1256,36 @@ export default function ActiveContributors({ profile, currentGrant, grantId = ""
   }, [participants]);
   const nameFor = (u) => nameByUsername.get(u) || u;
   // ── This grant only ──
-  // Members belong to grants (old members → first grant). Reports and events
-  // count only for months inside the grant's dates, so a new grant starts empty.
+  // Community members are one list for all grants. A grant's members are the
+  // community members who TOOK PART in that grant (participant list,
+  // registration forms, events inside its dates). Returning = took part in this
+  // grant and an earlier one (retention). Reports count only the grant's months.
   const monthRange = grantMonthRange(currentGrant);
   const noDates    = !!currentGrant && !monthRange;
-  const grantOpts  = { firstGrantId };
-  const members    = useMemo(() => allMembers.filter(m => belongsToGrant(m, grantId, { firstGrantId })), [allMembers, grantId, firstGrantId]);
-  const earlierMembers = allMembers.filter(m => !belongsToGrant(m, grantId, grantOpts));
-  const earlierSet = new Set(earlierMembers.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean));
+  const participation = useMemo(
+    () => grantParticipation({ grants, participants, programs, forms, registrations, events: allEvents, firstGrantId }),
+    [grants, participants, programs, forms, registrations, allEvents, firstGrantId],
+  );
+  const grantPeople = currentGrant ? (participation.get(grantId) || new Set()) : null;
+  const members    = useMemo(
+    () => (grantPeople ? allMembers.filter(m => grantPeople.has(normalizeUsername(m.wikimediaUsername))) : allMembers),
+    [allMembers, grantPeople],
+  );
+  const returning  = useMemo(() => (grantId ? returningPeople(participation, grants, grantId) : new Set()), [participation, grants, grantId]);
+  const earlierSet = useMemo(() => (grantId ? earlierPeople(participation, grants, grantId) : new Set()), [participation, grants, grantId]);
+  const grantOrder = useMemo(() => sortGrants(grants), [grants]);
+  const grantsOf   = (m) => {
+    const u = normalizeUsername(m.wikimediaUsername);
+    return grantOrder.filter(g => participation.get(g.id)?.has(u)).map(g => g.title || g.grantNumber || "Untitled grant");
+  };
   const inGrant    = (m) => !currentGrant || (!!monthRange && m >= monthRange.start && m <= monthRange.end);
-  // Saved reports list everyone who was a member that month — show only this grant's members.
+  // Saved reports list everyone checked that month — show only this grant's members.
   const memberSet  = useMemo(() => new Set(members.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean)), [members]);
   const reports    = allReports.filter(r => inGrant(r.month)).map(r => (currentGrant ? reportForMembers(r, memberSet, isEditing) : r));
-  // Returning = also a member in an earlier grant → the grant's retention.
-  const returning  = useMemo(() => new Set(members.filter(m => isReturning(m, grantId, firstGrantId)).map(m => normalizeUsername(m.wikimediaUsername))), [members, grantId, firstGrantId]);
   const events     = allEvents.filter(ev => !currentGrant || (!!monthRange && (ev.start || "").slice(0, 7) <= monthRange.end && (ev.end || "").slice(0, 7) >= monthRange.start));
   const volunteers = allVolunteers.filter(v => belongsToGrant(v, grantId, { firstGrantId, programs }));
   const grantParticipants = participantsForGrant(participants, programs, grantId);
-  const addMembers = (list) => addCommunityMembersBulk(list, { grantId, firstGrantId, existing: allMembers });
-
-  const bringMembers = async (list) => {
-    for (const m of list) await updateCommunityMember(m.id, { grantIds: grantIdsWith(m, grantId, firstGrantId) });
-    await addAudit(profile, AUDIT_ACTIONS.UPDATE, "contributors", { details: `Added ${list.length} community member${list.length === 1 ? "" : "s"} from earlier grants to this grant` });
-    showToast(`${list.length} member${list.length === 1 ? "" : "s"} added to this grant.`);
-  };
+  const addMembers = (list) => addCommunityMembersBulk(list, { existing: allMembers });
 
   // Report, History and Year summary only see reports counted the chosen way.
   const scopedReports = useMemo(() => reports.filter(r => reportScope(r) === scope), [reports, scope]);
@@ -1344,18 +1320,18 @@ export default function ActiveContributors({ profile, currentGrant, grantId = ""
         {TABS.map(t => (
           <button key={t} className={`tab-btn ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
             {t}
-            {t === "Members" && members.length > 0 && <span style={{ marginLeft: 6, fontSize: 11, color: "#888" }}>{members.length}</span>}
+            {t === "Community members" && allMembers.length > 0 && <span style={{ marginLeft: 6, fontSize: 11, color: "#888" }}>{allMembers.length}</span>}
             {t === "Events" && events.length > 0 && <span style={{ marginLeft: 6, fontSize: 11, color: "#888" }}>{events.length}</span>}
           </button>
         ))}
       </div>
 
-      {tab === "Report"  && !noDates && !(monthRange && monthRange.start > currentMonth()) && <Report  members={members} reports={scopedReports} allReports={allReports} earlier={earlierSet} events={events} scope={scope} nameFor={nameFor} addMembers={addMembers} monthRange={monthRange} profile={profile} canEdit={canEdit} showToast={showToast} org={org} />}
+      {tab === "Report"  && !noDates && !(monthRange && monthRange.start > currentMonth()) && <Report  members={members} community={allMembers} reports={scopedReports} allReports={allReports} earlier={earlierSet} events={events} scope={scope} nameFor={nameFor} addMembers={addMembers} monthRange={monthRange} profile={profile} canEdit={canEdit} showToast={showToast} org={org} />}
       {tab === "History" && <History reports={scopedReports} />}
       {tab === "Year summary" && <YearSummary members={members} reports={scopedReports} scope={scope} currentGrant={currentGrant} profile={profile} org={org} signature={signature} returning={returning} />}
-      {tab === "Events"  && <Events events={events} members={members} forms={forms} nameFor={nameFor} addMembers={addMembers} earlier={earlierSet} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
-      {tab === "Members" && <Members members={members} volunteers={volunteers} participants={grantParticipants} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast}
-        addMembers={addMembers} earlierMembers={grantId ? earlierMembers : []} bringMembers={bringMembers} returning={returning} />}
+      {tab === "Events"  && <Events events={events} members={allMembers} forms={forms} nameFor={nameFor} addMembers={addMembers} earlier={earlierSet} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
+      {tab === "Community members" && <Members members={allMembers} volunteers={volunteers} participants={grantParticipants} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast}
+        addMembers={addMembers} returning={returning} grantPeople={grantPeople} grantsOf={grantsOf} grantTitle={currentGrant?.title || currentGrant?.grantNumber || ""} />}
     </div>
   );
 }

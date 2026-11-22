@@ -260,7 +260,7 @@ function AppShell() {
       case "audit":        return role === "admin" ? <AuditLog profile={profile} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
       case "users":        return role === "admin" ? <Users    profile={profile} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
       case "volunteers":    return <Volunteers        key={currentGrantId} profile={profile} grantId={currentGrantId} firstGrantId={oldestGrantId(grants)} />;
-      case "contributors":  return <ActiveContributors key={currentGrantId} profile={profile} currentGrant={currentGrant} grantId={currentGrantId} firstGrantId={oldestGrantId(grants)} />;
+      case "contributors":  return <ActiveContributors key={currentGrantId} profile={profile} currentGrant={currentGrant} grantId={currentGrantId} firstGrantId={oldestGrantId(grants)} grants={grants} />;
       case "register":      return <RegistrationForms key={currentGrantId} profile={profile} grantId={currentGrantId} firstGrantId={oldestGrantId(grants)} />;
       case "announcements": return <Announcements     profile={profile} />;
       case "deadlines":     return <Deadlines         profile={profile} />;

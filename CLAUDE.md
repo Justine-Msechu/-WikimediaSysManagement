@@ -184,19 +184,20 @@ index — services usually skip `orderBy` and sort client-side instead.
     `odCampaignUrl`; the Active contributors panel uses only reports for months
     inside the grant's start/end dates.
   - Volunteers and Reg. forms are in `DATA_PAGES` (need a selected grant).
-  - Active contributors: community members have `grantIds[]` like volunteers
-    (old members → first grant; "Bring members from earlier grants"; adding
-    someone who's already a member adds the grant to their record —
-    `addCommunityMembersBulk(list, { grantId, firstGrantId, existing })`).
-    Reports, History, Year summary and Events use only months inside the
-    grant's start/end dates; the Report month picker is limited to them. A
-    grant without dates shows a "set the dates" warning and no reports.
-    Contributor reports themselves are stored by wiki + month (not grant) and
-    list everyone who was a member then; each grant sees only its own members'
-    rows (`reportForMembers()`), and saving keeps other grants' rows.
-    **Returning** = member of this grant who was also in an earlier grant
-    (`isReturning()`) — the grant's retention; badge on Members / Year summary,
-    count + "Retained editors = returning & editing" button on Metrics.
+  - Active contributors: **community members are one list for all grants**
+    (tab "Community members", with a "Took part in" column). A grant's
+    members are the community members who **took part in that grant** —
+    on its participant list, a registration form of the grant (not absent), or
+    an event inside its dates (dashboard participants or linked form) —
+    `grantParticipation()`. Nothing is assigned by hand. **Returning** = took
+    part in this grant and an earlier one (`returningPeople()`, grants ordered
+    by `sortGrants()`) — the grant's retention; badges on Community members /
+    Year summary / not-yet-members panels, count + "Retained editors =
+    returning & editing" button on Metrics. Reports, History, Year summary,
+    Events use only months inside the grant's dates; saved monthly reports
+    (stored by wiki + month) are filtered to the grant's members
+    (`reportForMembers()`), and saving keeps other people's rows. A member with
+    no recorded activity in a grant doesn't appear in it.
   - "First grant" (`oldestGrantId()`) = earliest start date (or creation day
     when a grant has no dates). Records from before grants belong to it.
   Shared across grants on purpose: announcements, deadlines, settings.

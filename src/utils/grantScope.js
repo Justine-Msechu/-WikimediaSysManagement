@@ -108,3 +108,82 @@ export function reportForMembers(report, memberUsernames, isEditing = (r) => (Nu
     stillEditingCount: rows.filter(isEditing).length,
   };
 }
+
+// Grants in order, first grant first (same rule as oldestGrantId).
+export function sortGrants(grants) {
+  const first = [];
+  let rest = [...(grants || [])];
+  while (rest.length) {
+    const id = oldestGrantId(rest);
+    first.push(rest.find(g => g.id === id));
+    rest = rest.filter(g => g.id !== id);
+  }
+  return first;
+}
+
+const uname = (u) => {
+  let s = String(u || "").trim().replace(/^(user|mtumiaji)\s*:\s*/i, "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+};
+
+/**
+ * Who took part in each grant — the grant's members are the community members
+ * in this set. Taking part = any of:
+ *  - on the grant's participant list (participantsForGrant)
+ *  - registered on one of the grant's registration forms (not marked absent)
+ *  - joined one of our events inside the grant's dates (dashboard or linked form)
+ * Returns Map<grantId, Set<username>>.
+ */
+export function grantParticipation({ grants, participants, programs, forms, registrations, events, firstGrantId = "" }) {
+  const out = new Map();
+  const regsByForm = new Map();
+  for (const r of registrations || []) {
+    if (r.attendance === "absent") continue;
+    const u = uname(r.wikimediaUsername);
+    if (!u) continue;
+    if (!regsByForm.has(r.formId)) regsByForm.set(r.formId, new Set());
+    regsByForm.get(r.formId).add(u);
+  }
+  for (const g of grants || []) {
+    const set = new Set();
+    for (const p of participantsForGrant(participants, programs, g.id)) {
+      const u = uname(p.wikimediaUsername);
+      if (u) set.add(u);
+    }
+    for (const f of forms || []) {
+      if (belongsToGrant(f, g.id, { firstGrantId, programs })) (regsByForm.get(f.id) || []).forEach(u => set.add(u));
+    }
+    const range = grantMonthRange(g);
+    if (range) {
+      for (const ev of events || []) {
+        const s = (ev.start || "").slice(0, 7);
+        const e = (ev.end || "").slice(0, 7);
+        if (!s || s > range.end || e < range.start) continue;
+        (ev.participants || []).forEach(u => { const n = uname(u); if (n) set.add(n); });
+        for (const fid of ev.formIds || []) (regsByForm.get(fid) || []).forEach(u => set.add(u));
+      }
+    }
+    out.set(g.id, set);
+  }
+  return out;
+}
+
+// People who took part in this grant AND in any grant before it — retention.
+export function returningPeople(participation, grants, grantId) {
+  const order = sortGrants(grants).map(g => g.id);
+  const idx = order.indexOf(grantId);
+  const mine = participation.get(grantId) || new Set();
+  if (idx <= 0) return new Set();
+  const earlier = new Set();
+  order.slice(0, idx).forEach(id => (participation.get(id) || []).forEach(u => earlier.add(u)));
+  return new Set([...mine].filter(u => earlier.has(u)));
+}
+
+// Everyone who took part in any grant before this one (to label newcomers vs returning).
+export function earlierPeople(participation, grants, grantId) {
+  const order = sortGrants(grants).map(g => g.id);
+  const idx = order.indexOf(grantId);
+  const earlier = new Set();
+  order.slice(0, Math.max(0, idx)).forEach(id => (participation.get(id) || []).forEach(u => earlier.add(u)));
+  return earlier;
+}

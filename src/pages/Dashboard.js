@@ -10,6 +10,7 @@ import { listenDeadlines } from "../services/deadlineService";
 import { listenInvoices } from "../services/invoiceService";
 import { listenPrograms } from "../services/programService";
 import { spendingReportHtml } from "../utils/spendingReport";
+import { participantsForGrant } from "../utils/grantScope";
 import logo from "../assets/logo.png";
 
 function pct(r, t) { if (!t) return 0; return Math.min(999, Math.round((r / t) * 100)); }
@@ -92,10 +93,12 @@ export default function Dashboard({ profile, goPage, grantId, grants }) {
   // Current grant info for header display
   const currentGrant = grantId && grants ? grants.find(g => g.id === grantId) : null;
 
-  const grant          = settings?.grant || {};
-  // Prefer current grant totalUSD/conversionRate if a grant is selected
-  const grantTotalUSD  = currentGrant?.totalUSD || grant.totalUSD;
-  const grantRate      = currentGrant?.conversionRate || grant.conversionRate;
+  // Money figures come from the selected grant only — a new grant without a
+  // total shows no budget, never the old grant's figures from Settings.
+  const grant          = currentGrant ? {} : (settings?.grant || {});
+  const grantTotalUSD  = currentGrant ? currentGrant.totalUSD : grant.totalUSD;
+  const grantRate      = currentGrant ? currentGrant.conversionRate : grant.conversionRate;
+  const grantParticipants = participantsForGrant(participants, programs, grantId);
   const totalBudgetTZS = grantTotalUSD ? Math.round(grantTotalUSD / (grantRate || 0.000413)) : 0;
   const approvedSpend  = filteredEntries.filter(e => e.status === "approved").reduce((s, e) => s + (e.amount || 0), 0);
   const budgetPct      = totalBudgetTZS ? Math.min(100, Math.round((approvedSpend / totalBudgetTZS) * 100)) : 0;
@@ -187,7 +190,7 @@ export default function Dashboard({ profile, goPage, grantId, grants }) {
           { label: "Total participants", value: fmt(totalParticipants), color: "#2d7a4f" },
           { label: "Women participants", value: fmt(totalWomen),        color: "#9333ea" },
           { label: "New editors",        value: fmt(totalNewEditors),   color: "#2563eb" },
-          { label: "Registry size",      value: participants.length,    color: "#0891b2" },
+          { label: "Registry size",      value: grantParticipants.length, color: "#0891b2" },
           showFinancials && { label: "Budget used", value: `${budgetPct}%`, color: budgetPct > 90 ? "#c0392b" : "#2d7a4f" },
         ].filter(Boolean).map(({ label, value, color }) => (
           <div key={label} className="stat-card">

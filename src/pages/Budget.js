@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   listenBudgetEntries, addBudgetEntry, updateBudgetEntry, deleteBudgetEntry,
   BUDGET_STATUSES, BUDGET_STATUS_BADGE, BUDGET_GROUPS,
@@ -11,6 +11,7 @@ import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { notifySubmission } from "../services/notificationService";
 import { uploadToDrive, preAuthorize } from "../services/driveService";
 import { batchWrite } from "../firebase/firestore";
+import { budgetEntryFixes } from "../utils/grantScope";
 import logo from "../assets/logo.png";
 
 function fmt(n)    { return (n || 0).toLocaleString(); }
@@ -234,17 +235,31 @@ export default function Budget({ profile, grantId, currentGrant }) {
   const personnelMonthlyTZS = personnel.reduce((s, p) => s + (Number(p.monthlySalary) || 0), 0);
   const personnelAnnualTZS  = personnelMonthlyTZS * 12;
 
+  // Entries whose grant tag is missing or wrong are matched to the grant of their
+  // program. Only entries with no program at all (data from before grants) are
+  // offered to this grant — never another grant's spending.
+  const fixes = useMemo(() => budgetEntryFixes(entries, programs, grantId), [entries, programs, grantId]);
+  const toFix = [...fixes.missingTag, ...fixes.wrongGrant];
+
+  const fixGrantTags = async () => {
+    if (!toFix.length) return;
+    if (!window.confirm(`Move ${toFix.length} budget entr${toFix.length === 1 ? "y" : "ies"} to the grant of their program?`)) return;
+    await batchWrite(toFix.map(f => ({ type: "update", path: "budgetEntries", id: f.id, data: { grantId: f.grantId } })));
+    await addAudit(profile, AUDIT_ACTIONS.UPDATE, "budget", { details: `Matched ${toFix.length} budget entries to their program's grant` });
+    showToast(`${toFix.length} entries matched to their grant.`);
+  };
+
   const assignUnassigned = async () => {
     if (!grantId) return;
-    const unassigned = entries.filter(e => !e.grantId);
+    const unassigned = fixes.orphans;
     if (!unassigned.length) return;
-    if (!window.confirm(`Assign ${unassigned.length} unassigned budget entries to this grant?`)) return;
+    if (!window.confirm(`These ${unassigned.length} entries have no grant and no program. Only assign them here if they were spent under THIS grant. Assign them to this grant?`)) return;
     await batchWrite(unassigned.map(e => ({ type: "update", path: "budgetEntries", id: e.id, data: { grantId } })));
     setBannerDismissed(true);
     showToast(`${unassigned.length} entries assigned to grant.`);
   };
 
-  const unassignedCount = grantId ? entries.filter(e => !e.grantId).length : 0;
+  const unassignedCount = grantId ? fixes.orphans.length : 0;
 
   // ── expense handlers ───────────────────────────────────────────────────────
   const saveEntry = async (submit = false) => {
@@ -377,7 +392,17 @@ export default function Budget({ profile, grantId, currentGrant }) {
       {toast && <div style={{ position: "fixed", bottom: 24, right: 24, background: "#2d7a4f", color: "#fff", padding: "10px 18px", borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 9999 }}>✓ {toast}</div>}
       <div className="page-title">Budget</div>
 
-      {/* Legacy unassigned banner */}
+      {toFix.length > 0 && (
+        <div className="alert alert-warn" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <span>
+            <strong>{toFix.length}</strong> budget entr{toFix.length === 1 ? "y is" : "ies are"} tagged with the wrong grant or none
+            {fixes.wrongGrant.length > 0 && <> — <strong>{fixes.wrongGrant.length}</strong> in this grant belong to another grant's programs and are counted here by mistake</>}.
+          </span>
+          {canEdit && <button className="btn btn-sm btn-primary" onClick={fixGrantTags}>Move them to their own grant</button>}
+        </div>
+      )}
+
+      {/* Legacy unassigned banner — only entries with no grant AND no program */}
       {grantId && unassignedCount > 0 && !bannerDismissed && (
         <div style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 8, padding: "10px 14px", fontSize: 13, marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
           <span><strong>{unassignedCount}</strong> budget entr{unassignedCount !== 1 ? "ies have" : "y has"} no grant assigned — they are hidden while a grant is selected.</span>
@@ -665,7 +690,7 @@ export default function Budget({ profile, grantId, currentGrant }) {
 
           {filteredEntries.length === 0 ? (
             <div className="empty">
-              {entries.length === 0
+              {visibleEntries.length === 0
                 ? `No budget entries yet.${canEdit ? " Click '+ New entry' to create one." : ""}`
                 : "No entries match this filter."}
             </div>

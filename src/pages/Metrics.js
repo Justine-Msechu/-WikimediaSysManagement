@@ -7,6 +7,7 @@ import { listenActivities } from "../services/activityService";
 import { listenPrograms } from "../services/programService";
 import { listenContributorReports } from "../services/contributorService";
 import { SCOPES, reportScope } from "../utils/wikiContribs";
+import { participantsForGrant, grantMonthRange } from "../utils/grantScope";
 import { rankingMonth, activeSummary, activeAtLeastOnce } from "../utils/eventSelection";
 
 function fmt(n) { return (n || 0).toLocaleString(); }
@@ -76,13 +77,8 @@ export default function Metrics({ profile, grantId, currentGrant }) {
   const projects = metrics.projects || PROJECT_FIELDS.map(p => ({ name: p, tCreated: 0, tImproved: 0, rCreated: 0, rImproved: 0 }));
 
   // Scope to current grant
-  const grantProgramIds = grantId
-    ? new Set(programs.filter(p => p.grantId === grantId).map(p => p.id))
-    : null;
   const grantActivities  = grantId ? activities.filter(a => a.grantId === grantId) : activities;
-  const grantParticipants = grantId
-    ? participants.filter(p => grantProgramIds.has(p.programId))
-    : participants;
+  const grantParticipants = participantsForGrant(participants, programs, grantId);
 
   const registryCounts = {
     participants:    grantParticipants.length,
@@ -137,7 +133,10 @@ export default function Metrics({ profile, grantId, currentGrant }) {
   // "Kilimanjaro events only" when such reports exist (our own programs' result), else whole wiki.
   const hasEventReports = contribReports.some(r => reportScope(r) === "events");
   const scope = contribScope || (hasEventReports ? "events" : "all");
-  const scopedReports = contribReports.filter(r => reportScope(r) === scope);
+  // Only months inside this grant's dates (a new grant has none yet).
+  const grantMonths = grantMonthRange(currentGrant);
+  const scopedReports = contribReports.filter(r => reportScope(r) === scope
+    && (!currentGrant || (grantMonths && r.month >= grantMonths.start && r.month <= grantMonths.end)));
   const latestContribMonth = rankingMonth(scopedReports);
   const latestContrib = latestContribMonth ? activeSummary(scopedReports, latestContribMonth) : null;
   const contribOnce   = activeAtLeastOnce(scopedReports);
@@ -214,9 +213,10 @@ export default function Metrics({ profile, grantId, currentGrant }) {
   };
 
   const fetchFromOD = async () => {
-    const raw = (currentGrant?.odCampaignUrl || settings?.grant?.odCampaignUrl || "").trim();
+    // This grant's own campaign only — never the old grant's link from Settings.
+    const raw = (currentGrant ? currentGrant.odCampaignUrl || "" : settings?.grant?.odCampaignUrl || "").trim();
     if (!raw) {
-      alert("No Outreach Dashboard campaign URL set. Go to Settings → Grant configuration and paste your campaign URL.");
+      alert("This grant has no Outreach Dashboard campaign link yet. Add it on the Grant page (edit this grant → Outreach Dashboard campaign URL).");
       return;
     }
     // Parse the URL and reconstruct just the campaign base:
@@ -446,7 +446,9 @@ export default function Metrics({ profile, grantId, currentGrant }) {
             </select>
           </div>
           {!latestContrib ? (
-            <div style={{ fontSize: 13, color: "#666" }}>No finished, saved reports counted as "{SCOPES.find(s => s.id === scope).long}" yet. Save them on the Active contributors page.</div>
+            <div style={{ fontSize: 13, color: "#666" }}>{currentGrant && !grantMonths
+              ? "Set this grant's start and end dates on the Grant page — only reports for months inside the grant are used."
+              : `No finished, saved reports for this grant's months counted as "${SCOPES.find(s => s.id === scope).long}" yet. Save them on the Active contributors page.`}</div>
           ) : (<>
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, marginBottom: 12 }}>
             <div><span style={{ color: "#888" }}>Active in {latestContribMonth} (≥{latestContrib.threshold} articles):</span> <strong style={{ color: "#2d7a4f" }}>{latestContrib.active}</strong> of {latestContrib.checked} members</div>

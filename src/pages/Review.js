@@ -91,6 +91,7 @@ export default function Review({ profile, goPage, grantId }) {
         reviewedAt:      today,
         reviewerComment: "",
         fromProgramApproval: true,
+        grantId:         p.grantId || grantId || "",
       });
     }
 
@@ -132,6 +133,7 @@ export default function Review({ profile, goPage, grantId }) {
         reviewedAt:      today,
         reviewerComment: "",
         fromProgramApproval: true,
+        grantId:         p.grantId || grantId || "",
       });
     }
 

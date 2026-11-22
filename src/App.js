@@ -18,6 +18,7 @@ import Timeline      from "./pages/Timeline";
 import Budget        from "./pages/Budget";
 import Invoices      from "./pages/Invoices";
 import Metrics       from "./pages/Metrics";
+import { oldestGrantId } from "./utils/grantScope";
 import ActiveContributors from "./pages/ActiveContributors";
 import Participants  from "./pages/Participants";
 import RegistrationForms from "./pages/RegistrationForms";
@@ -226,7 +227,7 @@ function AppShell() {
     }
 
     // Guard: data pages require a grant to be selected
-    const DATA_PAGES = ["dashboard","programs","activities","timeline","budget","invoices","review","metrics","participants","risks","donor","report"];
+    const DATA_PAGES = ["dashboard","programs","activities","timeline","budget","invoices","review","metrics","participants","risks","donor","report","volunteers","register"];
     if (!currentGrant && DATA_PAGES.includes(page)) {
       return (
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"60vh", gap:16, textAlign:"center", padding:24 }}>
@@ -255,12 +256,12 @@ function AppShell() {
       case "participants": return <Participants key={currentGrantId} profile={profile} grantId={currentGrantId} />;
       case "risks":        return <RiskRegister key={currentGrantId} profile={profile} grantId={currentGrantId} />;
       case "donor":        return <DonorDashboard key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} />;
-      case "report":       return <FinalReport  key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} />;
+      case "report":       return <FinalReport  key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} firstGrantId={oldestGrantId(grants)} />;
       case "audit":        return role === "admin" ? <AuditLog profile={profile} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
       case "users":        return role === "admin" ? <Users    profile={profile} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
-      case "volunteers":    return <Volunteers         profile={profile} />;
+      case "volunteers":    return <Volunteers        key={currentGrantId} profile={profile} grantId={currentGrantId} firstGrantId={oldestGrantId(grants)} />;
       case "contributors":  return <ActiveContributors profile={profile} currentGrant={currentGrant} />;
-      case "register":      return <RegistrationForms profile={profile} />;
+      case "register":      return <RegistrationForms key={currentGrantId} profile={profile} grantId={currentGrantId} firstGrantId={oldestGrantId(grants)} />;
       case "announcements": return <Announcements     profile={profile} />;
       case "deadlines":     return <Deadlines         profile={profile} />;
       case "settings":      return <Settings          profile={profile} goPage={goPage} />;

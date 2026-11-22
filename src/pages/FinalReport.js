@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import RichTextEditor, { renderHtml } from "../components/RichTextEditor";
 import { listenSettings, updateSettings } from "../services/settingsService";
+import { reportAnswersFor } from "../utils/grantScope";
 import { listenMetrics, listenMetricsByGrant, DEFAULT_METRICS } from "../services/metricsService";
 import { listenActivities } from "../services/activityService";
 import { listenPrograms } from "../services/programService";
@@ -43,7 +44,7 @@ function QuestionBlock({ qnum, question, hint, ansKey, answers, onChange, childr
   );
 }
 
-export default function FinalReport({ profile, grantId, currentGrant }) {
+export default function FinalReport({ profile, grantId, currentGrant, firstGrantId = "" }) {
   const [settings,   setSettings]   = useState(null);
   const [metrics,    setMetrics]    = useState(DEFAULT_METRICS);
   const [activities, setActivities] = useState([]);
@@ -62,11 +63,14 @@ export default function FinalReport({ profile, grantId, currentGrant }) {
   const visibleActivities = grantId ? activities.filter(a => a.grantId === grantId) : activities;
   const visiblePrograms   = grantId ? programs.filter(p => p.grantId === grantId)   : programs;
 
-  const answers   = settings?.reportAnswers || {};
+  // Answers are kept per grant; a new grant starts with an empty report.
+  const answers   = reportAnswersFor(settings, grantId, firstGrantId);
   const grant     = currentGrant || settings?.grant || {};
 
   const setAns = async (key, val) => {
-    await updateSettings({ reportAnswers: { ...answers, [key]: val } });
+    await updateSettings(grantId
+      ? { reportAnswersByGrant: { [grantId]: { ...answers, [key]: val } } }
+      : { reportAnswers: { ...answers, [key]: val } });
   };
 
   const totalParticipants = visibleActivities.reduce((s, a) => s + (a.participants || 0), 0);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { belongsToGrant, grantIdsWith } from "../utils/grantScope";
 import RichTextEditor, { renderHtml } from "../components/RichTextEditor";
 import {
   listenVolunteers, addVolunteer, updateVolunteer, deleteVolunteer,
@@ -42,8 +43,56 @@ function taskVolunteerIds(t) {
   return [];
 }
 
+// ── Bring volunteers from earlier grants ───────────────────────────────────────
+function BringVolunteers({ earlier, grantId, firstGrantId, profile, showToast }) {
+  const [open,   setOpen]   = useState(false);
+  const [picked, setPicked] = useState({});
+  const [busy,   setBusy]   = useState(false);
+  const chosen = earlier.filter(v => picked[v.id]);
+
+  const bring = async () => {
+    if (!chosen.length) return;
+    setBusy(true);
+    try {
+      for (const v of chosen) await updateVolunteer(v.id, { grantIds: grantIdsWith(v, grantId, firstGrantId) });
+      await addAudit(profile, AUDIT_ACTIONS.UPDATE, "volunteers", { details: `Added ${chosen.length} volunteer${chosen.length === 1 ? "" : "s"} from earlier grants to this grant: ${chosen.map(v => v.name).join(", ")}` });
+      setPicked({});
+      setOpen(false);
+      showToast(`${chosen.length} volunteer${chosen.length === 1 ? "" : "s"} added to this grant.`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="panel" style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13, color: "#666" }}>{earlier.length} volunteer{earlier.length === 1 ? "" : "s"} from earlier grants {earlier.length === 1 ? "is" : "are"} not in this grant.</span>
+        <button className="btn btn-sm" onClick={() => setOpen(o => !o)}>{open ? "Close" : "Bring volunteers from earlier grants"}</button>
+      </div>
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ maxHeight: 260, overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 6 }}>
+            {earlier.map(v => (
+              <label key={v.id} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+                <input type="checkbox" checked={!!picked[v.id]} onChange={e => setPicked(p => ({ ...p, [v.id]: e.target.checked }))} />
+                {v.name}{v.wikimediaUsername ? <span style={{ color: "#888", fontSize: 12 }}> ({v.wikimediaUsername})</span> : null}
+              </label>
+            ))}
+          </div>
+          <div className="btn-row" style={{ marginTop: 10 }}>
+            <button className="btn btn-sm" onClick={() => setPicked(Object.fromEntries(earlier.map(v => [v.id, true])))}>Select all</button>
+            <button className="btn btn-sm btn-primary" onClick={bring} disabled={busy || chosen.length === 0}>{busy ? "Adding…" : `Add ${chosen.length} to this grant`}</button>
+          </div>
+          <div style={{ fontSize: 12, color: "#888", marginTop: 6 }}>They stay in their earlier grants too — nothing is copied or moved.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Volunteer Registry ─────────────────────────────────────────────────────────
-function Registry({ volunteers, programs, profile, showToast }) {
+function Registry({ volunteers, programs, profile, showToast, grantId = "" }) {
   const [showForm, setShowForm]   = useState(false);
   const [editId,   setEditId]     = useState(null);
   const [form,     setForm]       = useState(emptyVolunteer());
@@ -70,7 +119,7 @@ function Registry({ volunteers, programs, profile, showToast }) {
   const save = async () => {
     if (!form.name.trim()) { alert("Volunteer name is required."); return; }
     if (!editId) {
-      const id = await addVolunteer(form);
+      const id = await addVolunteer({ ...form, grantIds: grantId ? [grantId] : [] });
       await addAudit(profile, AUDIT_ACTIONS.CREATE, "volunteers", { targetId: id, recordTitle: form.name });
       showToast("Volunteer added.");
     } else {
@@ -226,7 +275,7 @@ function Registry({ volunteers, programs, profile, showToast }) {
 }
 
 // ── Task Management ────────────────────────────────────────────────────────────
-function Tasks({ volunteers, programs, tasks, profile, showToast }) {
+function Tasks({ volunteers, programs, tasks, profile, showToast, grantId = "" }) {
   const [showForm, setShowForm] = useState(false);
   const [editId,   setEditId]   = useState(null);
   const [form,     setForm]     = useState({});
@@ -262,6 +311,7 @@ function Tasks({ volunteers, programs, tasks, profile, showToast }) {
     if (!form.title?.trim())              { alert("Task title is required."); return; }
     if (!form.volunteerIds?.length)       { alert("Assign this task to at least one volunteer."); return; }
     const data = { ...form };
+    if (!editId && grantId) data.grantId = grantId;
     delete data.volunteerId; // remove legacy field if present
     if (!editId) {
       const id = await addTask(data);
@@ -650,11 +700,11 @@ function Report({ volunteers, programs, tasks, profile }) {
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-export default function Volunteers({ profile }) {
+export default function Volunteers({ profile, grantId = "", firstGrantId = "" }) {
   const [tab,        setTab]        = useState("Registry");
-  const [volunteers, setVolunteers] = useState([]);
-  const [programs,   setPrograms]   = useState([]);
-  const [tasks,      setTasks]      = useState([]);
+  const [allVolunteers, setVolunteers] = useState([]);
+  const [allPrograms,   setPrograms]   = useState([]);
+  const [allTasks,      setTasks]      = useState([]);
   const [settings,   setSettings]   = useState(null);
   const [toast,      setToast]      = useState("");
 
@@ -667,6 +717,12 @@ export default function Volunteers({ profile }) {
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
+  // Only this grant's volunteers, programs and tasks — a new grant starts empty.
+  const scope = { firstGrantId, programs: allPrograms };
+  const programs   = grantId ? allPrograms.filter(p => p.grantId === grantId) : allPrograms;
+  const volunteers = allVolunteers.filter(v => belongsToGrant(v, grantId, scope));
+  const tasks      = allTasks.filter(t => belongsToGrant(t, grantId, scope));
+  const earlier    = allVolunteers.filter(v => !belongsToGrant(v, grantId, scope));
   const pendingCount = tasks.filter(t => t.status === "pending").length;
 
   return (
@@ -689,8 +745,11 @@ export default function Volunteers({ profile }) {
         ))}
       </div>
 
-      {tab === "Registry" && <Registry volunteers={volunteers} programs={programs} profile={profile} showToast={showToast} />}
-      {tab === "Tasks"    && <Tasks    volunteers={volunteers} programs={programs} tasks={tasks} profile={profile} showToast={showToast} />}
+      {tab === "Registry" && grantId && earlier.length > 0 && (
+        <BringVolunteers earlier={earlier} grantId={grantId} firstGrantId={firstGrantId} profile={profile} showToast={showToast} />
+      )}
+      {tab === "Registry" && <Registry volunteers={volunteers} programs={programs} profile={profile} showToast={showToast} grantId={grantId} />}
+      {tab === "Tasks"    && <Tasks    volunteers={volunteers} programs={programs} tasks={tasks} profile={profile} showToast={showToast} grantId={grantId} />}
       {tab === "Report"   && <Report   volunteers={volunteers} programs={programs} tasks={tasks} profile={profile} />}
     </div>
   );

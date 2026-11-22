@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { belongsToGrant } from "../utils/grantScope";
 import RichTextEditor, { renderHtml } from "../components/RichTextEditor";
 import EventSelection from "../components/EventSelection";
 import {
@@ -36,9 +37,9 @@ function emptyForm() {
   };
 }
 
-export default function RegistrationForms({ profile }) {
-  const [forms,        setForms]        = useState([]);
-  const [programs,     setPrograms]     = useState([]);
+export default function RegistrationForms({ profile, grantId = "", firstGrantId = "" }) {
+  const [allForms,     setForms]        = useState([]);
+  const [allPrograms,  setPrograms]     = useState([]);
   const [selectedForm, setSelectedForm] = useState(null);
   const [registrations,setRegistrations]= useState([]);
   const [showBuilder,  setShowBuilder]  = useState(false);
@@ -52,6 +53,9 @@ export default function RegistrationForms({ profile }) {
   const [toast,        setToast]        = useState("");
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
 
+  // Only this grant's programs and forms — a new grant starts with no forms.
+  const programs = grantId ? allPrograms.filter(p => p.grantId === grantId) : allPrograms;
+  const forms    = allForms.filter(f => belongsToGrant(f, grantId, { firstGrantId, programs: allPrograms }));
   const approvedPrograms = programs.filter(p => p.status === "approved");
   const hasApproved      = approvedPrograms.length > 0;
 
@@ -77,7 +81,7 @@ export default function RegistrationForms({ profile }) {
     if (!formData.title.trim()) { alert("Form title is required."); return; }
     if (!formData.programId)    { alert("Please select an approved program for this form."); return; }
     if (!editId) {
-      const id = await addForm(formData);
+      const id = await addForm({ ...formData, grantId: grantId || "" });
       await addAudit(profile, AUDIT_ACTIONS.CREATE, "registrationForms", { targetId: id, recordTitle: formData.title });
       showToast("Form created.");
     } else {
@@ -307,7 +311,7 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
       <div style={{ display: "grid", gridTemplateColumns: selectedForm ? "280px 1fr" : "1fr", gap: 20 }}>
         {/* Form list */}
         <div>
-          {forms.length === 0 ? <div className="panel"><div className="empty">No forms yet.</div></div> : forms.map(f => {
+          {forms.length === 0 ? <div className="panel"><div className="empty">No registration forms for this grant yet.</div></div> : forms.map(f => {
             const badge = STATUS_BADGE[f.status] || STATUS_BADGE.draft;
             return (
               <div key={f.id} onClick={() => setSelectedForm(f)} className="panel" style={{ cursor: "pointer", borderLeft: selectedForm?.id === f.id ? "4px solid #4a9e6b" : "4px solid transparent", marginBottom: 10 }}>

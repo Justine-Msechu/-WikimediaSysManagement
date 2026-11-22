@@ -81,6 +81,7 @@ src/
                       OnboardingModal, BackToTop
   utils/              Pure helpers (no React/Firebase) — testable:
                       wikiContribs.js, eventContribs.js, eventSelection.js, yearSummary.js,
+                      grantScope.js,
                       contributorPrint.js, certificateArt.js, budgetImport.js,
                       timelineImport.js, wikiImport.js, spendingReport.js,
                       timelineReport.js
@@ -112,8 +113,7 @@ also a leftover copy.
 | Volunteer portal | My tasks (+ TaskComments) | Volunteers only see this group + Help |
 
 `DATA_PAGES` in `App.js` need a selected grant (most pass `grantId` and filter
-by it). Volunteers, Reg. forms, Active contributors, Announcements, Deadlines,
-Settings work without one.
+by it). Active contributors, Announcements, Deadlines, Settings work without one.
 
 ### Adding a page
 1. Create `src/pages/MyPage.js` (default export, props at least `{ profile }`)
@@ -159,6 +159,34 @@ index — services usually skip `orderBy` and sort client-side instead.
 
 ## Key business rules
 
+- **Grants keep their data separate — a new grant starts empty.** Every
+  record on a grant page must be scoped to the selected grant
+  (`utils/grantScope.js`):
+  - activities, programs, budget entries, invoices, risks carry `grantId`;
+    budget entries created by approvals (Review) take the program's `grantId`.
+  - participants belong to a grant by `grantId` or through one of its
+    programs (`participantsForGrant()`); don't count the whole registry.
+  - money (total, rate) comes from the selected grant only — no fallback to
+    the legacy `settings.grant` when a grant is selected.
+  - metrics are per grant (`metrics/{grantId}`); `DEFAULT_METRICS` targets are
+    0, so a new grant isn't pre-filled.
+  - final report answers are per grant (`settings.reportAnswersByGrant`);
+    legacy `settings.reportAnswers` belongs to the first grant (`oldestGrantId()`).
+  - Budget never offers another grant's entries: `budgetEntryFixes()` moves
+    untagged/wrongly tagged entries to their program's grant; only entries with
+    no grant and no program can be assigned to the current grant.
+  - registration forms belong to the grant of their program (new forms also
+    get `grantId`); volunteer tasks likewise. Volunteers have `grantIds[]` —
+    new ones join the current grant; the Registry offers "Bring volunteers from
+    earlier grants" (adds the grant, never copies). `belongsToGrant()`:
+    records with no grant at all (from before grants) belong to the first grant.
+  - Metrics: Outreach Dashboard fetch uses only the grant's own
+    `odCampaignUrl`; the Active contributors panel uses only reports for months
+    inside the grant's start/end dates.
+  - Volunteers and Reg. forms are in `DATA_PAGES` (need a selected grant).
+  Shared across grants on purpose: community members and contributor reports
+  (Active contributors — filtered by months, not by grant), announcements,
+  deadlines, settings.
 - **Approval flow:** programs and sessions go `draft → submitted → approved /
   rejected`. Approved programs are locked (only admins edit; coordinators may
   still touch `subPrograms`). Approving creates approved `budgetEntries` for

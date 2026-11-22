@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { belongsToGrant } from "../utils/grantScope";
 import RichTextEditor from "../components/RichTextEditor";
 import { listenActivities, addActivity, updateActivity, deleteActivity, getActivity, ACTIVITY_TYPES, SESSION_TYPES } from "../services/activityService";
 import { listenPrograms } from "../services/programService";
@@ -217,7 +218,7 @@ export default function Activities({ profile, goPage, grantId }) {
     return matchSearch && matchTask;
   });
 
-  const myTaskCount = activities.filter(a => a.assignedTo === profile?.name).length;
+  const myTaskCount = grantActivities.filter(a => a.assignedTo === profile?.name).length;
   const programName = (id) => programs.find(p => p.id === id)?.name || "";
   const sessionName = (a) => {
     if (!a.subProgramId) return "";
@@ -377,7 +378,7 @@ export default function Activities({ profile, goPage, grantId }) {
               <label>Registration form (QR attendance)</label>
               <select value={form.linkedFormId || ""} onChange={e => setF("linkedFormId", e.target.value)}>
                 <option value="">(None — no QR attendance)</option>
-                {forms.map(f => <option key={f.id} value={f.id}>{f.title || f.id}</option>)}
+                {forms.filter(f => belongsToGrant(f, grantId, { programs })).map(f => <option key={f.id} value={f.id}>{f.title || f.id}</option>)}
               </select>
             </div>
           </div>
@@ -450,7 +451,7 @@ export default function Activities({ profile, goPage, grantId }) {
       <div className="panel" style={{ padding: 0 }}>
         {filtered.length === 0 ? (
           <div className="empty">
-            {myTasksOnly ? "No activities assigned to you." : activities.length === 0 ? "No activities yet." : "No results for your search."}
+            {myTasksOnly ? "No activities assigned to you." : grantActivities.length === 0 ? "No activities yet." : "No results for your search."}
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>

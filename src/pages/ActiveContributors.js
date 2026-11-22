@@ -11,8 +11,11 @@ import {
   normalizeUsername, currentMonth, lastFullMonth, isPartialMonth, previousMonths,
   fetchMonthStats, checkUsernames, buildReportRows, rowsToCsv, isEditing, STILL_EDITING_MIN,
 } from "../utils/wikiContribs";
+import {
+  RETAINED_MIN_MONTHS, LABELS as YEAR_LABELS, defaultPeriod, quarters, buildYearSummary, yearSummaryToCsv,
+} from "../utils/yearSummary";
 
-const TABS = ["Report", "History", "Members"];
+const TABS = ["Report", "History", "Year summary", "Members"];
 
 const wikiLabel = (id) => WIKIS.find(w => w.id === id)?.label || id;
 
@@ -317,6 +320,197 @@ function notYetMembers(list, existing, source) {
   return out;
 }
 
+// ── Year summary tab ───────────────────────────────────────────────────────────
+const LABEL_BADGE = { active: "badge-green", retained: "badge-blue", participated: "badge-gray" };
+
+function MonthStrip({ months, byMonth, covered }) {
+  return (
+    <div style={{ display: "flex", gap: 2 }}>
+      {months.map(m => {
+        const c = byMonth[m];
+        const has = covered.has(m);
+        const bg = c?.active ? "#2d7a4f" : c?.editing ? "#2563eb" : has ? "#e5e5e0" : "transparent";
+        const tip = !has ? `${monthLabel(m)}: no saved report`
+          : `${monthLabel(m)}: ${c ? c.articles : 0} article${c?.articles === 1 ? "" : "s"}${c?.active ? " (active)" : c?.editing ? " (still editing)" : ""}`;
+        return <div key={m} title={tip} style={{ width: 10, height: 14, borderRadius: 2, background: bg, border: has ? "none" : "1px dashed #ccc", boxSizing: "border-box" }} />;
+      })}
+    </div>
+  );
+}
+
+function YearSummary({ members, reports, currentGrant, profile }) {
+  const base = useMemo(() => defaultPeriod(currentGrant), [currentGrant]);
+  const qs   = useMemo(() => quarters(base.start, base.end), [base]);
+  const [mode,   setMode]   = useState("year");      // "year" | "Q1".. | "custom"
+  const [custom, setCustom] = useState(base);
+  const [wiki,   setWiki]   = useState("all");
+  const [search, setSearch] = useState("");
+
+  const period = mode === "year" ? base
+    : mode === "custom" ? custom
+    : (qs.find(q => q.label === mode) || base);
+
+  // Members left out of reports ("In reports" unticked) only appear if they have history.
+  const inReports = useMemo(() => members.filter(m => m.isActive !== false), [members]);
+  const summary = useMemo(
+    () => buildYearSummary(reports, inReports, { start: period.start, end: period.end, wiki }),
+    [reports, inReports, period.start, period.end, wiki],
+  );
+  const quarterRows = useMemo(
+    () => qs.map(q => ({ q, s: buildYearSummary(reports, inReports, { start: q.start, end: q.end, wiki }) })),
+    [qs, reports, inReports, wiki],
+  );
+  const covered = new Set(summary.covered);
+  const t = summary.totals;
+  const range = (s, e) => s === e ? monthLabel(s) : `${monthLabel(s)} – ${monthLabel(e)}`;
+
+  const q = search.toLowerCase();
+  const rows = summary.rows.filter(r => !q || r.name.toLowerCase().includes(q) || r.username.toLowerCase().includes(q));
+
+  const exportCsv = async () => {
+    const tag = mode === "year" ? "year" : mode === "custom" ? "custom" : mode;
+    downloadCsv(`contributors-${tag}-${period.start}-to-${period.end}.csv`, yearSummaryToCsv(summary));
+    await addAudit(profile, AUDIT_ACTIONS.EXPORT, "contributors", {
+      recordTitle: `Summary ${period.start} to ${period.end}`, details: `Exported contributor summary (${summary.rows.length} people)`,
+    });
+  };
+
+  return (
+    <div>
+      <div className="panel" style={{ marginBottom: 20 }}>
+        <div className="form-grid">
+          <div className="field"><label>Period</label>
+            <select value={mode} onChange={e => setMode(e.target.value)}>
+              <option value="year">Full year ({range(base.start, base.end)})</option>
+              {qs.map(x => <option key={x.label} value={x.label}>{x.label} ({range(x.start, x.end)})</option>)}
+              <option value="custom">Custom…</option>
+            </select>
+          </div>
+          {mode === "custom" && (
+            <>
+              <div className="field"><label>From</label><input type="month" value={custom.start} onChange={e => e.target.value && setCustom(c => ({ ...c, start: e.target.value }))} /></div>
+              <div className="field"><label>To</label><input type="month" value={custom.end} onChange={e => e.target.value && setCustom(c => ({ ...c, end: e.target.value }))} /></div>
+            </>
+          )}
+          <div className="field"><label>Wiki</label>
+            <select value={wiki} onChange={e => setWiki(e.target.value)}>
+              <option value="all">All wikis</option>
+              {WIKIS.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: "#888", marginTop: 8 }}>
+          {currentGrant?.startDate && currentGrant?.endDate
+            ? `Full year follows the selected grant (${currentGrant.startDate} to ${currentGrant.endDate}). Quarters count from its first month.`
+            : "No grant dates set, so the full year is the last 12 finished months."}
+          {" "}Built from saved monthly reports. Unfinished months are left out.
+        </div>
+      </div>
+
+      {/* Quarter by quarter */}
+      {qs.length > 1 && (
+        <div className="panel" style={{ padding: 0, marginBottom: 20 }}>
+          <div className="panel-title" style={{ padding: "14px 16px 0" }}>Quarter by quarter</div>
+          <div style={{ overflowX: "auto" }}>
+            <table>
+              <thead><tr><th>Quarter</th><th>Months saved</th><th>Still editing (1+ month)</th><th>Active contributors</th><th>Edited every month</th><th>Articles</th><th></th></tr></thead>
+              <tbody>
+                {quarterRows.map(({ q: x, s }) => (
+                  <tr key={x.label} style={mode === x.label ? { background: "#f0f8f3" } : undefined}>
+                    <td style={{ fontWeight: 600 }}>{x.label} <span style={{ fontWeight: 400, fontSize: 12, color: "#888" }}>{range(x.start, x.end)}</span></td>
+                    <td style={{ fontSize: 12 }}>
+                      {s.covered.length} of {x.months.length}
+                      {s.missing.length > 0 && <span className="badge badge-amber" style={{ marginLeft: 6 }}>{s.missing.length} missing</span>}
+                      {s.future.length > 0 && s.missing.length === 0 && s.covered.length < x.months.length && <span style={{ marginLeft: 6, color: "#aaa" }}>not finished</span>}
+                    </td>
+                    <td style={{ color: "#2563eb", fontWeight: 600 }}>{s.totals.editedOnce}</td>
+                    <td style={{ color: "#2d7a4f", fontWeight: 600 }}>{s.totals.active}</td>
+                    <td>{s.rows.filter(r => r.monthsEditing >= x.months.length && x.months.length > 0).length}</td>
+                    <td>{s.totals.articles.toLocaleString()}</td>
+                    <td><button className="btn btn-sm" onClick={() => setMode(x.label)}>View</button></td>
+                  </tr>
+                ))}
+                <tr style={{ borderTop: "2px solid #e8e8e4", background: mode === "year" ? "#f0f8f3" : undefined }}>
+                  <td style={{ fontWeight: 700 }}>Full year</td>
+                  {(() => { const s = buildYearSummary(reports, inReports, { start: base.start, end: base.end, wiki }); return (<>
+                    <td style={{ fontSize: 12 }}>{s.covered.length} of {s.months.length}</td>
+                    <td style={{ color: "#2563eb", fontWeight: 700 }}>{s.totals.editedOnce}</td>
+                    <td style={{ color: "#2d7a4f", fontWeight: 700 }}>{s.totals.active}</td>
+                    <td style={{ fontSize: 12, color: "#666" }}>Retained (3+ months): <strong>{s.totals.retained}</strong></td>
+                    <td style={{ fontWeight: 700 }}>{s.totals.articles.toLocaleString()}</td>
+                  </>); })()}
+                  <td><button className="btn btn-sm" onClick={() => setMode("year")}>View</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {summary.missing.length > 0 && (
+        <div className="alert alert-warn">
+          No saved report for {summary.missing.map(monthLabel).join(", ")}. Fetch and save {summary.missing.length === 1 ? "that month" : "those months"} on the Report tab, or this summary will undercount.
+        </div>
+      )}
+
+      <div className="card-grid">
+        {[
+          ["People",                         t.people,       "#1c2b1e"],
+          ["Active contributors",            t.active,       "#2d7a4f"],
+          [`Retained (${RETAINED_MIN_MONTHS}+ months editing)`, t.retained, "#2563eb"],
+          ["Still editing (at least 1 month)", t.editedOnce, "#2563eb"],
+          ["Participated only",              t.participated, "#d97706"],
+          ["Months saved",                   `${summary.covered.length} of ${summary.months.length}`, "#1c2b1e"],
+        ].map(([label, value, color]) => (
+          <div key={label} className="stat-card">
+            <div className="stat-label">{label}</div>
+            <div className="stat-value" style={{ color }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or username..." style={{ flex: 1, minWidth: 200, fontSize: 13 }} />
+        <button className="btn" onClick={exportCsv} disabled={summary.rows.length === 0}>Export CSV</button>
+      </div>
+
+      <div className="panel" style={{ padding: 0 }}>
+        {rows.length === 0 ? (
+          <div className="empty">{summary.rows.length === 0 ? "No members or saved reports for this period yet." : "No one matches your search."}</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table>
+              <thead><tr><th>#</th><th>Name</th><th>Username</th><th>Recognition</th><th>Months active</th><th>Months still editing</th><th>Total articles</th><th>Best month</th><th>Month by month</th></tr></thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={r.username}>
+                    <td style={{ fontSize: 12, color: "#888" }}>{i + 1}</td>
+                    <td style={{ fontWeight: 500 }}>{r.name}</td>
+                    <td style={{ fontSize: 12 }}>{r.username}</td>
+                    <td><span className={`badge ${LABEL_BADGE[r.label]}`}>{YEAR_LABELS[r.label]}</span></td>
+                    <td>{r.monthsActive}</td>
+                    <td>{r.monthsEditing}</td>
+                    <td style={{ fontWeight: 600 }}>{r.totalArticles.toLocaleString()}</td>
+                    <td style={{ fontSize: 12 }}>{r.bestMonth.month ? `${monthLabel(r.bestMonth.month)} (${r.bestMonth.articles})` : ""}</td>
+                    <td><MonthStrip months={summary.months} byMonth={r.byMonth} covered={covered} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div style={{ fontSize: 12, color: "#888", marginTop: 10 }}>
+        <strong>Active contributor</strong>: {DEFAULT_THRESHOLD}+ different articles in at least one month (the threshold saved with each report).
+        {" "}<strong>Retained</strong>: still editing (1+ article) in {RETAINED_MIN_MONTHS} or more months.
+        {" "}Total articles adds the monthly counts, so an article edited in two different months counts twice.
+        {" "}Strip: <span style={{ color: "#2d7a4f" }}>■</span> active, <span style={{ color: "#2563eb" }}>■</span> still editing, <span style={{ color: "#bbb" }}>■</span> no edits, dashed = no saved report.
+      </div>
+    </div>
+  );
+}
+
 // ── Members tab ────────────────────────────────────────────────────────────────
 function Members({ members, volunteers, participants, profile, canEdit, isAdmin, showToast }) {
   const [name,     setName]     = useState("");
@@ -512,7 +706,7 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────────
-export default function ActiveContributors({ profile }) {
+export default function ActiveContributors({ profile, currentGrant }) {
   const [tab,        setTab]        = useState("Report");
   const [members,    setMembers]    = useState([]);
   const [reports,    setReports]    = useState([]);
@@ -550,6 +744,7 @@ export default function ActiveContributors({ profile }) {
 
       {tab === "Report"  && <Report  members={members} reports={reports} profile={profile} canEdit={canEdit} showToast={showToast} />}
       {tab === "History" && <History reports={reports} />}
+      {tab === "Year summary" && <YearSummary members={members} reports={reports} currentGrant={currentGrant} profile={profile} />}
       {tab === "Members" && <Members members={members} volunteers={volunteers} participants={participants} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
     </div>
   );

@@ -182,6 +182,11 @@ index — services usually skip `orderBy` and sort client-side instead.
   the grant they receive certificates, and the reports are the evidence of who
   stayed active/retained.
 - Reports are saved to `contributorReports` with id `{wiki}_{YYYY-MM}`.
+- **Year summary** tab (`utils/yearSummary.js`): per person across the grant
+  year (or a quarter / custom range) from saved reports only. Labels: Active
+  contributor (60+ in any month) > Retained (still editing in
+  `RETAINED_MIN_MONTHS` = 3+ months) > Participated. Quarters count from the
+  grant's start month; wikis are combined per month; missing months are flagged.
 - **Metrics** row `activeContributors` is filled from saved reports (latest
   finished month, or different people active at least once). It is the group's
   own metric — don't merge it into the Foundation's editor metrics.

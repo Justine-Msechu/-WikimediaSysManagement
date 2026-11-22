@@ -223,6 +223,24 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── /communityMembers ──────────────────────────────────────────────────────
+    // Active contributors module — same protection as /volunteers.
+    match /communityMembers/{docId} {
+      allow read:   if isAnyStaff();
+      allow create: if isCoordinator();
+      allow update: if isCoordinator();
+      allow delete: if isAdmin();
+    }
+
+    // ── /contributorReports ────────────────────────────────────────────────────
+    // Saved monthly reports, doc id "{wiki}_{YYYY-MM}" — same protection as /volunteers.
+    match /contributorReports/{docId} {
+      allow read:   if isAnyStaff();
+      allow create: if isCoordinator();
+      allow update: if isCoordinator();
+      allow delete: if isAdmin();
+    }
+
     // ── /volunteerTasks ────────────────────────────────────────────────────────
     match /volunteerTasks/{docId} {
       // Coordinators/admins manage all tasks.

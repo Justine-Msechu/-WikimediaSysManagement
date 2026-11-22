@@ -18,6 +18,7 @@ import Timeline      from "./pages/Timeline";
 import Budget        from "./pages/Budget";
 import Invoices      from "./pages/Invoices";
 import Metrics       from "./pages/Metrics";
+import ActiveContributors from "./pages/ActiveContributors";
 import Participants  from "./pages/Participants";
 import RegistrationForms from "./pages/RegistrationForms";
 import Volunteers        from "./pages/Volunteers";
@@ -46,6 +47,7 @@ const NAV_ITEMS = {
   programs:     { label: "Programs",     icon: "◈", roles: null },
   timeline:     { label: "Timeline",     icon: "◷", roles: null },
   metrics:      { label: "Metrics",      icon: "◑", roles: null },
+  contributors: { label: "Active contributors", icon: "◍", roles: null },
   activities:   { label: "Activities",   icon: "◉", roles: null },
   participants: { label: "Participants", icon: "◐", roles: ["admin", "coordinator"] },
   volunteers:   { label: "Volunteers",   icon: "◎", roles: ["admin", "coordinator"] },
@@ -66,7 +68,7 @@ const NAV_ITEMS = {
 // Grouped modules for the sidebar
 const NAV_GROUPS = [
   { label: "Overview",         ids: ["dashboard", "announcements", "deadlines"] },
-  { label: "Grant & planning", ids: ["grant", "programs", "timeline", "metrics"] },
+  { label: "Grant & planning", ids: ["grant", "programs", "timeline", "metrics", "contributors"] },
   { label: "Activities",       ids: ["activities", "participants", "volunteers", "register"] },
   { label: "Finance",          ids: ["budget", "invoices", "review"] },
   { label: "Reports",          ids: ["report", "donor", "risks"] },
@@ -257,6 +259,7 @@ function AppShell() {
       case "audit":        return role === "admin" ? <AuditLog profile={profile} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
       case "users":        return role === "admin" ? <Users    profile={profile} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
       case "volunteers":    return <Volunteers         profile={profile} />;
+      case "contributors":  return <ActiveContributors profile={profile} />;
       case "register":      return <RegistrationForms profile={profile} />;
       case "announcements": return <Announcements     profile={profile} />;
       case "deadlines":     return <Deadlines         profile={profile} />;

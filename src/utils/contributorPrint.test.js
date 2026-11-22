@@ -1,4 +1,4 @@
-import { certificatesHtml, monthReportHtml, yearReportHtml, esc } from "./contributorPrint";
+import { certificatesHtml, certificateFooterHtml, monthReportHtml, yearReportHtml, esc } from "./contributorPrint";
 import { buildYearSummary } from "./yearSummary";
 
 const org = { orgName: "Wikimedians of Kilimanjaro", logoUrl: "https://example.org/logo.png" };
@@ -49,6 +49,17 @@ describe("certificate signature and date", () => {
     expect(html).toContain(`<div class="date">${todayText}</div>`);
     expect(html).toContain("<span>Coordinator signature</span>");
     expect(html).not.toContain('alt="signature"');
+    expect(html).not.toContain("Official stamp");
+  });
+});
+
+describe("certificateFooterHtml (shared with Participants certificates)", () => {
+  test("signature, signatory and print date; no stamp", () => {
+    const html = certificateFooterHtml({ signatureImage: "data:image/png;base64,BBBB", signatoryName: "Justine B. Msechu" }, "01 July 2027");
+    expect(html).toContain('src="data:image/png;base64,BBBB"');
+    expect(html).toContain("Justine B. Msechu, Coordinator");
+    expect(html).toContain("01 July 2027");
+    expect(html).not.toContain("stamp");
   });
 });
 

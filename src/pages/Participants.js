@@ -3,6 +3,7 @@ import { listenParticipants, addParticipant, updateParticipant, deleteParticipan
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { fetchEventParticipants, parseODCSV } from "../utils/wikiImport";
 import { listenSettings } from "../services/settingsService";
+import { certificateFooterHtml, CERT_FOOTER_CSS } from "../utils/contributorPrint";
 import { listenPrograms } from "../services/programService";
 import { getForms, getAllRegistrations, listenForms } from "../services/registrationService";
 import logo from "../assets/logo.png";
@@ -203,9 +204,7 @@ export default function Participants({ profile, grantId }) {
       .presented { font-size: 14px; color: #555; margin-bottom: 12px; }
       .name { font-size: 32px; font-weight: 700; color: #1c2b1e; border-bottom: 2px solid #4a9e6b; display: inline-block; padding-bottom: 6px; margin-bottom: 24px; }
       .body { font-size: 14px; color: #555; line-height: 1.8; margin-bottom: 32px; }
-      .footer { display: flex; justify-content: space-around; margin-top: 40px; }
-      .sig { font-size: 12px; color: #888; }
-      .sig span { display: block; border-top: 1px solid #ccc; padding-top: 6px; margin-top: 24px; }
+      ${CERT_FOOTER_CSS}
       .no-print { position: fixed; top: 16px; right: 16px; }
       .no-print button { padding: 8px 20px; background: #2d7a4f; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
       @media print { .no-print { display: none; } }
@@ -223,11 +222,7 @@ export default function Participants({ profile, grantId }) {
         and has contributed to the growth of free knowledge.
         ${p.wikimediaUsername ? `<br><br>Wikipedia username: <strong>${esc(p.wikimediaUsername)}</strong>` : ""}
       </div>
-      <div class="footer">
-        <div class="sig"><span>Coordinator signature</span></div>
-        <div class="sig"><span>Date</span></div>
-        <div class="sig"><span>Official stamp</span></div>
-      </div>
+      ${certificateFooterHtml(settings?.certificate || {})}
     </div>
     </body></html>`;
     const w = window.open("", "_blank", "width=900,height=650");

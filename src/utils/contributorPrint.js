@@ -20,8 +20,32 @@ export function periodName(start, end) {
   return start === end ? monthName(start) : `${monthName(start)} – ${monthName(end)}`;
 }
 
+// ── Shared certificate footer: coordinator signature + print date ─────────────
+// Used by community member certificates and the Participants page certificate.
+// signature: { signatureImage, signatoryName, signatoryTitle } from Settings.
+export const CERT_FOOTER_CSS = `
+    .footer { display: flex; justify-content: space-around; align-items: flex-end; margin-top: 22px; }
+    .sig { font-size: 12px; color: #888; min-width: 180px; }
+    .sig .above { height: 64px; display: flex; align-items: flex-end; justify-content: center; }
+    .sig .above img { max-height: 64px; max-width: 220px; object-fit: contain; }
+    .sig .date { font-size: 14px; color: #1c2b1e; font-weight: 600; padding-bottom: 4px; }
+    .sig span { display: block; border-top: 1px solid #999; padding-top: 6px; }`;
+
+export function certificateFooterHtml(signature = {}, printedOn = todayLong()) {
+  const { signatureImage, signatoryName, signatoryTitle } = signature;
+  const label = [signatoryName, signatoryTitle || "Coordinator"].filter(Boolean).join(", ");
+  return `<div class="footer">
+      <div class="sig">
+        <div class="above">${signatureImage ? `<img src="${esc(signatureImage)}" alt="signature"/>` : ""}</div>
+        <span>${esc(signatureImage || signatoryName ? label : "Coordinator signature")}</span>
+      </div>
+      <div class="sig"><div class="above"><div class="date">${esc(printedOn)}</div></div><span>Date</span></div>
+    </div>`;
+}
+
 const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : "0%");
-const today = () => new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+function todayLong() { return new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }); }
+const today = todayLong;
 const names = (people) => people.map(p => esc(p.name)).join(" &amp; ");
 
 const BASE_CSS = `
@@ -142,15 +166,6 @@ const CERT_TEXT = {
   },
 };
 
-// Signature block: the uploaded image (if any) sits on the line, name/title below.
-function signatureBlock({ signatureImage, signatoryName, signatoryTitle }) {
-  const label = [signatoryName, signatoryTitle || "Coordinator"].filter(Boolean).join(", ");
-  return `<div class="sig">
-    <div class="above">${signatureImage ? `<img src="${esc(signatureImage)}" alt="signature"/>` : ""}</div>
-    <span>${esc(signatureImage || signatoryName ? label : "Coordinator signature")}</span>
-  </div>`;
-}
-
 function certificate(r, { orgName, logoUrl, start, end, signature = {}, printedOn }) {
   const c = CERT_TEXT[r.label] || CERT_TEXT.participated;
   const best = r.bestOfMonth.length
@@ -168,11 +183,7 @@ function certificate(r, { orgName, logoUrl, start, end, signature = {}, printedO
       <br><span class="user">Wikipedia username: <strong>${esc(r.username)}</strong></span>
     </div>
     ${best}
-    <div class="footer">
-      ${signatureBlock(signature)}
-      <div class="sig"><div class="above"><div class="date">${esc(printedOn)}</div></div><span>Date</span></div>
-      <div class="sig"><div class="above"></div><span>Official stamp</span></div>
-    </div>
+    ${certificateFooterHtml(signature, printedOn)}
   </div>`;
 }
 
@@ -195,12 +206,7 @@ export function certificatesHtml(rows, { orgName, logoUrl, start, end, signature
     .body { font-size: 14px; color: #444; line-height: 1.8; margin-bottom: 12px; }
     .user { font-size: 12px; color: #777; }
     .star { display: inline-block; font-size: 13px; font-weight: 600; color: #b45309; border: 1px solid #f0d5b0; background: #fffaf0; border-radius: 6px; padding: 4px 12px; margin-bottom: 6px; }
-    .footer { display: flex; justify-content: space-around; align-items: flex-end; margin-top: 22px; }
-    .sig { font-size: 12px; color: #888; min-width: 180px; }
-    .sig .above { height: 64px; display: flex; align-items: flex-end; justify-content: center; }
-    .sig .above img { max-height: 64px; max-width: 220px; object-fit: contain; }
-    .sig .date { font-size: 14px; color: #1c2b1e; font-weight: 600; padding-bottom: 4px; }
-    .sig span { display: block; border-top: 1px solid #999; padding-top: 6px; }
+    ${CERT_FOOTER_CSS}
     .no-print { position: fixed; top: 16px; right: 16px; }
     .no-print button { padding: 8px 20px; background: #2d7a4f; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
     @media print { .no-print { display: none; } .cert { margin: 15mm auto 0; } }

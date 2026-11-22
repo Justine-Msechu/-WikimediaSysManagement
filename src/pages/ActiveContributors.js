@@ -9,6 +9,7 @@ import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { listenSettings } from "../services/settingsService";
 import { monthReportHtml, yearReportHtml, certificatesHtml, openPrintWindow } from "../utils/contributorPrint";
 import logo from "../assets/logo.png";
+import { certificateArt } from "../utils/certificateArt";
 import {
   WIKIS, DEFAULT_WIKI, DEFAULT_THRESHOLD,
   normalizeUsername, currentMonth, lastFullMonth, isPartialMonth, previousMonths,
@@ -404,7 +405,7 @@ function YearSummary({ members, reports, currentGrant, profile, org, signature }
   const printCertificates = async (list) => {
     if (summary.missing.length > 0 && !window.confirm(`${summary.missing.length} month${summary.missing.length === 1 ? " has" : "s have"} no saved report in this period, so some certificates may show lower numbers. Print anyway?`)) return;
     if (!signature.signatureImage && !window.confirm("No coordinator signature has been uploaded yet (Settings → Certificate signature), so the signature line will be blank. Print anyway?")) return;
-    openPrintWindow(certificatesHtml(list, { ...org, start: period.start, end: period.end, signature }));
+    openPrintWindow(certificatesHtml(list, { ...org, start: period.start, end: period.end, signature, art: certificateArt() }));
     await addAudit(profile, AUDIT_ACTIONS.EXPORT, "contributors", {
       recordTitle: list.length === 1 ? list[0].name : `${list.length} certificates`,
       details: `Printed ${list.length} community member certificate${list.length === 1 ? "" : "s"} (${period.start} to ${period.end})`,

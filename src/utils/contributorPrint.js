@@ -31,6 +31,42 @@ export const CERT_FOOTER_CSS = `
     .sig .date { font-size: 14px; color: #1c2b1e; font-weight: 600; padding-bottom: 4px; }
     .sig span { display: block; border-top: 1px solid #999; padding-top: 6px; }`;
 
+// ── Shared certificate watermark: Wikimedia logos behind the text ─────────────
+// art: { center, icons[] } from utils/certificateArt.js (absolute image URLs).
+// The parent .cert must use CERT_ART_CSS (position: relative).
+export const CERT_ART_CSS = `
+    .cert { position: relative; overflow: hidden; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .cert > * { position: relative; z-index: 1; }
+    .cert > .wm { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+    .wm img { position: absolute; }
+    .wm .center { left: 50%; top: 54%; width: 44%; transform: translate(-50%, -50%); opacity: .05; }
+    .wm .side { opacity: .09; }
+    .cert .body { max-width: 82%; margin-left: auto; margin-right: auto; }
+    .wm-row { display: flex; justify-content: center; gap: 14px; margin-top: 18px; }
+    .wm-row img { height: 22px; width: auto; opacity: .8; }`;
+
+const SIDE_SPOTS = [
+  "top: 5%; left: 3%; width: 8%; transform: rotate(-12deg);",
+  "top: 5%; right: 3%; width: 8%; transform: rotate(12deg);",
+  "top: 40%; left: 1.5%; width: 6.5%; transform: rotate(8deg);",
+  "top: 40%; right: 1.5%; width: 6.5%; transform: rotate(-8deg);",
+  "bottom: 6%; left: 4%; width: 7.5%; transform: rotate(10deg);",
+  "bottom: 6%; right: 4%; width: 7.5%; transform: rotate(-10deg);",
+];
+
+export function certificateArtHtml(art) {
+  if (!art || !art.icons?.length) return "";
+  return `<div class="wm" aria-hidden="true">
+      ${art.center ? `<img class="center" src="${esc(art.center)}" alt=""/>` : ""}
+      ${art.icons.slice(0, SIDE_SPOTS.length).map((u, i) => `<img class="side" src="${esc(u)}" alt="" style="${SIDE_SPOTS[i]}"/>`).join("")}
+    </div>`;
+}
+
+export function certificateIconRowHtml(art) {
+  if (!art || !art.icons?.length) return "";
+  return `<div class="wm-row" aria-hidden="true">${art.icons.map(u => `<img src="${esc(u)}" alt=""/>`).join("")}</div>`;
+}
+
 export function certificateFooterHtml(signature = {}, printedOn = todayLong()) {
   const { signatureImage, signatoryName, signatoryTitle } = signature;
   const label = [signatoryName, signatoryTitle || "Coordinator"].filter(Boolean).join(", ");
@@ -166,11 +202,12 @@ const CERT_TEXT = {
   },
 };
 
-function certificate(r, { orgName, logoUrl, start, end, signature = {}, printedOn }) {
+function certificate(r, { orgName, logoUrl, start, end, signature = {}, printedOn, art }) {
   const c = CERT_TEXT[r.label] || CERT_TEXT.participated;
   const best = r.bestOfMonth.length
     ? `<div class="star">★ Best contributor of the month: ${r.bestOfMonth.map(m => esc(monthName(m))).join(", ")}</div>` : "";
   return `<div class="cert">
+    ${certificateArtHtml(art)}
     <img src="${esc(logoUrl)}" class="logo" alt="logo"/>
     <div class="org">${esc(orgName)}</div>
     <h1>${c.title}</h1>
@@ -178,18 +215,19 @@ function certificate(r, { orgName, logoUrl, start, end, signature = {}, printedO
     <div class="presented">This is to certify that</div>
     <div class="name">${esc(r.name)}</div>
     <div class="body">
-      as a volunteer of <strong>${esc(orgName)}</strong>, ${c.line(r)}<br>
+      as a volunteer of <strong>${esc(orgName)}</strong>, ${c.line(r)}
       during <strong>${esc(periodName(start, end))}</strong>, helping to grow free knowledge.
       <br><span class="user">Wikipedia username: <strong>${esc(r.username)}</strong></span>
     </div>
     ${best}
     ${certificateFooterHtml(signature, printedOn)}
+    ${certificateIconRowHtml(art)}
   </div>`;
 }
 
 // signature: { signatureImage, signatoryName, signatoryTitle } from Settings.
 // printedOn defaults to today — the day the certificate is printed.
-export function certificatesHtml(rows, { orgName, logoUrl, start, end, signature = {}, printedOn = today() }) {
+export function certificatesHtml(rows, { orgName, logoUrl, start, end, signature = {}, printedOn = today(), art }) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <title>${rows.length === 1 ? `Certificate — ${esc(rows[0].name)}` : `Certificates (${rows.length})`}</title>
   <style>
@@ -207,12 +245,13 @@ export function certificatesHtml(rows, { orgName, logoUrl, start, end, signature
     .user { font-size: 12px; color: #777; }
     .star { display: inline-block; font-size: 13px; font-weight: 600; color: #b45309; border: 1px solid #f0d5b0; background: #fffaf0; border-radius: 6px; padding: 4px 12px; margin-bottom: 6px; }
     ${CERT_FOOTER_CSS}
+    ${CERT_ART_CSS}
     .no-print { position: fixed; top: 16px; right: 16px; }
     .no-print button { padding: 8px 20px; background: #2d7a4f; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
     @media print { .no-print { display: none; } .cert { margin: 15mm auto 0; } }
   </style></head><body>
   <div class="no-print"><button onclick="window.print()">Print / Save PDF${rows.length > 1 ? ` (${rows.length})` : ""}</button></div>
-  ${rows.map(r => certificate(r, { orgName, logoUrl, start, end, signature, printedOn })).join("")}
+  ${rows.map(r => certificate(r, { orgName, logoUrl, start, end, signature, printedOn, art })).join("")}
   </body></html>`;
 }
 

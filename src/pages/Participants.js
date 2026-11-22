@@ -3,7 +3,8 @@ import { listenParticipants, addParticipant, updateParticipant, deleteParticipan
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { fetchEventParticipants, parseODCSV } from "../utils/wikiImport";
 import { listenSettings } from "../services/settingsService";
-import { certificateFooterHtml, CERT_FOOTER_CSS } from "../utils/contributorPrint";
+import { certificateFooterHtml, certificateArtHtml, certificateIconRowHtml, CERT_FOOTER_CSS, CERT_ART_CSS } from "../utils/contributorPrint";
+import { certificateArt } from "../utils/certificateArt";
 import { listenPrograms } from "../services/programService";
 import { getForms, getAllRegistrations, listenForms } from "../services/registrationService";
 import logo from "../assets/logo.png";
@@ -192,6 +193,7 @@ export default function Participants({ profile, grantId }) {
   const printCertificate = (p) => {
     const orgName = settings?.org?.name || "Wikimedians of Kilimanjaro";
     const logoUrl = window.location.origin + logo;
+    const art = certificateArt();
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
     <title>Certificate — ${esc(p.name)}</title>
     <style>
@@ -205,12 +207,14 @@ export default function Participants({ profile, grantId }) {
       .name { font-size: 32px; font-weight: 700; color: #1c2b1e; border-bottom: 2px solid #4a9e6b; display: inline-block; padding-bottom: 6px; margin-bottom: 24px; }
       .body { font-size: 14px; color: #555; line-height: 1.8; margin-bottom: 32px; }
       ${CERT_FOOTER_CSS}
+      ${CERT_ART_CSS}
       .no-print { position: fixed; top: 16px; right: 16px; }
       .no-print button { padding: 8px 20px; background: #2d7a4f; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
       @media print { .no-print { display: none; } }
     </style></head><body>
     <div class="no-print"><button onclick="window.print()">Print / Save PDF</button></div>
     <div class="cert">
+      ${certificateArtHtml(art)}
       <img src="${logoUrl}" class="logo" alt="logo" />
       <div class="org">${esc(orgName)}</div>
       <h1>Certificate of Participation</h1>
@@ -223,6 +227,7 @@ export default function Participants({ profile, grantId }) {
         ${p.wikimediaUsername ? `<br><br>Wikipedia username: <strong>${esc(p.wikimediaUsername)}</strong>` : ""}
       </div>
       ${certificateFooterHtml(settings?.certificate || {})}
+      ${certificateIconRowHtml(art)}
     </div>
     </body></html>`;
     const w = window.open("", "_blank", "width=900,height=650");

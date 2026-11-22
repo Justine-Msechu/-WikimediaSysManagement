@@ -6,6 +6,7 @@ import { listenSettings } from "../services/settingsService";
 import { listenActivities } from "../services/activityService";
 import { listenPrograms } from "../services/programService";
 import { listenContributorReports } from "../services/contributorService";
+import { SCOPES, reportScope } from "../utils/wikiContribs";
 import { rankingMonth, activeSummary, activeAtLeastOnce } from "../utils/eventSelection";
 
 function fmt(n) { return (n || 0).toLocaleString(); }
@@ -31,6 +32,7 @@ export default function Metrics({ profile, grantId, currentGrant }) {
   const [programs,     setPrograms]     = useState([]);
   const [settings,     setSettings]     = useState(null);
   const [contribReports, setContribReports] = useState([]);
+  const [contribScope, setContribScope] = useState("");   // "" = pick automatically
   const [wikiStats,    setWikiStats]    = useState({});
   const [fetchingAll,  setFetchingAll]  = useState(false);
   const [fetchingOD,   setFetchingOD]   = useState(false);
@@ -132,9 +134,13 @@ export default function Metrics({ profile, grantId, currentGrant }) {
   };
 
   // Active contributors — from saved monthly reports (Active contributors page)
-  const latestContribMonth = rankingMonth(contribReports);
-  const latestContrib = latestContribMonth ? activeSummary(contribReports, latestContribMonth) : null;
-  const contribOnce   = activeAtLeastOnce(contribReports);
+  // "Kilimanjaro events only" when such reports exist (our own programs' result), else whole wiki.
+  const hasEventReports = contribReports.some(r => reportScope(r) === "events");
+  const scope = contribScope || (hasEventReports ? "events" : "all");
+  const scopedReports = contribReports.filter(r => reportScope(r) === scope);
+  const latestContribMonth = rankingMonth(scopedReports);
+  const latestContrib = latestContribMonth ? activeSummary(scopedReports, latestContribMonth) : null;
+  const contribOnce   = activeAtLeastOnce(scopedReports);
   const applyActiveContributors = async (value) => {
     await save({ activeContributors: { ...(metrics.activeContributors || {}), result: value } });
   };
@@ -431,9 +437,17 @@ export default function Metrics({ profile, grantId, currentGrant }) {
         </div>
       )}
 
-      {latestContrib && (
+      {contribReports.length > 0 && (
         <div className="panel" style={{ marginBottom: 16, background: "#f0f8f3", border: "1px solid #b7e0c8" }}>
-          <div className="panel-title" style={{ color: "#2d7a4f", marginBottom: 8 }}>Active contributors — from saved monthly reports</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+            <div className="panel-title" style={{ color: "#2d7a4f", margin: 0 }}>Active contributors — from saved monthly reports</div>
+            <select value={scope} onChange={e => setContribScope(e.target.value)} style={{ fontSize: 13 }}>
+              {SCOPES.map(s => <option key={s.id} value={s.id}>{s.long}</option>)}
+            </select>
+          </div>
+          {!latestContrib ? (
+            <div style={{ fontSize: 13, color: "#666" }}>No finished, saved reports counted as "{SCOPES.find(s => s.id === scope).long}" yet. Save them on the Active contributors page.</div>
+          ) : (<>
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, marginBottom: 12 }}>
             <div><span style={{ color: "#888" }}>Active in {latestContribMonth} (≥{latestContrib.threshold} articles):</span> <strong style={{ color: "#2d7a4f" }}>{latestContrib.active}</strong> of {latestContrib.checked} members</div>
             <div><span style={{ color: "#888" }}>Different people active in at least one month:</span> <strong>{contribOnce.people}</strong> ({contribOnce.months} month{contribOnce.months === 1 ? "" : "s"} saved)</div>
@@ -442,6 +456,7 @@ export default function Metrics({ profile, grantId, currentGrant }) {
           </div>
           <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
             Counts come from reports saved on the Active contributors page (all wikis together). Save each month's report there first.
+            {scope === "events" ? " Only edits made in Kilimanjaro events are counted — the result of our own programs." : " Every edit on the wiki is counted, including edits in other groups' events."}
             "Still editing" means at least 1 different article that month — a good measure of retained members.
           </div>
           {canEdit && (
@@ -451,6 +466,7 @@ export default function Metrics({ profile, grantId, currentGrant }) {
               <button className="btn btn-sm" style={{ color: "#2563eb" }} onClick={() => applyRetainedFromReports(latestContrib.editing)}>Retained editors = still editing ({latestContrib.editing})</button>
             </div>
           )}
+          </>)}
         </div>
       )}
 

@@ -1,0 +1,263 @@
+// ── Kilimanjaro events only — count contributions made in our own events ──────
+// Pure JS (no React / Firebase), tested with a fake fetch.
+//
+// Each Kilimanjaro event on Wikipedia (Special:EventDetails) tracks contributions
+// through a Programs & Events (Outreach) Dashboard course. The dashboard's
+// public JSON gives the event's dates and who joined it (CORS open). A member's
+// edit counts for Kilimanjaro only if they joined that event and made the edit
+// between its start and end. Edits in other groups' events (e.g. Wikimedians of
+// Arusha) at other times are not counted.
+
+import { normalizeUsername, monthBounds, fetchRangeContribs, contribsToStats, DEFAULT_WIKI } from "./wikiContribs";
+
+export const OUTREACH = "https://outreachdashboard.wmflabs.org";
+
+// "https://outreachdashboard.wmflabs.org/courses/School/Title/home" or
+// "School/Title" → "School/Title". Returns "" if it isn't a course link.
+export function parseCourseSlug(input) {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+  let parts;
+  if (/^https?:\/\//i.test(raw)) {
+    let u;
+    try { u = new URL(raw); } catch { return ""; }
+    if (!/outreachdashboard\.wmflabs\.org$/i.test(u.hostname)) return "";
+    const p = u.pathname.split("/").filter(Boolean);
+    const i = p.indexOf("courses");
+    if (i < 0 || p.length < i + 3) return "";
+    parts = [p[i + 1], p[i + 2]];
+  } else {
+    parts = raw.replace(/^\/+|\/+$/g, "").split("/");
+    if (parts.length !== 2) return "";
+  }
+  try { parts = parts.map(decodeURIComponent); } catch { return ""; }
+  return parts.every(Boolean) ? parts.join("/") : "";
+}
+
+export function courseUrl(slug) {
+  return `${OUTREACH}/courses/${slug.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+// Firestore ids can't contain "/".
+export function eventDocId(slug) {
+  return slug.replace(/[/.#$[\]]/g, "_");
+}
+
+async function getJson(fetchImpl, url) {
+  const res = await fetchImpl(url);
+  if (!res.ok) throw new Error(res.status === 404 ? "event not found on the Outreach Dashboard" : `Outreach Dashboard returned HTTP ${res.status}`);
+  return res.json();
+}
+
+const isoSeconds = (s) => (s ? new Date(s).toISOString().replace(/\.\d{3}Z$/, "Z") : "");
+
+// Usernames of everyone who joined the event (participants and organisers).
+export async function fetchCourseUsers(slug, { fetchImpl = fetch } = {}) {
+  const json = await getJson(fetchImpl, `${courseUrl(slug)}/users.json`);
+  return [...new Set((json.course?.users || []).map(u => normalizeUsername(u.username)).filter(Boolean))];
+}
+
+/** Event details from the dashboard: { slug, title, start, end, wikiEventId, participants[] } */
+export async function fetchCourse(slug, { fetchImpl = fetch } = {}) {
+  const json = await getJson(fetchImpl, `${courseUrl(slug)}/course.json`);
+  const c = json.course || {};
+  if (!c.start || !c.end) throw new Error("the event has no start and end dates on the Outreach Dashboard");
+  const participants = await fetchCourseUsers(slug, { fetchImpl });
+  return {
+    slug,
+    title:       c.title || slug.split("/")[1].replace(/_/g, " "),
+    start:       isoSeconds(c.start),
+    end:         isoSeconds(c.end),
+    wikiEventId: c.flags?.event_sync ? String(c.flags.event_sync) : "",
+    participants,
+  };
+}
+
+// The part of each event that falls in the month: [{ event, start, end }].
+export function eventWindowsInMonth(events, month) {
+  const { start: ms, end: me } = monthBounds(month);
+  const out = [];
+  for (const ev of events || []) {
+    if (!ev.start || !ev.end) continue;
+    const s = ev.start > ms ? ev.start : ms;
+    const e = ev.end < me ? ev.end : me;
+    if (s < e) out.push({ event: ev, start: s, end: e });
+  }
+  return out.sort((a, b) => a.start.localeCompare(b.start));
+}
+
+/**
+ * Count different articles / edits per member, only for edits made during
+ * Kilimanjaro events in the month, by members who joined that event.
+ *
+ * Returns { stats: Map<username, { articles, edits }>, events: [{ slug, title, start, end, members }] }.
+ * Every member is in `stats` (0 if they took part in no event).
+ * Participants are fetched live, so people who joined after the event was added still count.
+ */
+export async function fetchEventMonthStats(usernames, events, month, wiki = DEFAULT_WIKI, opts = {}) {
+  const { fetchImpl = fetch, onProgress, delayMs } = opts;
+  const members = [...new Set((usernames || []).map(normalizeUsername).filter(Boolean))];
+  const memberSet = new Set(members);
+  const windows = eventWindowsInMonth(events, month);
+
+  const merged = new Map(members.map(u => [u, { pages: new Set(), revs: new Set() }]));
+  const used = [];
+  const plan = [];
+  for (const w of windows) {
+    const joined = (await fetchCourseUsers(w.event.slug, { fetchImpl })).filter(u => memberSet.has(u));
+    plan.push({ w, joined });
+  }
+  const total = plan.reduce((s, p) => s + p.joined.length, 0);
+  let done = 0;
+  if (onProgress) onProgress(0, total);
+
+  for (const { w, joined } of plan) {
+    used.push({ slug: w.event.slug, title: w.event.title || w.event.slug, start: w.start, end: w.end, members: joined.length });
+    if (joined.length === 0) continue;
+    const contribs = await fetchRangeContribs(joined, w.start, w.end, wiki, {
+      fetchImpl, delayMs,
+      onProgress: (d) => onProgress && onProgress(done + d, total),
+    });
+    for (const [u, e] of contribs) {
+      if (!merged.has(u)) continue;
+      const m = merged.get(u);
+      e.pages.forEach(p => m.pages.add(p));
+      e.revs.forEach(r => m.revs.add(r));
+    }
+    done += joined.length;
+  }
+  return { stats: contribsToStats(merged), events: used };
+}
+
+// ── Finding events from our activities page ────────────────────────────────────
+// The activities page links to each program; each program's events are pages in
+// the Event: namespace (often sub-pages, e.g. "Event:<program>/July 2026 …").
+// Wikipedia doesn't let a browser read which dashboard course an event uses, so
+// each event is matched to a dashboard course with the same name.
+
+export const DEFAULT_ACTIVITIES_PAGE = "https://sw.wikipedia.org/wiki/Wikipedia:Wikimedia_Community_Kilimanjaro_2026-27_GSF_Activities";
+const EVENT_NS = 1728;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// "https://sw.wikipedia.org/wiki/Some_Page" → { wiki: "sw.wikipedia.org", title: "Some Page" }
+export function parseWikiPageUrl(input) {
+  let u;
+  try { u = new URL(String(input || "").trim()); } catch { return null; }
+  if (!/\.wikipedia\.org$/i.test(u.hostname)) return null;
+  let title = "";
+  if (u.pathname.startsWith("/wiki/")) title = u.pathname.slice(6);
+  else title = u.searchParams.get("title") || "";
+  try { title = decodeURIComponent(title); } catch { return null; }
+  title = title.replace(/_/g, " ").trim();
+  return title ? { wiki: u.hostname, title } : null;
+}
+
+function wikiApi(wiki, params) {
+  const qs = new URLSearchParams({ ...params, format: "json", formatversion: "2", origin: "*" });
+  return `https://${wiki}/w/api.php?${qs.toString()}`;
+}
+
+// Wikipedia answers 429 when asked too quickly — wait and try again a few times.
+async function wikiJson(fetchImpl, url, retries = 3) {
+  let res = await fetchImpl(url);
+  for (let i = 0; res.status === 429 && i < retries; i++) {
+    const wait = Number(res.headers?.get?.("Retry-After")) || 2 * (i + 1);
+    await sleep(Math.min(wait, 30) * 1000);
+    res = await fetchImpl(url);
+  }
+  if (!res.ok) throw new Error(`Wikipedia API returned HTTP ${res.status}`);
+  const json = await res.json();
+  if (json.error) throw new Error(json.error.info || json.error.code);
+  return json;
+}
+
+const stripNs = (title) => title.replace(/^[^:/]+:(?=\S)/, "");
+const lastPart = (title) => stripNs(title).split("/").pop().trim();
+
+// Event: page titles linked from rendered HTML (incl. Special:MyLanguage/Event:… tabs).
+export function eventLinksInHtml(html) {
+  const out = new Set();
+  for (const m of String(html || "").matchAll(/href="\/wiki\/(?:[^/"]+:MyLanguage\/)?(Event:[^"#?]+)/g)) {
+    try { out.add(decodeURIComponent(m[1]).replace(/_/g, " ").trim()); } catch { /* bad link */ }
+  }
+  return [...out];
+}
+
+/**
+ * Every event under the activities page, down to the last sub-event:
+ *  - each program linked from the page, and the Event: links on its page
+ *    (the navigation tabs list planned sub-events, even before they're created)
+ *  - every Event: page whose title starts with the program name (any depth)
+ * Worklist pages are skipped.
+ * Returns [{ title, name, program, isParent, exists }].
+ */
+export async function discoverEventPages(pageUrl, { fetchImpl = fetch, delayMs = 150 } = {}) {
+  const page = parseWikiPageUrl(pageUrl);
+  if (!page) throw new Error("not a Wikipedia page link");
+  const { wiki } = page;
+  const pause = () => (delayMs ? sleep(delayMs) : null);
+
+  const root = await wikiJson(fetchImpl, wikiApi(wiki, { action: "parse", page: page.title, prop: "links", redirects: "1" }));
+  const linked = (root.parse?.links || []).map(l => ({ title: l.title, exists: l.exists !== false }));
+
+  const found = new Map();   // title → { program, exists }
+  const add = (title, program, exists) => {
+    const prev = found.get(title);
+    found.set(title, { program, exists: exists || !!prev?.exists });
+  };
+
+  for (const l of linked) {
+    const base = stripNs(l.title);
+    if (l.title.startsWith("Event:")) add(l.title, base, l.exists);
+
+    // Links on the program page itself (navigation tabs)
+    if (l.exists) {
+      await pause();
+      const prog = await wikiJson(fetchImpl, wikiApi(wiki, { action: "parse", page: l.title, prop: "text", redirects: "1" }));
+      for (const t of eventLinksInHtml(prog.parse?.text)) add(t, base, false);
+    }
+
+    // Event pages that really exist under this program's name
+    let cont = {};
+    for (;;) {
+      await pause();
+      const json = await wikiJson(fetchImpl, wikiApi(wiki, {
+        action: "query", list: "allpages", apnamespace: String(EVENT_NS), apprefix: base, aplimit: "max", ...cont,
+      }));
+      for (const p of json.query?.allpages || []) {
+        const rest = stripNs(p.title);
+        if (rest === base || rest.startsWith(`${base}/`)) add(p.title, base, true);
+      }
+      if (!json.continue) break;
+      cont = { ...json.continue };
+    }
+  }
+
+  // Tab links may point at pages that don't exist (yet) — check them.
+  const unknown = [...found].filter(([, v]) => !v.exists).map(([t]) => t);
+  for (let i = 0; i < unknown.length; i += 50) {
+    await pause();
+    const json = await wikiJson(fetchImpl, wikiApi(wiki, { action: "query", titles: unknown.slice(i, i + 50).join("|") }));
+    for (const p of json.query?.pages || []) if (!p.missing && found.has(p.title)) found.get(p.title).exists = true;
+  }
+
+  const titles = [...found.keys()].filter(t => !/^worklist$/i.test(lastPart(t)));
+  return titles.sort().map(title => ({
+    title,
+    name: lastPart(title),
+    program: found.get(title).program,
+    isParent: titles.some(o => o.startsWith(`${title}/`)),
+    exists: found.get(title).exists,
+  }));
+}
+
+const norm = (s) => String(s || "").toLowerCase().replace(/_/g, " ").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+// Dashboard course whose name matches the event name exactly (ignoring case,
+// spaces and punctuation). Returns its slug or "".
+export async function findCourseForEvent(name, { fetchImpl = fetch } = {}) {
+  const json = await getJson(fetchImpl, `${OUTREACH}/courses/search.json?search=${encodeURIComponent(name)}`);
+  const want = norm(name);
+  const hit = (json.courses || []).find(c => norm(String(c.slug || "").split("/").slice(1).join("/")) === want || norm(c.title) === want);
+  return hit ? hit.slug : "";
+}

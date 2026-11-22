@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { reportScope } from "../utils/wikiContribs";
 import { listenCommunityMembers, listenContributorReports, addCommunityMembersBulk } from "../services/contributorService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
 import { planEventSeats, DEFAULT_NEW_MEMBER_PCT } from "../utils/eventSelection";
@@ -29,7 +30,8 @@ export default function EventSelection({ form, registrations, profile, canEdit, 
 
   const newPct = form.newMemberPct === "" || form.newMemberPct == null ? DEFAULT_NEW_MEMBER_PCT : Number(form.newMemberPct);
   const plan = useMemo(() => planEventSeats({
-    registrations, members, reports,
+    // Ranked by whole-wiki reports: how much each member edits Wikipedia overall.
+    registrations, members, reports: reports.filter(r => reportScope(r) === "all"),
     seats: form.seats || form.maxRegistrations,
     newPct,
     eventMonth: (form.date || "").slice(0, 7),

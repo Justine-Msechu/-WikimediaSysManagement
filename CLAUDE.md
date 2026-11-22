@@ -80,7 +80,7 @@ src/
   components/         RichTextEditor, EventSelection, Import*Modal,
                       OnboardingModal, BackToTop
   utils/              Pure helpers (no React/Firebase) — testable:
-                      wikiContribs.js, eventSelection.js, yearSummary.js,
+                      wikiContribs.js, eventContribs.js, eventSelection.js, yearSummary.js,
                       contributorPrint.js, certificateArt.js, budgetImport.js,
                       timelineImport.js, wikiImport.js, spendingReport.js,
                       timelineReport.js
@@ -146,6 +146,7 @@ Roles (on `users/{uid}.role`): `admin`, `coordinator`, `finance_officer`,
 `subPrograms[]`), `activities`, `evidence`, `activityFiles`, `budgetEntries`,
 `invoices`, `participants`, `registrationForms`, `registrations`, `volunteers`,
 `volunteerTasks`, `taskComments`, `communityMembers`, `contributorReports`,
+`contributorEvents`,
 `risks`, `announcements`, `deadlines`, `notifications`, `comments`, `users`,
 `pendingActivations`, `auditLogs`.
 
@@ -184,7 +185,31 @@ index — services usually skip `orderBy` and sort client-side instead.
   new event registrants. **All community members are volunteers**: at the end of
   the grant they receive certificates, and the reports are the evidence of who
   stayed active/retained.
-- Reports are saved to `contributorReports` with id `{wiki}_{YYYY-MM}`.
+- **Two ways to count** (page-level switch, applies to Report / History / Year
+  summary; `SCOPES` + `reportScope()` in wikiContribs.js):
+  - **Whole wiki** (`scope: "all"`) — every article edit that month, including
+    other groups' events (e.g. Wikimedians of Arusha). Recognises work across
+    all of Swahili Wikipedia.
+  - **Kilimanjaro events only** (`scope: "events"`, `utils/eventContribs.js`) —
+    an edit counts only if the member **joined the event on the Outreach
+    (P&E) Dashboard** and made it **between the event's start and end**.
+    Events are added on the **Events** tab as dashboard course links
+    (`contributorEvents`, id = `eventDocId(slug)`); participants are
+    re-fetched live from `courses/{slug}/users.json` when a report runs.
+    Overlapping events don't double count (page/revision sets are merged).
+    **Find events** walks the GSF activities page (`DEFAULT_ACTIVITIES_PAGE`)
+    → each program → its navigation-tab links and every `Event:<program>/…`
+    sub-page (any depth, worklists skipped), then matches each event to the
+    dashboard course with the **same name** (`courses/search.json`); unmatched
+    rows take a pasted link. 429 responses are retried.
+    Wikipedia's own event contributions list (Special:EventDetails) has no
+    public read API, and the Campaign Events REST API rejects browser
+    requests, so the dashboard's public JSON (CORS open) is the source.
+- Reports are saved to `contributorReports` with id `{wiki}_{YYYY-MM}` (whole
+  wiki) or `{wiki}_{YYYY-MM}_events`. Old reports without `scope` = whole wiki.
+  Metrics defaults to events-only reports when they exist (selectable); event
+  seat ranking always uses whole-wiki reports; certificates printed from
+  events-only summaries say "in our community events".
 - **Year summary** tab (`utils/yearSummary.js`): per person across the grant
   year (or a quarter / custom range) from saved reports only. Labels: Active
   contributor (60+ in any month) > Retained (still editing in

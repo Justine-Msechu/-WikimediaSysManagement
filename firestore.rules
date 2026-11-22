@@ -233,8 +233,17 @@ service cloud.firestore {
     }
 
     // ── /contributorReports ────────────────────────────────────────────────────
-    // Saved monthly reports, doc id "{wiki}_{YYYY-MM}" — same protection as /volunteers.
+    // Saved monthly reports, doc id "{wiki}_{YYYY-MM}" (+ "_events") — same protection as /volunteers.
     match /contributorReports/{docId} {
+      allow read:   if isAnyStaff();
+      allow create: if isCoordinator();
+      allow update: if isCoordinator();
+      allow delete: if isAdmin();
+    }
+
+    // ── /contributorEvents ─────────────────────────────────────────────────────
+    // Kilimanjaro events (Outreach Dashboard courses) for "Kilimanjaro events only" counts.
+    match /contributorEvents/{docId} {
       allow read:   if isAnyStaff();
       allow create: if isCoordinator();
       allow update: if isCoordinator();

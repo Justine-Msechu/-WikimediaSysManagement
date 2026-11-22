@@ -202,7 +202,7 @@ const CERT_TEXT = {
   },
 };
 
-function certificate(r, { orgName, logoUrl, start, end, signature = {}, printedOn, art }) {
+function certificate(r, { orgName, logoUrl, start, end, signature = {}, printedOn, art, eventsOnly }) {
   const c = CERT_TEXT[r.label] || CERT_TEXT.participated;
   const best = r.bestOfMonth.length
     ? `<div class="star">★ Best contributor of the month: ${r.bestOfMonth.map(m => esc(monthName(m))).join(", ")}</div>` : "";
@@ -215,7 +215,7 @@ function certificate(r, { orgName, logoUrl, start, end, signature = {}, printedO
     <div class="presented">This is to certify that</div>
     <div class="name">${esc(r.name)}</div>
     <div class="body">
-      as a volunteer of <strong>${esc(orgName)}</strong>, ${c.line(r)}
+      as a volunteer of <strong>${esc(orgName)}</strong>, ${c.line(r)}${eventsOnly && r.totalArticles > 0 ? " in our community events" : ""}
       during <strong>${esc(periodName(start, end))}</strong>, helping to grow free knowledge.
       <br><span class="user">Wikipedia username: <strong>${esc(r.username)}</strong></span>
     </div>
@@ -227,7 +227,8 @@ function certificate(r, { orgName, logoUrl, start, end, signature = {}, printedO
 
 // signature: { signatureImage, signatoryName, signatoryTitle } from Settings.
 // printedOn defaults to today — the day the certificate is printed.
-export function certificatesHtml(rows, { orgName, logoUrl, start, end, signature = {}, printedOn = today(), art }) {
+// eventsOnly: the numbers count only edits made in Kilimanjaro events.
+export function certificatesHtml(rows, { orgName, logoUrl, start, end, signature = {}, printedOn = today(), art, eventsOnly = false }) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
   <title>${rows.length === 1 ? `Certificate — ${esc(rows[0].name)}` : `Certificates (${rows.length})`}</title>
   <style>
@@ -251,7 +252,7 @@ export function certificatesHtml(rows, { orgName, logoUrl, start, end, signature
     @media print { .no-print { display: none; } .cert { margin: 15mm auto 0; } }
   </style></head><body>
   <div class="no-print"><button onclick="window.print()">Print / Save PDF${rows.length > 1 ? ` (${rows.length})` : ""}</button></div>
-  ${rows.map(r => certificate(r, { orgName, logoUrl, start, end, signature, printedOn, art })).join("")}
+  ${rows.map(r => certificate(r, { orgName, logoUrl, start, end, signature, printedOn, art, eventsOnly })).join("")}
   </body></html>`;
 }
 

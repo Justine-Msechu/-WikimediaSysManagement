@@ -15,6 +15,20 @@ export const DEFAULT_THRESHOLD = 60;
 // Used for retained members; independent of the (much higher) active threshold.
 export const STILL_EDITING_MIN = 1;
 
+// What a report counts:
+//   "all"    — every article edit on the wiki that month (whole Swahili Wikipedia)
+//   "events" — only edits made during Kilimanjaro events, by people enrolled in them
+export const SCOPES = [
+  { id: "all",    label: "Whole wiki",               long: "All edits on the wiki" },
+  { id: "events", label: "Kilimanjaro events only",  long: "Only edits made in Kilimanjaro events" },
+];
+export const DEFAULT_SCOPE = "all";
+// Reports saved before scopes existed count everything.
+export function reportScope(report) {
+  return report?.scope === "events" ? "events" : "all";
+}
+export const scopeLabel = (id) => SCOPES.find(s => s.id === id)?.label || SCOPES[0].label;
+
 const BATCH_SIZE = 50;        // MediaWiki limit for ucuser / ususers (anonymous)
 const PAUSE_MS   = 150;       // be polite to the API between requests
 
@@ -101,17 +115,16 @@ function chunk(arr, size) {
 }
 
 /**
- * Count different articles and total edits per user for one UTC month.
- * Returns Map<normalizedUsername, { articles, edits }>; users with no edits → 0.
+ * Collect each user's article edits between two UTC timestamps (start
+ * inclusive, end exclusive). Returns Map<normalizedUsername, { pages: Set(pageid),
+ * revs: Set(revid) }> — sets, so results from overlapping windows can be merged.
  */
-export async function fetchMonthStats(usernames, month, wiki = DEFAULT_WIKI, opts = {}) {
+export async function fetchRangeContribs(usernames, start, end, wiki = DEFAULT_WIKI, opts = {}) {
   const { fetchImpl = fetch, onProgress, delayMs = PAUSE_MS } = opts;
   const names = uniqueNormalized(usernames);
-  const { start, end } = monthBounds(month);
-
-  const pages = new Map();   // username → Set(pageid)
-  const edits = new Map();   // username → number
-  names.forEach(n => { pages.set(n, new Set()); edits.set(n, 0); });
+  const out = new Map();
+  const entry = (u) => out.get(u) || out.set(u, { pages: new Set(), revs: new Set() }).get(u);
+  names.forEach(entry);
 
   let checked = 0;
   let firstRequest = true;
@@ -138,10 +151,9 @@ export async function fetchMonthStats(usernames, month, wiki = DEFAULT_WIKI, opt
 
       for (const c of json.query?.usercontribs || []) {
         if (!c.timestamp || c.timestamp >= end) continue;   // ucend is inclusive
-        const user = normalizeUsername(c.user);
-        if (!pages.has(user)) { pages.set(user, new Set()); edits.set(user, 0); }
-        pages.get(user).add(c.pageid);
-        edits.set(user, edits.get(user) + 1);
+        const e = entry(normalizeUsername(c.user));
+        e.pages.add(c.pageid);
+        e.revs.add(c.revid ?? `${c.pageid}@${c.timestamp}#${e.revs.size}`);
       }
 
       if (!json.continue) break;
@@ -150,10 +162,23 @@ export async function fetchMonthStats(usernames, month, wiki = DEFAULT_WIKI, opt
     checked += batch.length;
     if (onProgress) onProgress(checked, names.length);
   }
+  return out;
+}
 
+// Map<user, { pages, revs }> → Map<user, { articles, edits }>
+export function contribsToStats(contribs) {
   const stats = new Map();
-  for (const [user, set] of pages) stats.set(user, { articles: set.size, edits: edits.get(user) || 0 });
+  for (const [user, e] of contribs) stats.set(user, { articles: e.pages.size, edits: e.revs.size });
   return stats;
+}
+
+/**
+ * Count different articles and total edits per user for one UTC month.
+ * Returns Map<normalizedUsername, { articles, edits }>; users with no edits → 0.
+ */
+export async function fetchMonthStats(usernames, month, wiki = DEFAULT_WIKI, opts = {}) {
+  const { start, end } = monthBounds(month);
+  return contribsToStats(await fetchRangeContribs(usernames, start, end, wiki, opts));
 }
 
 /** Check which usernames exist on the wiki. Returns { found, missing } (normalised names). */

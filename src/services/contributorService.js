@@ -8,6 +8,7 @@ import {
 
 const MEMBERS = "communityMembers";
 const REPORTS = "contributorReports";
+const EVENTS  = "contributorEvents";
 
 export function listenCommunityMembers(callback) {
   return listenCollection(MEMBERS, callback, orderBy("name", "asc"));
@@ -36,17 +37,33 @@ export async function addCommunityMembersBulk(members) {
 }
 
 // ── Saved monthly reports ──────────────────────────────────────────────────────
-// Doc id "{wiki}_{YYYY-MM}" — saving the same wiki + month again overwrites it.
-// { wiki, month, threshold, memberCount, activeCount, partial, rows[], generatedBy, generatedAt }
+// Doc id "{wiki}_{YYYY-MM}" (whole wiki) or "{wiki}_{YYYY-MM}_events"
+// (Kilimanjaro events only) — saving the same wiki + month + scope overwrites it.
+// { wiki, month, scope, threshold, memberCount, activeCount, partial, rows[], events[], generatedBy, generatedAt }
 
-export function reportId(wiki, month) {
-  return `${wiki}_${month}`;
+export function reportId(wiki, month, scope = "all") {
+  return scope === "events" ? `${wiki}_${month}_events` : `${wiki}_${month}`;
 }
 
 export async function saveContributorReport(report) {
-  return setDocument(REPORTS, reportId(report.wiki, report.month), report);
+  return setDocument(REPORTS, reportId(report.wiki, report.month, report.scope), report);
 }
 
 export function listenContributorReports(callback) {
   return listenCollection(REPORTS, callback, orderBy("month", "asc"));
+}
+
+// ── Kilimanjaro events (Outreach Dashboard courses) ─────────────────────────────
+// Doc id = eventDocId(slug). { slug, title, start, end, wikiEventId, participants[], refreshedAt }
+
+export function listenContributorEvents(callback) {
+  return listenCollection(EVENTS, callback, orderBy("start", "asc"));
+}
+
+export async function saveContributorEvent(id, data) {
+  return setDocument(EVENTS, id, data);
+}
+
+export async function deleteContributorEvent(id) {
+  return deleteDocument(EVENTS, id);
 }

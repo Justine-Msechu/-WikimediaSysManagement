@@ -32,6 +32,12 @@ describe("certificatesHtml", () => {
   });
 });
 
+test("events-only certificates say the work was in our events", () => {
+  const rows = [person({ label: "active", monthsActive: 1, totalArticles: 70 })];
+  expect(certificatesHtml(rows, { ...org, start: "2026-07", end: "2026-09", eventsOnly: true })).toContain("in our community events");
+  expect(certificatesHtml(rows, { ...org, start: "2026-07", end: "2026-09" })).not.toContain("in our community events");
+});
+
 describe("certificate signature and date", () => {
   test("prints the uploaded signature, signatory and the given date", () => {
     const html = certificatesHtml([person()], {

@@ -591,3 +591,25 @@ table input, table select { padding: 5px 7px; font-size: 12px; }
   .card-grid { grid-template-columns: 1fr 1fr; }
   .btn { padding: 7px 10px; font-size: 12px; }
 }
+
+/* ─── Large screens ───────────────────────────────────
+   All sizes in this file are fixed px, so on big monitors everything looked
+   tiny and the page was a 960px strip. Scale the whole app up with `zoom`
+   and let the content use more width. Only applies above laptop widths;
+   phones, laptops and print are unchanged.
+   Under zoom, 100vh is scaled too, so heights divide by the scale. */
+:root { --ui-scale: 1; }
+@media screen and (min-width: 1500px) { :root { --ui-scale: 1.1; } }
+@media screen and (min-width: 1800px) { :root { --ui-scale: 1.2; } }
+@media screen and (min-width: 2200px) { :root { --ui-scale: 1.35; } }
+@media screen and (min-width: 2800px) { :root { --ui-scale: 1.5; } }
+
+@media screen and (min-width: 1500px) {
+  .app-layout { zoom: var(--ui-scale); min-height: calc(100vh / var(--ui-scale)); }
+  .sidebar { height: calc(100vh / var(--ui-scale)); min-height: 0; overflow-y: auto; }
+  .page-wrap { max-width: 1320px; margin: 0 auto; }
+  .auth-wrap { zoom: var(--ui-scale); min-height: calc(100vh / var(--ui-scale)); }
+}
+@media screen and (min-width: 2200px) {
+  .page-wrap { max-width: 1440px; }
+}

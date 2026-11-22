@@ -287,6 +287,12 @@ index — services usually skip `orderBy` and sort client-side instead.
   `progress-bar`, `empty`, plain `<table>`.
 - Toasts: fixed bottom-right green box (copy the pattern from RiskRegister.js).
 - Sentence case everywhere; table headers are uppercase via CSS.
+- **Large screens:** all sizes are fixed px, so `App.css` ("Large screens")
+  scales `.app-layout` and `.auth-wrap` with `zoom: var(--ui-scale)` — 1.1 from
+  1500px wide, 1.2 from 1800px, 1.35 from 2200px, 1.5 from 2800px — and widens
+  `.page-wrap` (centred, 1320px / 1440px). Under zoom, `100vh` is scaled too,
+  so heights use `calc(100vh / var(--ui-scale))`. Phones, laptops (<1500px)
+  and print are unchanged. New full-height elements must follow the same rule.
 - Pure logic goes in `src/utils/` with a Jest test next to it
   (`*.test.js`, fake `fetch` for API code).
 

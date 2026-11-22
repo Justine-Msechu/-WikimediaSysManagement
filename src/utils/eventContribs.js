@@ -4,9 +4,13 @@
 // Each Kilimanjaro event on Wikipedia (Special:EventDetails) tracks contributions
 // through a Programs & Events (Outreach) Dashboard course. The dashboard's
 // public JSON gives the event's dates and who joined it (CORS open). A member's
-// edit counts for Kilimanjaro only if they joined that event and made the edit
+// edit counts for Kilimanjaro only if they JOINED that event and made the edit
 // between its start and end. Edits in other groups' events (e.g. Wikimedians of
 // Arusha) at other times are not counted.
+//
+// Joined = enrolled on the dashboard course, OR registered on one of our
+// registration forms linked to the event (event.formUsernames), unless marked
+// absent. Walk-ins who never join the dashboard still count.
 
 import { normalizeUsername, monthBounds, fetchRangeContribs, contribsToStats, DEFAULT_WIKI } from "./wikiContribs";
 
@@ -73,6 +77,26 @@ export async function fetchCourse(slug, { fetchImpl = fetch } = {}) {
   };
 }
 
+// Usernames from an event's registrations: with a username, not marked absent.
+export function formJoiners(registrations) {
+  return [...new Set((registrations || [])
+    .filter(r => r.attendance !== "absent")
+    .map(r => normalizeUsername(r.wikimediaUsername))
+    .filter(Boolean))];
+}
+
+// Does this registration form belong to the event? Its "Wikipedia event URL"
+// points at the event page or its Special:EventDetails/<id>.
+export function formMatchesEvent(form, event) {
+  const url = String(form?.wikiEventUrl || "").trim();
+  if (!url || !event) return false;
+  const id = url.match(/EventDetails\/(\d+)/i)?.[1];
+  if (id) return !!event.wikiEventId && id === String(event.wikiEventId);
+  const page = parseWikiPageUrl(url);
+  const norm2 = (t) => String(t || "").replace(/^[^:]+:MyLanguage\//, "").replace(/_/g, " ").trim().toLowerCase();
+  return !!page && !!event.wikiPage && norm2(page.title) === norm2(event.wikiPage);
+}
+
 // The part of each event that falls in the month: [{ event, start, end }].
 export function eventWindowsInMonth(events, month) {
   const { start: ms, end: me } = monthBounds(month);
@@ -90,9 +114,14 @@ export function eventWindowsInMonth(events, month) {
  * Count different articles / edits per member, only for edits made during
  * Kilimanjaro events in the month, by members who joined that event.
  *
- * Returns { stats: Map<username, { articles, edits }>, events: [{ slug, title, start, end, members }] }.
- * Every member is in `stats` (0 if they took part in no event).
- * Participants are fetched live, so people who joined after the event was added still count.
+ * events[].formUsernames: usernames from linked registration forms (see formJoiners).
+ *
+ * Returns {
+ *   stats:    Map<username, { articles, edits }>  — every member (0 if in no event)
+ *   formOnly: Set<username>  — members who joined only through our form, never the dashboard
+ *   events:   [{ slug, title, start, end, members, viaDashboard, viaForm }]
+ * }
+ * Dashboard participants are fetched live, so late sign-ups still count.
  */
 export async function fetchEventMonthStats(usernames, events, month, wiki = DEFAULT_WIKI, opts = {}) {
   const { fetchImpl = fetch, onProgress, delayMs } = opts;
@@ -103,16 +132,22 @@ export async function fetchEventMonthStats(usernames, events, month, wiki = DEFA
   const merged = new Map(members.map(u => [u, { pages: new Set(), revs: new Set() }]));
   const used = [];
   const plan = [];
+  const onDashboard = new Set();
+  const onForm = new Set();
   for (const w of windows) {
-    const joined = (await fetchCourseUsers(w.event.slug, { fetchImpl })).filter(u => memberSet.has(u));
-    plan.push({ w, joined });
+    const dash = new Set((await fetchCourseUsers(w.event.slug, { fetchImpl })).filter(u => memberSet.has(u)));
+    const form = new Set((w.event.formUsernames || []).map(normalizeUsername).filter(u => memberSet.has(u)));
+    dash.forEach(u => onDashboard.add(u));
+    form.forEach(u => onForm.add(u));
+    const joined = [...new Set([...dash, ...form])];
+    plan.push({ w, joined, viaDashboard: dash.size, viaForm: [...form].filter(u => !dash.has(u)).length });
   }
   const total = plan.reduce((s, p) => s + p.joined.length, 0);
   let done = 0;
   if (onProgress) onProgress(0, total);
 
-  for (const { w, joined } of plan) {
-    used.push({ slug: w.event.slug, title: w.event.title || w.event.slug, start: w.start, end: w.end, members: joined.length });
+  for (const { w, joined, viaDashboard, viaForm } of plan) {
+    used.push({ slug: w.event.slug, title: w.event.title || w.event.slug, start: w.start, end: w.end, members: joined.length, viaDashboard, viaForm });
     if (joined.length === 0) continue;
     const contribs = await fetchRangeContribs(joined, w.start, w.end, wiki, {
       fetchImpl, delayMs,
@@ -126,7 +161,8 @@ export async function fetchEventMonthStats(usernames, events, month, wiki = DEFA
     }
     done += joined.length;
   }
-  return { stats: contribsToStats(merged), events: used };
+  const formOnly = new Set([...onForm].filter(u => !onDashboard.has(u)));
+  return { stats: contribsToStats(merged), formOnly, events: used };
 }
 
 // ── Finding events from our activities page ────────────────────────────────────

@@ -1,4 +1,4 @@
-import { parseCourseSlug, courseUrl, eventDocId, eventWindowsInMonth, fetchCourse, fetchEventMonthStats } from "./eventContribs";
+import { parseCourseSlug, courseUrl, eventDocId, eventWindowsInMonth, fetchCourse, fetchEventMonthStats, formJoiners, formMatchesEvent } from "./eventContribs";
 import { reportScope } from "./wikiContribs";
 
 const ok = (body) => Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
@@ -80,6 +80,16 @@ describe("fetchEventMonthStats", () => {
     expect(one.searchParams.get("ucend")).toBe("2026-03-12T00:00:00Z");
   });
 
+  test("people who registered on our form count even if they never joined the dashboard", async () => {
+    const withForm = events.map(e => e.slug === "S/Two" ? { ...e, formUsernames: ["chausiku", "Baraka"] } : e);
+    contribs.push({ user: "Chausiku", pageid: 9, revid: 19, timestamp: "2026-03-16T09:00:00Z" });
+    const res = await fetchEventMonthStats(["Amina", "Baraka", "Chausiku"], withForm, "2026-03", "sw.wikipedia.org", { fetchImpl, delayMs: 0 });
+    contribs.pop();
+    expect(res.stats.get("Chausiku")).toEqual({ articles: 1, edits: 1 });
+    expect([...res.formOnly]).toEqual(["Chausiku"]);              // Baraka is on the dashboard too
+    expect(res.events.find(e => e.title === "Two")).toMatchObject({ members: 3, viaDashboard: 2, viaForm: 1 });
+  });
+
   test("a month without events gives everyone 0", async () => {
     const { stats, events: used } = await fetchEventMonthStats(["Amina"], events, "2026-05", "sw.wikipedia.org", { fetchImpl, delayMs: 0 });
     expect(stats.get("Amina")).toEqual({ articles: 0, edits: 0 });
@@ -137,4 +147,22 @@ describe("finding events from the activities page", () => {
     expect(await findCourseForEvent("July 2026 Onboarding and Orientation Edit-a-thon", { fetchImpl })).toBe("WCK/July_2026_Onboarding_And_Orientation_Edit-a-thon");
     expect(await findCourseForEvent("July 2026 Onboarding", { fetchImpl })).toBe("");
   });
+});
+
+test("formJoiners skips people marked absent and those without a username", () => {
+  expect(formJoiners([
+    { wikimediaUsername: "amina", attendance: "present" },
+    { wikimediaUsername: "Baraka", attendance: "" },
+    { wikimediaUsername: "Dora", attendance: "absent" },
+    { wikimediaUsername: "" },
+    { wikimediaUsername: "Amina" },
+  ])).toEqual(["Amina", "Baraka"]);
+});
+
+test("formMatchesEvent uses the form's Wikipedia event link", () => {
+  const ev = { wikiEventId: "4857", wikiPage: "Event:WCK WikiHealth/November 2026 Health" };
+  expect(formMatchesEvent({ wikiEventUrl: "https://sw.wikipedia.org/wiki/Maalum:EventDetails/4857" }, ev)).toBe(true);
+  expect(formMatchesEvent({ wikiEventUrl: "https://sw.wikipedia.org/wiki/Event:WCK_WikiHealth/November_2026_Health" }, ev)).toBe(true);
+  expect(formMatchesEvent({ wikiEventUrl: "https://sw.wikipedia.org/wiki/Event:Other" }, ev)).toBe(false);
+  expect(formMatchesEvent({ wikiEventUrl: "" }, ev)).toBe(false);
 });

@@ -104,7 +104,7 @@ also a leftover copy.
 | Group | Page (file) | Notes |
 |---|---|---|
 | Overview | Dashboard, Announcements, Deadlines | |
-| Grant & planning | Grant (admin), Programs, Timeline, Metrics, **Active contributors** | Programs have sub-programs (sessions) with their own budgets |
+| Grant & planning | Grant (admin), Programs, Timeline, Metrics, **Active contributors** | Programs have sub-programs (sessions) with their own budgets. Active contributors tabs: Report, History, Year summary, Events, Members |
 | Activities | Activities (+ ActivityDetail), Participants, Volunteers, Reg. forms (RegistrationForms) | Public sign-up page: `PublicRegister.js` via `?form=<id>` |
 | Finance | Budget, Invoices (admin/finance), Review | Review = approve programs, sessions, budget entries |
 | Reports | Final report, Donor report, Risk register | |
@@ -196,6 +196,11 @@ index — services usually skip `orderBy` and sort client-side instead.
     Events are added on the **Events** tab as dashboard course links
     (`contributorEvents`, id = `eventDocId(slug)`); participants are
     re-fetched live from `courses/{slug}/users.json` when a report runs.
+    **Joined** = enrolled on the dashboard course **or** registered on a
+    registration form linked to the event (`formIds`; registrations with a
+    username, not marked absent — `formJoiners()`), so walk-ins count; they're
+    tagged "form only" in reports. Forms whose `wikiEventUrl` points at the
+    event page / EventDetails id are suggested (`formMatchesEvent()`).
     Overlapping events don't double count (page/revision sets are merged).
     **Find events** walks the GSF activities page (`DEFAULT_ACTIVITIES_PAGE`)
     → each program → its navigation-tab links and every `Event:<program>/…`

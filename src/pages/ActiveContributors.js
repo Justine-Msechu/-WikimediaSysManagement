@@ -6,8 +6,9 @@ import {
 } from "../services/contributorService";
 import {
   fetchEventMonthStats, fetchCourse, parseCourseSlug, courseUrl, eventDocId, eventWindowsInMonth,
-  discoverEventPages, findCourseForEvent, DEFAULT_ACTIVITIES_PAGE,
+  discoverEventPages, findCourseForEvent, DEFAULT_ACTIVITIES_PAGE, formJoiners, formMatchesEvent,
 } from "../utils/eventContribs";
+import { listenForms, getAllRegistrations } from "../services/registrationService";
 import { listenVolunteers } from "../services/volunteerService";
 import { listenParticipants } from "../services/participantService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
@@ -72,6 +73,16 @@ function WikiSelect({ value, onChange }) {
 }
 
 // ── Report tab ─────────────────────────────────────────────────────────────────
+// Events for the month with usernames from their linked registration forms.
+async function withFormUsernames(events) {
+  if (!events.some(ev => (ev.formIds || []).length)) return events;
+  const regs = await getAllRegistrations();
+  return events.map(ev => {
+    const ids = new Set(ev.formIds || []);
+    return ids.size ? { ...ev, formUsernames: formJoiners(regs.filter(r => ids.has(r.formId))) } : ev;
+  });
+}
+
 function Report({ members, reports, events, scope, profile, canEdit, showToast, org }) {
   const [month,     setMonth]     = useState(lastFullMonth());
   const [wiki,      setWiki]      = useState(DEFAULT_WIKI);
@@ -91,7 +102,8 @@ function Report({ members, reports, events, scope, profile, canEdit, showToast, 
   // A fresh fetch wins over the saved copy; its rows follow the threshold live.
   const view = useMemo(() => {
     if (freshMatches) {
-      const rows = buildReportRows(fresh.members, fresh.stats, threshold);
+      const rows = buildReportRows(fresh.members, fresh.stats, threshold)
+        .map(r => (fresh.formOnly?.has(r.username) ? { ...r, formOnly: true } : r));
       return { rows, threshold: Number(threshold) || 0, partial: isPartialMonth(month), isSaved: false, events: fresh.events };
     }
     if (saved) {
@@ -114,8 +126,9 @@ function Report({ members, reports, events, scope, profile, canEdit, showToast, 
     const usernames = eligible.map(m => m.wikimediaUsername);
     try {
       if (eventsOnly) {
-        const res = await fetchEventMonthStats(usernames, events, month, wiki, { onProgress });
-        setFresh({ wiki, month, scope, members: eligible, stats: res.stats, events: res.events });
+        const inMonth = await withFormUsernames(eventWindowsInMonth(events, month).map(w => w.event));
+        const res = await fetchEventMonthStats(usernames, inMonth, month, wiki, { onProgress });
+        setFresh({ wiki, month, scope, members: eligible, stats: res.stats, formOnly: res.formOnly, events: res.events });
       } else {
         const stats = await fetchMonthStats(usernames, month, wiki, { onProgress });
         setFresh({ wiki, month, scope, members: eligible, stats, events: [] });
@@ -234,7 +247,8 @@ function Report({ members, reports, events, scope, profile, canEdit, showToast, 
                   {view.events.map(ev => (
                     <div key={ev.slug}>
                       <a href={courseUrl(ev.slug)} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", fontWeight: 500 }}>{ev.title}</a>
-                      <span style={{ color: "#888" }}> · {dateRange(ev.start, ev.end)} · {ev.members} member{ev.members === 1 ? "" : "s"} joined</span>
+                      <span style={{ color: "#888" }}> · {dateRange(ev.start, ev.end)} · {ev.members} member{ev.members === 1 ? "" : "s"} joined
+                        {ev.viaForm > 0 && ` (${ev.viaForm} only on our registration form)`}</span>
                     </div>
                   ))}
                 </div>
@@ -274,7 +288,8 @@ function Report({ members, reports, events, scope, profile, canEdit, showToast, 
                     {view.rows.map((r, i) => (
                       <tr key={r.memberId || r.username}>
                         <td style={{ fontSize: 12, color: "#888" }}>{i + 1}</td>
-                        <td style={{ fontWeight: 500 }}>{r.name}{best.includes(r) && <span title="Best contributor of the month" style={{ color: "#d97706", marginLeft: 4 }}>★</span>}</td>
+                        <td style={{ fontWeight: 500 }}>{r.name}{best.includes(r) && <span title="Best contributor of the month" style={{ color: "#d97706", marginLeft: 4 }}>★</span>}
+                          {r.formOnly && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }} title="Joined through our registration form, not the Outreach Dashboard — ask them to join the dashboard so the Foundation's numbers include them">form only</span>}</td>
                         <td style={{ fontSize: 12 }}><a href={contribsLink(wiki, r.username)} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb" }}>{r.username}</a></td>
                         <td style={{ fontWeight: 600 }}>{r.articles}</td>
                         <td style={{ fontSize: 12 }}>{r.edits}</td>
@@ -618,7 +633,7 @@ function YearSummary({ members, reports, scope, currentGrant, profile, org, sign
 }
 
 // ── Events tab — Kilimanjaro events (Outreach Dashboard courses) ───────────────
-function Events({ events, members, profile, canEdit, isAdmin, showToast }) {
+function Events({ events, members, forms, profile, canEdit, isAdmin, showToast }) {
   const [links,   setLinks]   = useState("");
   const [busy,    setBusy]    = useState(false);
   const [errors,  setErrors]  = useState([]);
@@ -629,6 +644,16 @@ function Events({ events, members, profile, canEdit, isAdmin, showToast }) {
   const [pasted,  setPasted]  = useState({});     // title → dashboard link typed by hand
 
   const addedIds = useMemo(() => new Set(events.map(e => e.id)), [events]);
+  const [regs, setRegs] = useState([]);
+  useEffect(() => { getAllRegistrations().then(setRegs).catch(() => {}); }, []);
+  const formTitle = (id) => forms.find(f => f.id === id)?.title || "(deleted form)";
+
+  const setForms = async (ev, formIds) => {
+    await saveContributorEvent(ev.id, { formIds });
+    await addAudit(profile, AUDIT_ACTIONS.UPDATE, "contributors", {
+      targetId: ev.id, recordTitle: ev.title, details: `Registration forms linked: ${formIds.map(formTitle).join(", ") || "none"}`,
+    });
+  };
 
   const memberSet = useMemo(
     () => new Set(members.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean)),
@@ -740,8 +765,9 @@ function Events({ events, members, profile, canEdit, isAdmin, showToast }) {
   return (
     <div>
       <div className="alert alert-info">
-        These are the events used when counting <strong>Kilimanjaro events only</strong>. A member's edit counts if they joined the event on the
-        Outreach Dashboard and made it between the event's start and end. Edits in other groups' events, or outside our event dates, are not counted.
+        These are the events used when counting <strong>Kilimanjaro events only</strong>. A member's edit counts if they joined the event
+        (on the Outreach Dashboard, <strong>or</strong> on one of our registration forms linked below, unless marked absent) and made it between
+        the event's start and end. Edits in other groups' events, or outside our event dates, are not counted.
         {" "}<strong>Whole wiki</strong> reports ignore this list.
       </div>
 
@@ -826,17 +852,41 @@ function Events({ events, members, profile, canEdit, isAdmin, showToast }) {
         {sorted.length === 0 ? <div className="empty">No Kilimanjaro events yet. Paste their Outreach Dashboard links above.</div> : (
           <div style={{ overflowX: "auto" }}>
             <table>
-              <thead><tr><th>Event</th><th>Program</th><th>Dates</th><th>Joined</th><th>Community members</th><th>Wikipedia event</th><th>Updated</th>{isAdmin && <th></th>}</tr></thead>
+              <thead><tr><th>Event</th><th>Program</th><th>Dates</th><th>On dashboard</th><th>Registration forms</th><th>Community members</th><th>Wikipedia event</th><th>Updated</th>{isAdmin && <th></th>}</tr></thead>
               <tbody>
                 {sorted.map(ev => {
                   const people = ev.participants || [];
+                  const linked = ev.formIds || [];
+                  const formPeople = formJoiners(regs.filter(r => linked.includes(r.formId)));
+                  const joined = new Set([...people, ...formPeople]);
+                  const suggested = forms.filter(f => !linked.includes(f.id) && formMatchesEvent(f, ev));
+                  const others = forms.filter(f => !linked.includes(f.id) && !suggested.includes(f));
                   return (
                     <tr key={ev.id}>
                       <td style={{ fontWeight: 500 }}><a href={courseUrl(ev.slug)} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb" }}>{ev.title}</a></td>
                       <td style={{ fontSize: 12, color: "#666" }}>{ev.program || ""}</td>
                       <td style={{ fontSize: 12 }}>{dateRange(ev.start, ev.end)}</td>
                       <td>{people.length}</td>
-                      <td>{people.filter(u => memberSet.has(u)).length}</td>
+                      <td style={{ fontSize: 12, minWidth: 200 }}>
+                        {linked.map(id => (
+                          <div key={id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            <span>{formTitle(id)}</span>
+                            {canEdit && <button className="btn btn-sm" style={{ padding: "0 6px" }} title="Unlink" onClick={() => setForms(ev, linked.filter(x => x !== id))}>×</button>}
+                          </div>
+                        ))}
+                        {linked.length > 0 && <div style={{ color: "#888" }}>{formPeople.length} with a username, not absent</div>}
+                        {canEdit && suggested.map(f => (
+                          <button key={f.id} className="btn btn-sm" style={{ marginTop: 4, display: "block" }} onClick={() => setForms(ev, [...linked, f.id])}
+                            title="This form's Wikipedia event link points at this event">+ Link "{f.title}" (suggested)</button>
+                        ))}
+                        {canEdit && others.length > 0 && (
+                          <select value="" style={{ fontSize: 12, marginTop: 4, maxWidth: 220 }} onChange={e => e.target.value && setForms(ev, [...linked, e.target.value])}>
+                            <option value="">+ Link a registration form…</option>
+                            {others.map(f => <option key={f.id} value={f.id}>{f.title}{f.date ? ` (${f.date})` : ""}</option>)}
+                          </select>
+                        )}
+                      </td>
+                      <td title={`${[...joined].filter(u => memberSet.has(u)).length} of ${joined.size} people who joined are community members`}>{[...joined].filter(u => memberSet.has(u)).length}</td>
                       <td style={{ fontSize: 12 }}>{ev.wikiEventId
                         ? <a href={`https://sw.wikipedia.org/wiki/Special:EventDetails/${ev.wikiEventId}`} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb" }}>EventDetails/{ev.wikiEventId}</a>
                         : <span style={{ color: "#aaa" }}>not linked</span>}</td>
@@ -851,7 +901,8 @@ function Events({ events, members, profile, canEdit, isAdmin, showToast }) {
         )}
       </div>
       <div style={{ fontSize: 12, color: "#888", marginTop: 10 }}>
-        "Joined" is from the last refresh. Reports always re-check who joined, so late sign-ups still count. Dates are shown in Tanzania time.
+        "On dashboard" is from the last refresh. Reports always re-check who joined, so late sign-ups still count. Dates are shown in Tanzania time.
+        {" "}Link the registration form you used for each event so walk-ins who never joined the dashboard still count — they are tagged "form only" in reports.
       </div>
     </div>
   );
@@ -1060,6 +1111,7 @@ export default function ActiveContributors({ profile, currentGrant }) {
   const [participants, setParticipants] = useState([]);
   const [settings,   setSettings]   = useState(null);
   const [events,     setEvents]     = useState([]);
+  const [forms,      setForms]      = useState([]);
   const [scope,      setScope]      = useState(DEFAULT_SCOPE);
   const [toast,      setToast]      = useState("");
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
@@ -1073,7 +1125,8 @@ export default function ActiveContributors({ profile, currentGrant }) {
     const u4 = listenParticipants(setParticipants);
     const u5 = listenSettings(setSettings);
     const u6 = listenContributorEvents(setEvents);
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
+    const u7 = listenForms(setForms);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
@@ -1116,7 +1169,7 @@ export default function ActiveContributors({ profile, currentGrant }) {
       {tab === "Report"  && <Report  members={members} reports={scopedReports} events={events} scope={scope} profile={profile} canEdit={canEdit} showToast={showToast} org={org} />}
       {tab === "History" && <History reports={scopedReports} />}
       {tab === "Year summary" && <YearSummary members={members} reports={scopedReports} scope={scope} currentGrant={currentGrant} profile={profile} org={org} signature={signature} />}
-      {tab === "Events"  && <Events events={events} members={members} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
+      {tab === "Events"  && <Events events={events} members={members} forms={forms} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
       {tab === "Members" && <Members members={members} volunteers={volunteers} participants={participants} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
     </div>
   );

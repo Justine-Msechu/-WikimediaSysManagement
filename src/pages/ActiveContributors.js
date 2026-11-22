@@ -363,7 +363,7 @@ function MonthStrip({ months, byMonth, covered }) {
   );
 }
 
-function YearSummary({ members, reports, currentGrant, profile, org }) {
+function YearSummary({ members, reports, currentGrant, profile, org, signature }) {
   const base = useMemo(() => defaultPeriod(currentGrant), [currentGrant]);
   const qs   = useMemo(() => quarters(base.start, base.end), [base]);
   const [mode,   setMode]   = useState("year");      // "year" | "Q1".. | "custom"
@@ -403,7 +403,8 @@ function YearSummary({ members, reports, currentGrant, profile, org }) {
 
   const printCertificates = async (list) => {
     if (summary.missing.length > 0 && !window.confirm(`${summary.missing.length} month${summary.missing.length === 1 ? " has" : "s have"} no saved report in this period, so some certificates may show lower numbers. Print anyway?`)) return;
-    openPrintWindow(certificatesHtml(list, { ...org, start: period.start, end: period.end }));
+    if (!signature.signatureImage && !window.confirm("No coordinator signature has been uploaded yet (Settings → Certificate signature), so the signature line will be blank. Print anyway?")) return;
+    openPrintWindow(certificatesHtml(list, { ...org, start: period.start, end: period.end, signature }));
     await addAudit(profile, AUDIT_ACTIONS.EXPORT, "contributors", {
       recordTitle: list.length === 1 ? list[0].name : `${list.length} certificates`,
       details: `Printed ${list.length} community member certificate${list.length === 1 ? "" : "s"} (${period.start} to ${period.end})`,
@@ -793,6 +794,7 @@ export default function ActiveContributors({ profile, currentGrant }) {
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
   // Name and logo for printed reports and certificates (same as Participants certificates)
   const org = { orgName: settings?.org?.name || "Wikimedians of Kilimanjaro", logoUrl: window.location.origin + logo };
+  const signature = settings?.certificate || {};
 
   return (
     <div>
@@ -811,7 +813,7 @@ export default function ActiveContributors({ profile, currentGrant }) {
 
       {tab === "Report"  && <Report  members={members} reports={reports} profile={profile} canEdit={canEdit} showToast={showToast} org={org} />}
       {tab === "History" && <History reports={reports} />}
-      {tab === "Year summary" && <YearSummary members={members} reports={reports} currentGrant={currentGrant} profile={profile} org={org} />}
+      {tab === "Year summary" && <YearSummary members={members} reports={reports} currentGrant={currentGrant} profile={profile} org={org} signature={signature} />}
       {tab === "Members" && <Members members={members} volunteers={volunteers} participants={participants} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
     </div>
   );

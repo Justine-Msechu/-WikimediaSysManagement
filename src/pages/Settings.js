@@ -421,6 +421,36 @@ export default function Settings({ profile, goPage }) {
     showToast("Settings saved.");
   };
 
+  // ── Certificate signature ──────────────────────────────────────────────────
+  // Stored in Firestore settings (staff-only), never in the public repo/site.
+  // Resized in the browser so the settings document stays small.
+  const uploadSignature = (file) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { alert("Please choose an image file (PNG with a transparent background works best)."); return; }
+    if (file.size > 5 * 1024 * 1024) { alert("Please choose an image smaller than 5 MB."); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const w = Math.min(600, img.width);
+        const h = Math.round(img.height * (w / img.width));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        setF("certificate.signatureImage", canvas.toDataURL("image/png"));
+      };
+      img.onerror = () => alert("Could not read that image.");
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const saveCertificate = async () => {
+    await updateSettings({ certificate: form.certificate || {} });
+    await addAudit(profile, AUDIT_ACTIONS.UPDATE, "settings", { details: "Certificate signature updated" });
+    showToast("Certificate signature saved.");
+  };
+
   const pwdRules = [
     { label: "At least 8 characters",          test: v => v.length >= 8 },
     { label: "At least one uppercase letter",   test: v => /[A-Z]/.test(v) },
@@ -593,6 +623,38 @@ export default function Settings({ profile, goPage }) {
         </div>
         <button className="btn btn-primary" onClick={changePwd} disabled={pwdForm.next && !pwdStrong}>Change password</button>
       </div>
+
+      {/* Certificate signature */}
+      {isAdmin && (
+        <div className="panel" style={{ marginBottom: 20 }}>
+          <div className="panel-title">Certificate signature</div>
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 14, lineHeight: 1.6 }}>
+            Printed on community member certificates above the coordinator signature line. Stored privately in the app's database (only logged-in staff can load it). A PNG with a transparent background looks best.
+          </div>
+          <div className="form-grid">
+            <div className="field"><label>Signatory name</label><input value={form.certificate?.signatoryName || ""} onChange={e => setF("certificate.signatoryName", e.target.value)} placeholder="e.g. Justine B. Msechu" /></div>
+            <div className="field"><label>Title</label><input value={form.certificate?.signatoryTitle || ""} onChange={e => setF("certificate.signatoryTitle", e.target.value)} placeholder="Coordinator" /></div>
+          </div>
+          <div className="field">
+            <label>Signature image</label>
+            <input type="file" accept="image/*" onChange={e => { uploadSignature(e.target.files?.[0]); e.target.value = ""; }} />
+          </div>
+          {form.certificate?.signatureImage && (
+            <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", margin: "8px 0" }}>
+              <div style={{ border: "1px solid #e8e8e4", borderRadius: 8, padding: "10px 16px", background: "#fff", textAlign: "center", minWidth: 220 }}>
+                <img src={form.certificate.signatureImage} alt="Signature preview" style={{ maxWidth: 220, maxHeight: 70, display: "block", margin: "0 auto" }} />
+                <div style={{ borderTop: "1px solid #ccc", marginTop: 4, paddingTop: 4, fontSize: 11, color: "#888" }}>
+                  {form.certificate.signatoryName || "Coordinator signature"}{form.certificate.signatoryTitle ? `, ${form.certificate.signatoryTitle}` : ""}
+                </div>
+              </div>
+              <button className="btn btn-sm btn-danger" onClick={() => setF("certificate.signatureImage", "")}>Remove image</button>
+            </div>
+          )}
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={saveCertificate}>Save signature</button>
+          </div>
+        </div>
+      )}
 
       {/* SMS Notifications — Africa's Talking */}
       {isAdmin && (

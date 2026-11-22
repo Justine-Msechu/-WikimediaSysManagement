@@ -32,6 +32,26 @@ describe("certificatesHtml", () => {
   });
 });
 
+describe("certificate signature and date", () => {
+  test("prints the uploaded signature, signatory and the given date", () => {
+    const html = certificatesHtml([person()], {
+      ...org, start: "2026-07", end: "2026-09", printedOn: "22 November 2026",
+      signature: { signatureImage: "data:image/png;base64,AAAA", signatoryName: "Justine B. Msechu", signatoryTitle: "Coordinator" },
+    });
+    expect(html).toContain('<img src="data:image/png;base64,AAAA" alt="signature"/>');
+    expect(html).toContain("Justine B. Msechu, Coordinator");
+    expect(html).toContain('<div class="date">22 November 2026</div>');
+  });
+
+  test("defaults to today's date and a blank signature line", () => {
+    const html = certificatesHtml([person()], { ...org, start: "2026-07", end: "2026-09" });
+    const todayText = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+    expect(html).toContain(`<div class="date">${todayText}</div>`);
+    expect(html).toContain("<span>Coordinator signature</span>");
+    expect(html).not.toContain('alt="signature"');
+  });
+});
+
 describe("report printouts", () => {
   test("monthly report names the best contributor", () => {
     const rows = [

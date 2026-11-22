@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import RichTextEditor, { renderHtml } from "../components/RichTextEditor";
+import EventSelection from "../components/EventSelection";
 import {
   listenForms, addForm, updateForm, deleteForm,
   listenRegistrations, updateAttendance,
@@ -31,7 +32,7 @@ function emptyForm() {
   return {
     title: "", description: "", date: "", location: "",
     wikiEventUrl: "", status: "draft", programId: "",
-    maxRegistrations: "",
+    maxRegistrations: "", seats: "", newMemberPct: "30",
   };
 }
 
@@ -70,7 +71,7 @@ export default function RegistrationForms({ profile }) {
   const setF = (k, v) => setFormData(f => ({ ...f, [k]: v }));
 
   const openCreate = () => { setFormData(emptyForm()); setEditId(null); setShowBuilder(true); };
-  const openEdit   = (f) => { setFormData({ title: f.title, description: f.description || "", date: f.date || "", location: f.location || "", wikiEventUrl: f.wikiEventUrl || "", status: f.status, programId: f.programId || "", maxRegistrations: f.maxRegistrations || "" }); setEditId(f.id); setShowBuilder(true); };
+  const openEdit   = (f) => { setFormData({ title: f.title, description: f.description || "", date: f.date || "", location: f.location || "", wikiEventUrl: f.wikiEventUrl || "", status: f.status, programId: f.programId || "", maxRegistrations: f.maxRegistrations || "", seats: f.seats || "", newMemberPct: f.newMemberPct ?? "30" }); setEditId(f.id); setShowBuilder(true); };
 
   const saveForm = async () => {
     if (!formData.title.trim()) { alert("Form title is required."); return; }
@@ -287,6 +288,12 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
             <div className="field"><label>Max registrations</label>
               <input type="number" min="1" value={formData.maxRegistrations} onChange={e => setF("maxRegistrations", e.target.value)} placeholder="Leave blank for unlimited" />
             </div>
+            <div className="field"><label>Seats at the event</label>
+              <input type="number" min="1" value={formData.seats} onChange={e => setF("seats", e.target.value)} placeholder="Blank = same as max registrations" />
+            </div>
+            <div className="field"><label>Seats for new members (%)</label>
+              <input type="number" min="0" max="100" value={formData.newMemberPct} onChange={e => setF("newMemberPct", e.target.value)} placeholder="30" />
+            </div>
             <div className="field"><label>Wikipedia Event Platform URL</label><input value={formData.wikiEventUrl} onChange={e => setF("wikiEventUrl", e.target.value)} placeholder="https://www.mediawiki.org/wiki/…" /></div>
           </div>
           <div className="field"><label>Description / instructions for participants</label><RichTextEditor value={formData.description} onChange={v => setF("description", v)} placeholder="Tell participants what to expect at this event" rows={3} /></div>
@@ -404,6 +411,8 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
                 )}
               </div>
             </div>
+
+            <EventSelection form={selectedForm} registrations={registrations} profile={profile} canEdit={canEdit} showToast={showToast} />
 
             {/* Registrations table */}
             <div className="panel" style={{ padding: 0 }}>

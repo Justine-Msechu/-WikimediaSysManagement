@@ -9,6 +9,7 @@ export const DEFAULT_METRICS = {
   retainedEditors: { target: 60,  result: 0 },
   allOrganizers:   { target: 10,  result: 0 },
   newOrganizers:   { target: 4,   result: 0 },
+  activeContributors: { target: 0, result: 0 },
   projects: [
     { name: "Wikipedia (Swahili)", tCreated: 800, tImproved: 400, rCreated: 0, rImproved: 0 },
     { name: "Wikipedia (English)", tCreated: 400, tImproved: 200, rCreated: 0, rImproved: 0 },

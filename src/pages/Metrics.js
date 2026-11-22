@@ -5,6 +5,8 @@ import { listenParticipants } from "../services/participantService";
 import { listenSettings } from "../services/settingsService";
 import { listenActivities } from "../services/activityService";
 import { listenPrograms } from "../services/programService";
+import { listenContributorReports } from "../services/contributorService";
+import { rankingMonth, activeSummary, activeAtLeastOnce } from "../utils/eventSelection";
 
 function fmt(n) { return (n || 0).toLocaleString(); }
 function pct(r, t) { if (!t) return 0; return Math.min(999, Math.round((r / t) * 100)); }
@@ -17,6 +19,7 @@ const METRIC_ROWS = [
   { key: "retainedEditors", label: "Retained editors" },
   { key: "allOrganizers",   label: "All organizers" },
   { key: "newOrganizers",   label: "New organizers" },
+  { key: "activeContributors", label: "Active contributors (monthly)" },
 ];
 
 const PROJECT_FIELDS = ["Wikipedia", "Wikimedia Commons", "Wikidata", "Wiktionary", "Wikisource"];
@@ -27,6 +30,7 @@ export default function Metrics({ profile, grantId, currentGrant }) {
   const [activities,   setActivities]   = useState([]);
   const [programs,     setPrograms]     = useState([]);
   const [settings,     setSettings]     = useState(null);
+  const [contribReports, setContribReports] = useState([]);
   const [wikiStats,    setWikiStats]    = useState({});
   const [fetchingAll,  setFetchingAll]  = useState(false);
   const [fetchingOD,   setFetchingOD]   = useState(false);
@@ -42,7 +46,8 @@ export default function Metrics({ profile, grantId, currentGrant }) {
     const u3 = listenSettings(setSettings);
     const u4 = listenActivities(setActivities);
     const u5 = listenPrograms(setPrograms);
-    return () => { u1(); u2(); u3(); u4(); u5(); };
+    const u6 = listenContributorReports(setContribReports);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
   }, [grantId]);
 
   const save = async (patch) => {
@@ -124,6 +129,14 @@ export default function Metrics({ profile, grantId, currentGrant }) {
       newOrganizers:   { ...(metrics.newOrganizers   || {}), result: activityRollup.newOrganizers },
       projects: updatedProjects,
     });
+  };
+
+  // Active contributors — from saved monthly reports (Active contributors page)
+  const latestContribMonth = rankingMonth(contribReports);
+  const latestContrib = latestContribMonth ? activeSummary(contribReports, latestContribMonth) : null;
+  const contribOnce   = activeAtLeastOnce(contribReports);
+  const applyActiveContributors = async (value) => {
+    await save({ activeContributors: { ...(metrics.activeContributors || {}), result: value } });
   };
 
   const applyRegistryCounts = async () => {
@@ -412,6 +425,25 @@ export default function Metrics({ profile, grantId, currentGrant }) {
             New/retained counts come from the "Have you edited Wikipedia before?" answer on registration forms. Participants added manually use the "New editor" checkbox.
           </div>
           {canEdit && <button className="btn btn-sm btn-primary" style={{ background: "#2563eb" }} onClick={applyRegistryCounts}>Apply counts to results</button>}
+        </div>
+      )}
+
+      {latestContrib && (
+        <div className="panel" style={{ marginBottom: 16, background: "#f0f8f3", border: "1px solid #b7e0c8" }}>
+          <div className="panel-title" style={{ color: "#2d7a4f", marginBottom: 8 }}>Active contributors — from saved monthly reports</div>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, marginBottom: 12 }}>
+            <div><span style={{ color: "#888" }}>Active in {latestContribMonth} (≥{latestContrib.threshold} articles):</span> <strong style={{ color: "#2d7a4f" }}>{latestContrib.active}</strong> of {latestContrib.checked} members</div>
+            <div><span style={{ color: "#888" }}>Different people active in at least one month:</span> <strong>{contribOnce.people}</strong> ({contribOnce.months} month{contribOnce.months === 1 ? "" : "s"} saved)</div>
+          </div>
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
+            Counts come from reports saved on the Active contributors page (all wikis together). Save each month's report there first.
+          </div>
+          {canEdit && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn btn-sm btn-primary" onClick={() => applyActiveContributors(latestContrib.active)}>Use latest month ({latestContrib.active})</button>
+              <button className="btn btn-sm" onClick={() => applyActiveContributors(contribOnce.people)}>Use at least once ({contribOnce.people})</button>
+            </div>
+          )}
         </div>
       )}
 

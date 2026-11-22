@@ -1,193 +1,218 @@
 # CLAUDE.md — Wiki Kilimanjaro GSF Manager
-# ─────────────────────────────────────────────────────────────────────────────
-# This file is the master prompt for Claude Code in VS Code.
-# Drop this file in the project root and Claude will read it automatically.
-# Run: claude (in terminal) or use the Claude Code extension.
-# ─────────────────────────────────────────────────────────────────────────────
 
 ## Project identity
 
-You are working on the **Wikimedia Community Kilimanjaro GSF Manager** — a
-React web application that helps the Wikimedians of Kilimanjaro group
-(Open Knowledge Tanzania) manage their Wikimedia Foundation General Support
-Fund grant cycle end-to-end.
+**Wikimedia Community Kilimanjaro GSF Manager** — a React + Firebase web app the
+Wikimedians of Kilimanjaro group (Open Knowledge Tanzania) uses to run their
+Wikimedia Foundation grants end-to-end: planning, programs and sessions,
+event registration, participants, volunteers, budget and invoices, metrics,
+and the final learning report.
 
-Grant ID: R-GS-2606-22863
-Organisation: Wikimedians of Kilimanjaro group / Open Knowledge Tanzania
-Location: Tanzania (Kilimanjaro, Arusha and surrounding regions)
-Currency: TZS (Tanzanian Shilling)
+- Main grant: General Support Fund R-GS-2606-22863 (the app supports several grants)
+- Location: Tanzania (Kilimanjaro, Arusha and surrounding regions)
+- Currency: TZS, with USD amounts converted at each grant's own rate
 
 ---
 
-## What this system does
+## ⚠ The app is live — read before changing anything
 
-1. **Application** — fills the Wikimedia GSF application form (Fluxx) with all
-   required fields: proposal title, dates, programs, team, partners, categories,
-   Movement Strategy 2030 selections, budget overview.
-
-2. **Activities** — every event (edit-a-thon, Wiki Malkia session, school Kiwix
-   outreach, mentorship, Let's Connect, campaigns) is logged with:
-   - Participation data (total, women, new editors, youth, PWD)
-   - Content contributions (Wikipedia articles created/improved, Commons, Wikidata)
-   - Budget spend
-   - Narrative: summary, challenges, lessons learned, impact stories, next steps
-
-3. **Activity reports** — each logged activity generates a standalone report
-   (downloadable .txt) that the responsible team member submits. These accumulate
-   as evidence throughout the grant year.
-
-4. **Metrics** — tracks all Wikimedia metrics (participants, editors, organizers,
-   project contributions) with target vs result comparison.
-
-5. **Budget** — tracks planned vs actual spend across three categories:
-   Personnel costs, Operational costs, Programmatic costs.
-
-6. **Final report** — compiles everything into a complete draft of the Wikimedia
-   GSF Final Learning Report (Parts 1–4), ready to paste into Fluxx.
+- **Live site:** https://justine-msechu.github.io/-WikimediaSysManagement/
+- **Every push to `main` deploys to production** (`.github/workflows/deploy.yml`,
+  Node 20, builds with `CI=true` so ESLint warnings fail the build). Confirm with
+  the user before pushing.
+- **Local dev uses the live database.** `.env` points at the production Firebase
+  project `wikikilimanjaro-gsf`; there is no staging project. Anything created or
+  deleted in `npm start` is real team data. Don't create test records or run
+  destructive actions locally without the user's OK.
+- **Firestore rules are NOT deployed by CI.** After editing `firestore.rules`, the
+  user runs `firebase deploy --only firestore:rules` — do this *before* pushing
+  code that needs the new rules.
 
 ---
 
 ## Tech stack
 
-- React 18 (Create React App)
-- No backend — all state in localStorage (key: "wkgsf_v1")
-- No UI library — custom CSS in App.css
-- lucide-react for icons (if needed)
-- date-fns for date helpers (if needed)
+- React 18 (Create React App, `react-scripts` 5), plain JS, no TypeScript
+- Firebase: Firestore (all data), Auth (login + roles), Storage
+- No UI library — global styles in `src/App.css`
+- Libraries: `date-fns`, `lucide-react`, `xlsx` (Excel import/export),
+  `react-quill-new` (rich text, via `components/RichTextEditor.js`)
+- External APIs called from the browser: MediaWiki Action API (anonymous CORS,
+  `origin=*`), Outreach Dashboard JSON, EmailJS (email), Africa's Talking (SMS),
+  Google Drive (file uploads), QR code images (api.qrserver.com)
+
+## How to run
+
+```bash
+nvm use            # .nvmrc pins Node 20 (Node 26 is not tested with CRA 5)
+npm ci             # install exactly what package-lock.json says
+npm start          # http://localhost:3000/-WikimediaSysManagement/  (LIVE data!)
+npm test -- --watchAll=false        # Jest (react-scripts test)
+CI=true npm run build               # same as the deploy workflow
+```
+
+Environment variables: copy `.env.example` → `.env` (Firebase config, Google
+client/Drive folder, EmailJS, reCAPTCHA). CI reads them from GitHub secrets.
+
+**Troubleshooting:** the project lives on an iCloud-synced Desktop. iCloud can
+empty files in `node_modules` and create `"<name> 2"` duplicates (folders and
+source files). Symptoms: odd crashes inside dependencies, e.g.
+`codegen_1.Name is not a constructor`. Fix: `npm ci`. Delete stray `* 2.js`
+copies in `src/` (check they're untracked duplicates first).
+
+---
 
 ## File structure
 
 ```
 src/
-  App.js           ← Root component, navigation, state management
-  App.css          ← All global styles (sidebar, cards, tables, forms, badges)
-  index.js         ← ReactDOM entry
-  data/
-    store.js       ← defaultState, load(), save(), reset()
-  utils/
-    helpers.js     ← fmt(), pct(), buildActivityReport(), compileGrantReport()
-                      ACTIVITY_TYPES, BUDGET_CATS, PROGRAM_CATS, MS_OPTIONS
-  pages/
-    Dashboard.js   ← Overview: stats cards, progress bars, recent activities
-    Application.js ← Full GSF application form (re-exports from index.js)
-    Activities.js  ← Log form + activity table + delete
-    ActivityReport.js ← Per-activity report view with download
-    Metrics.js     ← Editable metrics targets and results (re-exports)
-    Budget.js      ← Budget categories + expense log (re-exports)
-    FinalReport.js ← Auto-compiled grant report, copy/download (re-exports)
-    Settings.js    ← Org details, grant config, data export/reset (re-exports)
-    index.js       ← Houses Metrics, Budget, Application, FinalReport, Settings
+  App.js              Shell: auth gate, sidebar NAV_ITEMS / NAV_GROUPS, grant
+                      selector, renderPage() switch, public ?form= route
+  App.css             All global styles
+  firebase/           config.js (init from env), firestore.js (generic helpers),
+                      auth.js, storage.js
+  contexts/AuthContext.js   currentUser + Firestore profile (role)
+  services/           One file per collection — pages never call Firestore
+                      directly. e.g. programService, budgetService,
+                      registrationService, participantService, volunteerService,
+                      contributorService, metricsService, grantService,
+                      auditService, notificationService, smsService, …
+  components/         RichTextEditor, EventSelection, Import*Modal,
+                      OnboardingModal, BackToTop
+  utils/              Pure helpers (no React/Firebase) — testable:
+                      wikiContribs.js, eventSelection.js, budgetImport.js,
+                      timelineImport.js, wikiImport.js, spendingReport.js,
+                      timelineReport.js
+  pages/              One page per nav item (see below)
+  data/plannedTimeline.js
 ```
+
+**Legacy files from the pre-Firebase localStorage version — not imported by the
+app, don't build on them:** `data/store.js`, `utils/helpers.js`, `utils/audit.js`,
+`utils/migration.js` (one-off localStorage → Firestore migration),
+`pages/index.js`, `pages/Application.js`, `pages/ActivityReport.js`,
+`pages/OutreachPanel.js`. The old `wikikilimanjaro/` folder in the repo root is
+also a leftover copy.
 
 ---
 
-## State shape (localStorage "wkgsf_v1")
+## Pages (sidebar groups in App.js)
 
-```js
-{
-  org: { name, country, type, grantId, grantCycle, metaPage, website,
-         governance, contactEmail },
+| Group | Page (file) | Notes |
+|---|---|---|
+| Overview | Dashboard, Announcements, Deadlines | |
+| Grant & planning | Grant (admin), Programs, Timeline, Metrics, **Active contributors** | Programs have sub-programs (sessions) with their own budgets |
+| Activities | Activities (+ ActivityDetail), Participants, Volunteers, Reg. forms (RegistrationForms) | Public sign-up page: `PublicRegister.js` via `?form=<id>` |
+| Finance | Budget, Invoices (admin/finance), Review | Review = approve programs, sessions, budget entries |
+| Reports | Final report, Donor report, Risk register | |
+| Admin | Audit log, Users, Settings | |
+| Volunteer portal | My tasks (+ TaskComments) | Volunteers only see this group + Help |
 
-  application: { title, startDate, endDate, location, programs, team,
-                 partners, categories[], movementStrategy[],
-                 hasPreviousGrant, coiDeclaration, additionalInfo },
+`DATA_PAGES` in `App.js` need a selected grant (most pass `grantId` and filter
+by it). Volunteers, Reg. forms, Active contributors, Announcements, Deadlines,
+Settings work without one.
 
-  budget: { total, currency, planned: { personnel, operational, programmatic },
-            spent: { personnel, operational, programmatic },
-            expenses: [{ cat, amount, desc, date }],
-            otherRevenue, otherRevenueDetails },
+### Adding a page
+1. Create `src/pages/MyPage.js` (default export, props at least `{ profile }`)
+2. In `App.js`: import it, add to `NAV_ITEMS` (`roles: null` = all staff, or a
+   list), add its id to a `NAV_GROUPS` group, add a `case` in `renderPage()`
+3. Add to `DATA_PAGES` only if it needs a selected grant
+4. Add Firestore rules for any new collection
 
-  metrics: { participants, allEditors, newEditors, retainedEditors,
-             allOrganizers, newOrganizers,   // each: { target, result }
-             projects: [{ name, tCreated, tImproved, rCreated, rImproved }] },
+---
 
-  activities: [{
-    id, name, type, date, location, reportedBy,
-    participants, women, newEditors, youth, pwd,
-    created, improved, commons, wikidata,
-    cost, budgetCat, link,
-    summary, challenges, lessons, stories, nextSteps
-  }],
+## Roles & permissions
 
-  team: [{ id, name, role, username, email }]
-}
-```
+Roles (on `users/{uid}.role`): `admin`, `coordinator`, `finance_officer`,
+`viewer`, `volunteer`.
+
+- In pages: `canEdit = ["admin", "coordinator"].includes(profile?.role)` is the
+  usual pattern; finance screens use admin/finance_officer.
+- In `firestore.rules`: helpers `isAdmin()`, `isCoordinator()` (admin or
+  coordinator), `isFinance()` (admin or finance_officer), `isAnyStaff()`
+  (everyone except volunteers), `isVolunteer()`.
+- Typical collection rule: read `isAnyStaff()`, create/update `isCoordinator()`,
+  delete `isAdmin()`. Keep UI buttons consistent with the rules (e.g. only show
+  delete to admins when only admins may delete).
+- Public (not logged in) writes are allowed only for `registrations` and
+  `participants`, with field validation.
+
+## Main Firestore collections
+
+`grants`, `settings`, `metrics` (doc id = grantId), `programs` (with
+`subPrograms[]`), `activities`, `evidence`, `activityFiles`, `budgetEntries`,
+`invoices`, `participants`, `registrationForms`, `registrations`, `volunteers`,
+`volunteerTasks`, `taskComments`, `communityMembers`, `contributorReports`,
+`risks`, `announcements`, `deadlines`, `notifications`, `comments`, `users`,
+`pendingActivations`, `auditLogs`.
+
+Use the helpers in `src/firebase/firestore.js` (`addDocument`, `updateDocument`,
+`setDocument` (merge), `deleteDocument`, `listenCollection`, `batchWrite`,
+`where`, `orderBy`). `where` + `orderBy` on different fields needs a composite
+index — services usually skip `orderBy` and sort client-side instead.
 
 ---
 
 ## Key business rules
 
-- Every activity must have a name, date, and at least participants count.
-- Women count, new editors, youth, PWD are optional but important for diversity reporting (Affiliate Health Criterion 2.2).
-- Summary, challenges, lessons, stories, nextSteps are the narrative fields that feed directly into the Wikimedia report Part 1.
-- Budget: expenses automatically update `budget.spent[category]`. Deleting an expense reverses the amount.
-- The final report (`compileGrantReport`) reads from `state.metrics` (not raw activities) for headline numbers, so team must update metrics manually or via activity accumulation.
-- `buildActivityReport(activity)` returns plain text for individual activity .txt download.
-- `compileGrantReport(state)` returns `{ part1q1, part1q2, part2metrics, part3skills, part4finance }` — all strings ready to paste into Fluxx.
+- **Approval flow:** programs and sessions go `draft → submitted → approved /
+  rejected`. Approved programs are locked (only admins edit; coordinators may
+  still touch `subPrograms`). Approving creates approved `budgetEntries` for
+  the line items — session items are created by their own approval, not the
+  program's, to avoid double-counting.
+- **Budget entries** are grouped into personnel / operational / programmatic
+  (`BUDGET_GROUPS` in budgetService). Excel import via `ImportBudgetModal`.
+- **Registration:** `submitRegistration()` saves the registration, bumps
+  `registrationCount` on the form (enforces `maxRegistrations` without auth) and
+  auto-adds a participant. `isNew` = "never edited Wikipedia before".
+- **Audit:** log create/update/delete/import/export with
+  `addAudit(profile, AUDIT_ACTIONS.X, "<module>", { targetId, recordTitle, details })`.
+
+### Active contributors (pages/ActiveContributors.js, utils/wikiContribs.js)
+- A community member (`communityMembers`) is **active** in a month if they
+  edited ≥ threshold (default 60) **different** main-namespace articles on the
+  chosen wiki in that UTC month. Repeat edits to one page count once.
+- Counts via `list=usercontribs`, 50 users per request, follows `continue`,
+  excludes edits at exactly the end timestamp (ucend is inclusive).
+- **Still editing** = ≥ `STILL_EDITING_MIN` (1) different article that month —
+  the measure of retained members; can fill the Metrics "Retained editors" row.
+  Old saved rows without `editing` are handled by `isEditing(row)`.
+- Members come from manual/bulk entry, Volunteers, past event Participants, or
+  new event registrants. **All community members are volunteers**: at the end of
+  the grant they receive certificates, and the reports are the evidence of who
+  stayed active/retained.
+- Reports are saved to `contributorReports` with id `{wiki}_{YYYY-MM}`.
+- **Metrics** row `activeContributors` is filled from saved reports (latest
+  finished month, or different people active at least once). It is the group's
+  own metric — don't merge it into the Foundation's editor metrics.
+
+### Event selection (utils/eventSelection.js, components/EventSelection.js)
+- Shown in Reg. forms for each event. Registrants are **Member** (username in
+  `communityMembers`) or **New**.
+- Seats = form `seats`, else `maxRegistrations`, else everyone. `newMemberPct`
+  (default 30%) of seats is kept for new members.
+- Members are ranked by different articles in the latest saved, finished month
+  **before the event's month**; new members go in registration order. Seats one
+  group can't fill go to the other; the rest are "Waiting list".
+- Coordinators add new registrants (with a username) to the community list —
+  the public form never writes to `communityMembers`.
 
 ---
 
 ## Design principles
 
-- Sidebar navigation: dark green (#1c2b1e) with active state in brand green (#4a9e6b).
-- Clean white panels on light gray background (#f5f4f0).
-- No gradients, no shadows — flat, professional, functional.
-- Tables for lists, stat cards for summary numbers, progress bars for targets.
-- Sentence case everywhere. No ALL CAPS except table headers (uppercase, letter-spacing).
-- All money values formatted with `fmt()` → toLocaleString().
-- All percentages use `pct(result, target)` capped at 999%.
-
----
-
-## How to run
-
-```bash
-# Install dependencies
-npm install
-
-# Start development server
-npm start
-# → Opens http://localhost:3000
-
-# Build for production
-npm run build
-```
-
----
-
-## Common tasks for Claude
-
-### Add a new field to the activity log form
-1. Add the field to the `empty()` function in Activities.js
-2. Add the input in the JSX form section
-3. Add it to `buildActivityReport()` in helpers.js
-4. If it's a metric, add it to `compileGrantReport()` too
-
-### Add a new Wikimedia project to metrics
-In store.js `defaultState.metrics.projects`, add:
-`{ name: "Wiktionary", tCreated: 0, tImproved: 0, rCreated: 0, rImproved: 0 }`
-
-### Change the grant total or currency
-Update `defaultState.budget.total` and `defaultState.budget.currency` in store.js,
-OR go to Settings page in the running app.
-
-### Add a new team member role
-Update `defaultState.team` in store.js.
-
-### Add a new activity type
-Add the string to `ACTIVITY_TYPES` array in helpers.js.
-
-### Export all activity reports as one document
-In FinalReport.js, add a function that maps `state.activities` through
-`buildActivityReport()` and joins them, then downloads as a single .txt.
-
-### Add a timeline/calendar view (Question 10 of application)
-Create `src/pages/Timeline.js`. Map `state.activities` by month into a
-calendar grid. Add a "Timeline" entry to NAV in App.js.
-
-### Add photo/document upload to activities
-Since there's no backend, use base64 in localStorage or add a Google Drive
-link field to the activity form.
+- Sidebar dark green `#1c2b1e`, active brand green `#4a9e6b`; light gray page
+  background `#f5f4f0`, white panels. Accent colours used across pages:
+  `#2d7a4f` (success), `#d97706` (warning), `#2563eb` (info), `#c0392b` (danger).
+- Flat and functional: no gradients. Reuse existing classes — `page-title`,
+  `page-sub`, `panel`, `panel-title`, `form-grid`, `field`, `btn btn-primary
+  btn-sm btn-danger`, `btn-row`, `tab-bar`/`tab-btn`, `card-grid`/`stat-card`,
+  `badge badge-green|amber|blue|red|gray`, `alert alert-info|warn|error|success`,
+  `progress-bar`, `empty`, plain `<table>`.
+- Toasts: fixed bottom-right green box (copy the pattern from RiskRegister.js).
+- Sentence case everywhere; table headers are uppercase via CSS.
+- Pure logic goes in `src/utils/` with a Jest test next to it
+  (`*.test.js`, fake `fetch` for API code).
 
 ---
 
@@ -195,48 +220,36 @@ link field to the activity form.
 
 ```
 Part 1: Your work and learning
-  Q1: Programs, approaches, strategies vs challenges
-  Q2: Plans to build on successes
-  Q3: Links to reports (Meta-Wiki pages)
-  Q4: Interest in sharing with wider community
-  Q5: Feedback collected (impact stories, surveys)
-  Q6: Diversity efforts (6.1 participants, 6.2 content, 6.3 retention)
-
+  Q1 programs vs challenges · Q2 building on successes · Q3 links to reports
+  Q4 sharing interest · Q5 feedback collected · Q6 diversity (participants,
+  content, retention)
 Part 2: Metrics
-  14.1 Participants, editors, organizers (target vs result)
+  14.1 participants, editors, organizers (target vs result)
   14.2 Wikimedia project contributions (target vs result)
-
-Part 3: Skill Development / Capacity Building
-  Q12: Skill development from grant
-  Q13: One capacity area for next year
-
-Part 4: Financial reporting
-  Q15: Total amount spent (local currency)
-  Q16: Breakdown by category (personnel, operational, programmatic)
-  Q17: Other revenue sources
-  Q18: Link to financial report document
-  Q19: Unspent funds
-  Q20: Compliance declarations (fund agreement, laws, IRS)
+Part 3: Skill development — Q12 skills gained · Q13 one capacity area next year
+Part 4: Financial — Q15 total spent · Q16 by category · Q17 other revenue
+  Q18 financial report link · Q19 unspent funds · Q20 compliance declarations
 ```
 
----
+Final report Part 2 (`FinalReport.js` METRIC_ROWS) mirrors the Foundation's
+fixed metrics only.
 
 ## Affiliate Health Criteria mapping
 
 | Criterion | Covered in system |
 |-----------|------------------|
-| 1.1 Goal delivery | Dashboard progress bars, Final report Part 1 Q1 |
-| 2.1 Health & resilience | Application team/partners, Final report Part 3 |
-| 2.2 Diversity balance | Activity form (women, youth, PWD), Final report Q6 |
-| 2.3 Governance | Application COI field, Settings org details |
-| 3.1 Leadership | Application team field, Final report Part 3 |
-| 3.2 Financial compliance | Budget panel, Final report Part 4 |
-| 3.3 Universal Code of Conduct | Application additional info field |
-| 4.1 Internal engagement | Activity type: Community gathering / Let's Connect |
-| 4.2 Community connection | Activity summaries feed into Part 1 Q1 |
-| 4.3 Partnerships | Application partners field, activity types |
+| 1.1 Goal delivery | Dashboard, Metrics, Final report Part 1 Q1 |
+| 2.1 Health & resilience | Volunteers, Active contributors, Final report Part 3 |
+| 2.2 Diversity balance | Participants (gender, new editors), event seats for new members, Final report Q6 |
+| 2.3 Governance | Users & roles, Audit log, Settings |
+| 3.1 Leadership | Volunteers & tasks, Final report Part 3 |
+| 3.2 Financial compliance | Budget, Review approvals, Invoices, Donor report, Final report Part 4 |
+| 3.3 Universal Code of Conduct | Settings / application information |
+| 4.1 Internal engagement | Announcements, Volunteers, Active contributors |
+| 4.2 Community connection | Registration forms, Participants, activity summaries |
+| 4.3 Partnerships | Programs, activity partners |
 
 ---
 
-*Last updated: June 2026*
+*Last updated: November 2026*
 *Maintained by: Wikimedians of Kilimanjaro / Open Knowledge Tanzania*

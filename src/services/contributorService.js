@@ -2,6 +2,8 @@ import {
   addDocument, updateDocument, deleteDocument, setDocument,
   listenCollection, batchWrite, orderBy, srvTs,
 } from "../firebase/firestore";
+import { normalizeUsername } from "../utils/wikiContribs";
+import { belongsToGrant, grantIdsWith } from "../utils/grantScope";
 
 // ── Community members ──────────────────────────────────────────────────────────
 // { name, wikimediaUsername, isActive, source: "manual" | "bulk" | "volunteers" }
@@ -14,8 +16,8 @@ export function listenCommunityMembers(callback) {
   return listenCollection(MEMBERS, callback, orderBy("name", "asc"));
 }
 
-export async function addCommunityMember(data) {
-  return addDocument(MEMBERS, data);
+export async function addCommunityMember(data, grantId = "") {
+  return addDocument(MEMBERS, { ...data, grantIds: grantId ? [grantId] : [] });
 }
 
 export async function updateCommunityMember(id, data) {
@@ -26,14 +28,29 @@ export async function deleteCommunityMember(id) {
   return deleteDocument(MEMBERS, id);
 }
 
+// Add members to a grant. Someone already in the list (from an earlier grant)
+// gets this grant added to their record instead of a duplicate.
+//   existing: all community members; grantId / firstGrantId: see utils/grantScope.
 // Firestore batches allow 500 writes — stay safely below that.
-export async function addCommunityMembersBulk(members) {
-  for (let i = 0; i < members.length; i += 450) {
-    const ops = members.slice(i, i + 450).map(m => ({
-      type: "set", path: MEMBERS, data: { ...m, createdAt: srvTs() },
-    }));
-    await batchWrite(ops);
+export async function addCommunityMembersBulk(members, { grantId = "", firstGrantId = "", existing = [] } = {}) {
+  const byUser = new Map(existing.map(m => [normalizeUsername(m.wikimediaUsername), m]));
+  const seen = new Set();
+  const ops = [];
+  for (const m of members) {
+    const u = normalizeUsername(m.wikimediaUsername);
+    if (!u || seen.has(u)) continue;
+    seen.add(u);
+    const old = byUser.get(u);
+    if (old) {
+      if (grantId && !belongsToGrant(old, grantId, { firstGrantId })) {
+        ops.push({ type: "update", path: MEMBERS, id: old.id, data: { grantIds: grantIdsWith(old, grantId, firstGrantId) } });
+      }
+    } else {
+      ops.push({ type: "set", path: MEMBERS, data: { ...m, wikimediaUsername: u, grantIds: grantId ? [grantId] : [], createdAt: srvTs() } });
+    }
   }
+  for (let i = 0; i < ops.length; i += 450) await batchWrite(ops.slice(i, i + 450));
+  return ops.length;
 }
 
 // ── Saved monthly reports ──────────────────────────────────────────────────────

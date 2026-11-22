@@ -113,7 +113,7 @@ also a leftover copy.
 | Volunteer portal | My tasks (+ TaskComments) | Volunteers only see this group + Help |
 
 `DATA_PAGES` in `App.js` need a selected grant (most pass `grantId` and filter
-by it). Active contributors, Announcements, Deadlines, Settings work without one.
+by it). Announcements, Deadlines, Settings work without one.
 
 ### Adding a page
 1. Create `src/pages/MyPage.js` (default export, props at least `{ profile }`)
@@ -184,9 +184,15 @@ index — services usually skip `orderBy` and sort client-side instead.
     `odCampaignUrl`; the Active contributors panel uses only reports for months
     inside the grant's start/end dates.
   - Volunteers and Reg. forms are in `DATA_PAGES` (need a selected grant).
-  Shared across grants on purpose: community members and contributor reports
-  (Active contributors — filtered by months, not by grant), announcements,
-  deadlines, settings.
+  - Active contributors: community members have `grantIds[]` like volunteers
+    (old members → first grant; "Bring members from earlier grants"; adding
+    someone who's already a member adds the grant to their record —
+    `addCommunityMembersBulk(list, { grantId, firstGrantId, existing })`).
+    Reports, History, Year summary and Events use only months inside the
+    grant's start/end dates; the Report month picker is limited to them. A
+    grant without dates shows a "set the dates" warning and no reports.
+    Contributor reports themselves are stored by wiki + month (not grant).
+  Shared across grants on purpose: announcements, deadlines, settings.
 - **Approval flow:** programs and sessions go `draft → submitted → approved /
   rejected`. Approved programs are locked (only admins edit; coordinators may
   still touch `subPrograms`). Approving creates approved `budgetEntries` for

@@ -17,7 +17,7 @@ function StatusBadge({ status }) {
 }
 
 // "Who should join" panel for one registration form (event).
-export default function EventSelection({ form, registrations, profile, canEdit, showToast }) {
+export default function EventSelection({ form, registrations, profile, canEdit, showToast, grantId = "", firstGrantId = "" }) {
   const [members, setMembers] = useState([]);
   const [reports, setReports] = useState([]);
   const [busy,    setBusy]    = useState(false);
@@ -51,7 +51,7 @@ export default function EventSelection({ form, registrations, profile, canEdit, 
         wikimediaUsername: p.username,
         isActive: true,
         source: "registration",
-      })));
+      })), { grantId, firstGrantId, existing: members });
       await addAudit(profile, AUDIT_ACTIONS.IMPORT, "contributors", {
         targetId: form.id, recordTitle: form.title,
         details: `Added ${addable.length} new member${addable.length === 1 ? "" : "s"} from registrations for "${form.title}"`,

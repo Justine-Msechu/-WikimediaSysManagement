@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
-  listenCommunityMembers, addCommunityMember, updateCommunityMember, deleteCommunityMember,
+  listenCommunityMembers, updateCommunityMember, deleteCommunityMember,
   addCommunityMembersBulk, saveContributorReport, listenContributorReports, reportId,
   listenContributorEvents, saveContributorEvent, deleteContributorEvent,
 } from "../services/contributorService";
@@ -9,6 +9,8 @@ import {
   discoverEventPages, findCourseForEvent, DEFAULT_ACTIVITIES_PAGE, formJoiners, formMatchesEvent, joinedNotMembers,
 } from "../utils/eventContribs";
 import { listenForms, getAllRegistrations } from "../services/registrationService";
+import { listenPrograms } from "../services/programService";
+import { belongsToGrant, grantIdsWith, grantMonthRange, participantsForGrant } from "../utils/grantScope";
 import { listenVolunteers } from "../services/volunteerService";
 import { listenParticipants } from "../services/participantService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
@@ -75,7 +77,7 @@ function WikiSelect({ value, onChange }) {
 // ── Report tab ─────────────────────────────────────────────────────────────────
 // People who joined our events but aren't community members — pick and add them.
 // people: [{ username, events[], articles?, edits?, formOnly? }]
-function NotMembersPanel({ people, members, nameFor, canEdit, profile, showToast, title, note, wiki = DEFAULT_WIKI }) {
+function NotMembersPanel({ people, members, nameFor, canEdit, profile, showToast, title, note, wiki = DEFAULT_WIKI, addMembers }) {
   const [picked, setPicked] = useState({});
   const [busy, setBusy] = useState(false);
   const existing = useMemo(() => new Set(members.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean)), [members]);
@@ -88,7 +90,7 @@ function NotMembersPanel({ people, members, nameFor, canEdit, profile, showToast
     if (chosen.length === 0) return;
     setBusy(true);
     try {
-      await addCommunityMembersBulk(chosen.map(p => ({ name: nameFor(p.username), wikimediaUsername: p.username, isActive: true, source: "events" })));
+      await addMembers(chosen.map(p => ({ name: nameFor(p.username), wikimediaUsername: p.username, isActive: true, source: "events" })));
       await addAudit(profile, AUDIT_ACTIONS.IMPORT, "contributors", {
         details: `Added ${chosen.length} event participant${chosen.length === 1 ? "" : "s"} to community members: ${chosen.map(p => p.username).join(", ")}`,
       });
@@ -142,8 +144,12 @@ async function withFormUsernames(events) {
   });
 }
 
-function Report({ members, reports, events, scope, profile, canEdit, showToast, org, nameFor }) {
-  const [month,     setMonth]     = useState(lastFullMonth());
+function Report({ members, reports, events, scope, profile, canEdit, showToast, org, nameFor, addMembers, monthRange }) {
+  // Months are limited to the selected grant's dates.
+  const maxMonth = monthRange && monthRange.end < currentMonth() ? monthRange.end : currentMonth();
+  const minMonth = monthRange ? monthRange.start : "";
+  const clampMonth = (m) => (minMonth && m < minMonth ? minMonth : m > maxMonth ? maxMonth : m);
+  const [month,     setMonth]     = useState(() => clampMonth(lastFullMonth()));
   const [wiki,      setWiki]      = useState(DEFAULT_WIKI);
   const [threshold, setThreshold] = useState(DEFAULT_THRESHOLD);
   const [fresh,     setFresh]     = useState(null);   // { wiki, month, members, stats }
@@ -255,7 +261,7 @@ function Report({ members, reports, events, scope, profile, canEdit, showToast, 
       <div className="panel" style={{ marginBottom: 20 }}>
         <div className="form-grid">
           <div className="field"><label>Month</label>
-            <input type="month" value={month} max={currentMonth()} onChange={e => e.target.value && setMonth(e.target.value)} />
+            <input type="month" value={month} min={minMonth || undefined} max={maxMonth} onChange={e => e.target.value && setMonth(clampMonth(e.target.value))} />
           </div>
           <div className="field"><label>Wiki</label><WikiSelect value={wiki} onChange={setWiki} /></div>
           <div className="field"><label>Active if different articles ≥</label>
@@ -318,7 +324,7 @@ function Report({ members, reports, events, scope, profile, canEdit, showToast, 
           )}
 
           {eventsOnly && (
-            <NotMembersPanel people={view.notMembers} members={members} nameFor={nameFor} canEdit={canEdit} profile={profile} showToast={showToast} wiki={wiki}
+            <NotMembersPanel people={view.notMembers} members={members} nameFor={nameFor} canEdit={canEdit} profile={profile} showToast={showToast} wiki={wiki} addMembers={addMembers}
               title="Joined our events but not in the members list"
               note={`These people joined ${monthLabel(month)}'s Kilimanjaro events but aren't community members, so they are not in the report above. Counts are their edits during the events. Add them, then click "Fetch from Wikipedia" again to include them.`} />
           )}
@@ -700,7 +706,7 @@ function YearSummary({ members, reports, scope, currentGrant, profile, org, sign
 }
 
 // ── Events tab — Kilimanjaro events (Outreach Dashboard courses) ───────────────
-function Events({ events, members, forms, profile, canEdit, isAdmin, showToast, nameFor }) {
+function Events({ events, members, forms, profile, canEdit, isAdmin, showToast, nameFor, addMembers }) {
   const [links,   setLinks]   = useState("");
   const [busy,    setBusy]    = useState(false);
   const [errors,  setErrors]  = useState([]);
@@ -922,7 +928,7 @@ function Events({ events, members, forms, profile, canEdit, isAdmin, showToast, 
         </div>
       )}
 
-      <NotMembersPanel people={outsiders} members={members} nameFor={nameFor} canEdit={canEdit} profile={profile} showToast={showToast}
+      <NotMembersPanel people={outsiders} members={members} nameFor={nameFor} canEdit={canEdit} profile={profile} showToast={showToast} addMembers={addMembers}
         title="People in our events who aren't members"
         note={`Everyone who joined these events on the Outreach Dashboard (as of the last refresh) or on a linked registration form, but isn't in the community members list. Their edits aren't counted until you add them. Click "Refresh all from dashboard" first to catch late sign-ups.`} />
 
@@ -987,7 +993,47 @@ function Events({ events, members, forms, profile, canEdit, isAdmin, showToast, 
 }
 
 // ── Members tab ────────────────────────────────────────────────────────────────
-function Members({ members, volunteers, participants, profile, canEdit, isAdmin, showToast }) {
+// Members from earlier grants, ticked to join this grant (nothing is copied).
+function BringMembers({ earlier, bring }) {
+  const [open,   setOpen]   = useState(false);
+  const [picked, setPicked] = useState({});
+  const [busy,   setBusy]   = useState(false);
+  const [q,      setQ]      = useState("");
+  const chosen = earlier.filter(m => picked[m.id]);
+  const shown  = earlier.filter(m => !q || `${m.name} ${m.wikimediaUsername}`.toLowerCase().includes(q.toLowerCase()));
+  const go = async () => {
+    setBusy(true);
+    try { await bring(chosen); setPicked({}); setOpen(false); } finally { setBusy(false); }
+  };
+  return (
+    <div className="panel" style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13, color: "#666" }}>{earlier.length} member{earlier.length === 1 ? "" : "s"} from earlier grants {earlier.length === 1 ? "is" : "are"} not in this grant.</span>
+        <button className="btn btn-sm" onClick={() => setOpen(o => !o)}>{open ? "Close" : "Bring members from earlier grants"}</button>
+      </div>
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name or username..." style={{ width: "100%", fontSize: 13, marginBottom: 8 }} />
+          <div style={{ maxHeight: 280, overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 6 }}>
+            {shown.map(m => (
+              <label key={m.id} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+                <input type="checkbox" checked={!!picked[m.id]} onChange={e => setPicked(p => ({ ...p, [m.id]: e.target.checked }))} />
+                {m.name}<span style={{ color: "#888", fontSize: 12 }}>({m.wikimediaUsername})</span>
+              </label>
+            ))}
+          </div>
+          <div className="btn-row" style={{ marginTop: 10 }}>
+            <button className="btn btn-sm" onClick={() => setPicked(p => ({ ...p, ...Object.fromEntries(shown.map(m => [m.id, true])) }))}>Select all{q ? " shown" : ""}</button>
+            <button className="btn btn-sm btn-primary" onClick={go} disabled={busy || chosen.length === 0}>{busy ? "Adding…" : `Add ${chosen.length} to this grant`}</button>
+          </div>
+          <div style={{ fontSize: 12, color: "#888", marginTop: 6 }}>They stay in their earlier grants too — nothing is copied or moved.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Members({ members, volunteers, participants, profile, canEdit, isAdmin, showToast, addMembers, earlierMembers = [], bringMembers }) {
   const [name,     setName]     = useState("");
   const [username, setUsername] = useState("");
   const [bulk,     setBulk]     = useState("");
@@ -1021,8 +1067,8 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
     setBusy(true);
     try {
       const fullName = name.trim() || u;
-      const id = await addCommunityMember({ name: fullName, wikimediaUsername: u, isActive: true, source: "manual" });
-      await addAudit(profile, AUDIT_ACTIONS.CREATE, "contributors", { targetId: id, recordTitle: fullName, details: `Added community member ${u}` });
+      await addMembers([{ name: fullName, wikimediaUsername: u, isActive: true, source: "manual" }]);
+      await addAudit(profile, AUDIT_ACTIONS.CREATE, "contributors", { recordTitle: fullName, details: `Added community member ${u}` });
       setName(""); setUsername("");
       showToast("Member added.");
       await verify([u]);
@@ -1037,7 +1083,7 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
     if (list.length === 0) return;
     setBusy(true);
     try {
-      await addCommunityMembersBulk(list);
+      await addMembers(list);
       await addAudit(profile, AUDIT_ACTIONS.IMPORT, "contributors", { details: `${label}: added ${list.length} community member${list.length === 1 ? "" : "s"} (${source})` });
       await verify(list.map(m => m.wikimediaUsername));
       return true;
@@ -1100,6 +1146,7 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
 
   return (
     <div>
+      {canEdit && earlierMembers.length > 0 && <BringMembers earlier={earlierMembers} bring={bringMembers} />}
       {canEdit && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 20 }}>
           <div className="panel" style={{ margin: 0 }}>
@@ -1181,14 +1228,15 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────────
-export default function ActiveContributors({ profile, currentGrant }) {
+export default function ActiveContributors({ profile, currentGrant, grantId = "", firstGrantId = "" }) {
   const [tab,        setTab]        = useState("Report");
-  const [members,    setMembers]    = useState([]);
-  const [reports,    setReports]    = useState([]);
-  const [volunteers, setVolunteers] = useState([]);
+  const [allMembers, setMembers]    = useState([]);
+  const [allReports, setReports]    = useState([]);
+  const [programs,   setPrograms]   = useState([]);
+  const [allVolunteers, setVolunteers] = useState([]);
   const [participants, setParticipants] = useState([]);
   const [settings,   setSettings]   = useState(null);
-  const [events,     setEvents]     = useState([]);
+  const [allEvents,  setEvents]     = useState([]);
   const [forms,      setForms]      = useState([]);
   const [scope,      setScope]      = useState(DEFAULT_SCOPE);
   const [toast,      setToast]      = useState("");
@@ -1204,7 +1252,8 @@ export default function ActiveContributors({ profile, currentGrant }) {
     const u5 = listenSettings(setSettings);
     const u6 = listenContributorEvents(setEvents);
     const u7 = listenForms(setForms);
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
+    const u8 = listenPrograms(setPrograms);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
@@ -1221,6 +1270,27 @@ export default function ActiveContributors({ profile, currentGrant }) {
     return m;
   }, [participants]);
   const nameFor = (u) => nameByUsername.get(u) || u;
+  // ── This grant only ──
+  // Members belong to grants (old members → first grant). Reports and events
+  // count only for months inside the grant's dates, so a new grant starts empty.
+  const monthRange = grantMonthRange(currentGrant);
+  const noDates    = !!currentGrant && !monthRange;
+  const grantOpts  = { firstGrantId };
+  const members    = useMemo(() => allMembers.filter(m => belongsToGrant(m, grantId, { firstGrantId })), [allMembers, grantId, firstGrantId]);
+  const earlierMembers = allMembers.filter(m => !belongsToGrant(m, grantId, grantOpts));
+  const inGrant    = (m) => !currentGrant || (!!monthRange && m >= monthRange.start && m <= monthRange.end);
+  const reports    = allReports.filter(r => inGrant(r.month));
+  const events     = allEvents.filter(ev => !currentGrant || (!!monthRange && (ev.start || "").slice(0, 7) <= monthRange.end && (ev.end || "").slice(0, 7) >= monthRange.start));
+  const volunteers = allVolunteers.filter(v => belongsToGrant(v, grantId, { firstGrantId, programs }));
+  const grantParticipants = participantsForGrant(participants, programs, grantId);
+  const addMembers = (list) => addCommunityMembersBulk(list, { grantId, firstGrantId, existing: allMembers });
+
+  const bringMembers = async (list) => {
+    for (const m of list) await updateCommunityMember(m.id, { grantIds: grantIdsWith(m, grantId, firstGrantId) });
+    await addAudit(profile, AUDIT_ACTIONS.UPDATE, "contributors", { details: `Added ${list.length} community member${list.length === 1 ? "" : "s"} from earlier grants to this grant` });
+    showToast(`${list.length} member${list.length === 1 ? "" : "s"} added to this grant.`);
+  };
+
   // Report, History and Year summary only see reports counted the chosen way.
   const scopedReports = useMemo(() => reports.filter(r => reportScope(r) === scope), [reports, scope]);
 
@@ -1229,6 +1299,12 @@ export default function ActiveContributors({ profile, currentGrant }) {
       {toast && <div style={{ position: "fixed", bottom: 24, right: 24, background: "#2d7a4f", color: "#fff", padding: "10px 18px", borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 9999 }}>✓ {toast}</div>}
       <div className="page-title">Active contributors</div>
       <div className="page-sub">Community members who edited at least the set number of different Wikipedia articles in a month.</div>
+      {noDates && (
+        <div className="alert alert-warn">This grant has no start and end dates yet, so there are no months to report on. Add them on the Grant page (edit this grant). Members can still be added.</div>
+      )}
+      {monthRange && monthRange.start > currentMonth() && (
+        <div className="alert alert-info">This grant starts in {monthLabel(monthRange.start)}. Reports can be fetched from then.</div>
+      )}
 
       {SCOPED_TABS.includes(tab) && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "4px 0 16px", fontSize: 13 }}>
@@ -1254,11 +1330,12 @@ export default function ActiveContributors({ profile, currentGrant }) {
         ))}
       </div>
 
-      {tab === "Report"  && <Report  members={members} reports={scopedReports} events={events} scope={scope} nameFor={nameFor} profile={profile} canEdit={canEdit} showToast={showToast} org={org} />}
+      {tab === "Report"  && !noDates && !(monthRange && monthRange.start > currentMonth()) && <Report  members={members} reports={scopedReports} events={events} scope={scope} nameFor={nameFor} addMembers={addMembers} monthRange={monthRange} profile={profile} canEdit={canEdit} showToast={showToast} org={org} />}
       {tab === "History" && <History reports={scopedReports} />}
       {tab === "Year summary" && <YearSummary members={members} reports={scopedReports} scope={scope} currentGrant={currentGrant} profile={profile} org={org} signature={signature} />}
-      {tab === "Events"  && <Events events={events} members={members} forms={forms} nameFor={nameFor} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
-      {tab === "Members" && <Members members={members} volunteers={volunteers} participants={participants} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
+      {tab === "Events"  && <Events events={events} members={members} forms={forms} nameFor={nameFor} addMembers={addMembers} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
+      {tab === "Members" && <Members members={members} volunteers={volunteers} participants={grantParticipants} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast}
+        addMembers={addMembers} earlierMembers={grantId ? earlierMembers : []} bringMembers={bringMembers} />}
     </div>
   );
 }

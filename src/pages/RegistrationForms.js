@@ -416,7 +416,7 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
               </div>
             </div>
 
-            <EventSelection form={selectedForm} registrations={registrations} profile={profile} canEdit={canEdit} showToast={showToast} />
+            <EventSelection form={selectedForm} registrations={registrations} profile={profile} canEdit={canEdit} showToast={showToast} grantId={grantId} firstGrantId={firstGrantId} />
 
             {/* Registrations table */}
             <div className="panel" style={{ padding: 0 }}>

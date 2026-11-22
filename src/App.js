@@ -227,7 +227,7 @@ function AppShell() {
     }
 
     // Guard: data pages require a grant to be selected
-    const DATA_PAGES = ["dashboard","programs","activities","timeline","budget","invoices","review","metrics","participants","risks","donor","report","volunteers","register"];
+    const DATA_PAGES = ["dashboard","programs","activities","timeline","budget","invoices","review","metrics","participants","risks","donor","report","volunteers","register","contributors"];
     if (!currentGrant && DATA_PAGES.includes(page)) {
       return (
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"60vh", gap:16, textAlign:"center", padding:24 }}>
@@ -260,7 +260,7 @@ function AppShell() {
       case "audit":        return role === "admin" ? <AuditLog profile={profile} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
       case "users":        return role === "admin" ? <Users    profile={profile} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
       case "volunteers":    return <Volunteers        key={currentGrantId} profile={profile} grantId={currentGrantId} firstGrantId={oldestGrantId(grants)} />;
-      case "contributors":  return <ActiveContributors profile={profile} currentGrant={currentGrant} />;
+      case "contributors":  return <ActiveContributors key={currentGrantId} profile={profile} currentGrant={currentGrant} grantId={currentGrantId} firstGrantId={oldestGrantId(grants)} />;
       case "register":      return <RegistrationForms key={currentGrantId} profile={profile} grantId={currentGrantId} firstGrantId={oldestGrantId(grants)} />;
       case "announcements": return <Announcements     profile={profile} />;
       case "deadlines":     return <Deadlines         profile={profile} />;

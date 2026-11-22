@@ -6,7 +6,7 @@ import {
 } from "../services/contributorService";
 import {
   fetchEventMonthStats, fetchCourse, parseCourseSlug, courseUrl, eventDocId, eventWindowsInMonth,
-  discoverEventPages, findCourseForEvent, DEFAULT_ACTIVITIES_PAGE, formJoiners, formMatchesEvent,
+  discoverEventPages, findCourseForEvent, DEFAULT_ACTIVITIES_PAGE, formJoiners, formMatchesEvent, joinedNotMembers,
 } from "../utils/eventContribs";
 import { listenForms, getAllRegistrations } from "../services/registrationService";
 import { listenVolunteers } from "../services/volunteerService";
@@ -73,6 +73,65 @@ function WikiSelect({ value, onChange }) {
 }
 
 // ── Report tab ─────────────────────────────────────────────────────────────────
+// People who joined our events but aren't community members — pick and add them.
+// people: [{ username, events[], articles?, edits?, formOnly? }]
+function NotMembersPanel({ people, members, nameFor, canEdit, profile, showToast, title, note, wiki = DEFAULT_WIKI }) {
+  const [picked, setPicked] = useState({});
+  const [busy, setBusy] = useState(false);
+  const existing = useMemo(() => new Set(members.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean)), [members]);
+  const list = (people || []).filter(p => !existing.has(p.username));
+  const hasCounts = list.some(p => p.articles !== undefined);
+  const chosen = list.filter(p => picked[p.username] ?? true);
+  if (list.length === 0) return null;
+
+  const add = async () => {
+    if (chosen.length === 0) return;
+    setBusy(true);
+    try {
+      await addCommunityMembersBulk(chosen.map(p => ({ name: nameFor(p.username), wikimediaUsername: p.username, isActive: true, source: "events" })));
+      await addAudit(profile, AUDIT_ACTIONS.IMPORT, "contributors", {
+        details: `Added ${chosen.length} event participant${chosen.length === 1 ? "" : "s"} to community members: ${chosen.map(p => p.username).join(", ")}`,
+      });
+      setPicked({});
+      showToast(`Added ${chosen.length} to community members.`);
+    } catch (e) {
+      alert(`Could not add members: ${e.message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="panel" style={{ border: "1px solid #f0d5b0", background: "#fffaf0", marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div className="panel-title" style={{ color: "#b45309", margin: 0 }}>{title} ({list.length})</div>
+        {canEdit && <button className="btn btn-primary btn-sm" onClick={add} disabled={busy || chosen.length === 0}>{busy ? "Adding…" : `Add ${chosen.length} to members`}</button>}
+      </div>
+      <div style={{ fontSize: 12, color: "#666", margin: "6px 0 10px" }}>{note}</div>
+      <div style={{ overflowX: "auto" }}>
+        <table>
+          <thead><tr>{canEdit && <th></th>}<th>Name</th><th>Username</th>{hasCounts && <th>Different articles</th>}{hasCounts && <th>Edits</th>}<th>Events</th></tr></thead>
+          <tbody>
+            {list.map(p => (
+              <tr key={p.username}>
+                {canEdit && <td><input type="checkbox" checked={picked[p.username] ?? true} onChange={e => setPicked(x => ({ ...x, [p.username]: e.target.checked }))} /></td>}
+                <td style={{ fontWeight: 500 }}>{nameFor(p.username)}</td>
+                <td style={{ fontSize: 12 }}>
+                  <a href={contribsLink(wiki, p.username)} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb" }}>{p.username}</a>
+                  {p.formOnly && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>form only</span>}
+                </td>
+                {hasCounts && <td style={{ fontWeight: 600 }}>{p.articles}</td>}
+                {hasCounts && <td style={{ fontSize: 12 }}>{p.edits}</td>}
+                <td style={{ fontSize: 12, color: "#666" }}>{p.events.join(", ")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // Events for the month with usernames from their linked registration forms.
 async function withFormUsernames(events) {
   if (!events.some(ev => (ev.formIds || []).length)) return events;
@@ -83,7 +142,7 @@ async function withFormUsernames(events) {
   });
 }
 
-function Report({ members, reports, events, scope, profile, canEdit, showToast, org }) {
+function Report({ members, reports, events, scope, profile, canEdit, showToast, org, nameFor }) {
   const [month,     setMonth]     = useState(lastFullMonth());
   const [wiki,      setWiki]      = useState(DEFAULT_WIKI);
   const [threshold, setThreshold] = useState(DEFAULT_THRESHOLD);
@@ -104,10 +163,10 @@ function Report({ members, reports, events, scope, profile, canEdit, showToast, 
     if (freshMatches) {
       const rows = buildReportRows(fresh.members, fresh.stats, threshold)
         .map(r => (fresh.formOnly?.has(r.username) ? { ...r, formOnly: true } : r));
-      return { rows, threshold: Number(threshold) || 0, partial: isPartialMonth(month), isSaved: false, events: fresh.events };
+      return { rows, threshold: Number(threshold) || 0, partial: isPartialMonth(month), isSaved: false, events: fresh.events, notMembers: fresh.notMembers || [] };
     }
     if (saved) {
-      return { rows: saved.rows || [], threshold: saved.threshold, partial: saved.partial, isSaved: true, saved, events: saved.events || [] };
+      return { rows: saved.rows || [], threshold: saved.threshold, partial: saved.partial, isSaved: true, saved, events: saved.events || [], notMembers: saved.notMembers || [] };
     }
     return null;
   }, [freshMatches, fresh, saved, threshold, month]);
@@ -128,7 +187,7 @@ function Report({ members, reports, events, scope, profile, canEdit, showToast, 
       if (eventsOnly) {
         const inMonth = await withFormUsernames(eventWindowsInMonth(events, month).map(w => w.event));
         const res = await fetchEventMonthStats(usernames, inMonth, month, wiki, { onProgress });
-        setFresh({ wiki, month, scope, members: eligible, stats: res.stats, formOnly: res.formOnly, events: res.events });
+        setFresh({ wiki, month, scope, members: eligible, stats: res.stats, formOnly: res.formOnly, notMembers: res.notMembers, events: res.events });
       } else {
         const stats = await fetchMonthStats(usernames, month, wiki, { onProgress });
         setFresh({ wiki, month, scope, members: eligible, stats, events: [] });
@@ -153,6 +212,7 @@ function Report({ members, reports, events, scope, profile, canEdit, showToast, 
         partial:     view.partial,
         rows:        view.rows,
         events:      view.events || [],
+        notMembers:  view.notMembers || [],
         generatedBy: profile?.name || "",
         generatedAt: new Date().toISOString(),
       });
@@ -248,12 +308,19 @@ function Report({ members, reports, events, scope, profile, canEdit, showToast, 
                     <div key={ev.slug}>
                       <a href={courseUrl(ev.slug)} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", fontWeight: 500 }}>{ev.title}</a>
                       <span style={{ color: "#888" }}> · {dateRange(ev.start, ev.end)} · {ev.members} member{ev.members === 1 ? "" : "s"} joined
-                        {ev.viaForm > 0 && ` (${ev.viaForm} only on our registration form)`}</span>
+                        {ev.viaForm > 0 && ` (${ev.viaForm} only on our registration form)`}
+                        {ev.notMembers > 0 && ` · ${ev.notMembers} not in the members list`}</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+          )}
+
+          {eventsOnly && (
+            <NotMembersPanel people={view.notMembers} members={members} nameFor={nameFor} canEdit={canEdit} profile={profile} showToast={showToast} wiki={wiki}
+              title="Joined our events but not in the members list"
+              note={`These people joined ${monthLabel(month)}'s Kilimanjaro events but aren't community members, so they are not in the report above. Counts are their edits during the events. Add them, then click "Fetch from Wikipedia" again to include them.`} />
           )}
 
           {best.length > 0 && (
@@ -633,7 +700,7 @@ function YearSummary({ members, reports, scope, currentGrant, profile, org, sign
 }
 
 // ── Events tab — Kilimanjaro events (Outreach Dashboard courses) ───────────────
-function Events({ events, members, forms, profile, canEdit, isAdmin, showToast }) {
+function Events({ events, members, forms, profile, canEdit, isAdmin, showToast, nameFor }) {
   const [links,   setLinks]   = useState("");
   const [busy,    setBusy]    = useState(false);
   const [errors,  setErrors]  = useState([]);
@@ -647,6 +714,13 @@ function Events({ events, members, forms, profile, canEdit, isAdmin, showToast }
   const [regs, setRegs] = useState([]);
   useEffect(() => { getAllRegistrations().then(setRegs).catch(() => {}); }, []);
   const formTitle = (id) => forms.find(f => f.id === id)?.title || "(deleted form)";
+  const outsiders = useMemo(() => {
+    const byEvent = Object.fromEntries(events.map(ev => [ev.id, formJoiners(regs.filter(r => (ev.formIds || []).includes(r.formId)))]));
+    const formSet = new Set(Object.values(byEvent).flat());
+    const dashSet = new Set(events.flatMap(ev => ev.participants || []));
+    return joinedNotMembers(events, members.map(m => m.wikimediaUsername), byEvent)
+      .map(p => ({ ...p, formOnly: formSet.has(p.username) && !dashSet.has(p.username) }));
+  }, [events, regs, members]);
 
   const setForms = async (ev, formIds) => {
     await saveContributorEvent(ev.id, { formIds });
@@ -847,6 +921,10 @@ function Events({ events, members, forms, profile, canEdit, isAdmin, showToast }
           <button className="btn btn-sm" onClick={() => setErrors([])}>Dismiss</button>
         </div>
       )}
+
+      <NotMembersPanel people={outsiders} members={members} nameFor={nameFor} canEdit={canEdit} profile={profile} showToast={showToast}
+        title="People in our events who aren't members"
+        note={`Everyone who joined these events on the Outreach Dashboard (as of the last refresh) or on a linked registration form, but isn't in the community members list. Their edits aren't counted until you add them. Click "Refresh all from dashboard" first to catch late sign-ups.`} />
 
       <div className="panel" style={{ padding: 0 }}>
         {sorted.length === 0 ? <div className="empty">No Kilimanjaro events yet. Paste their Outreach Dashboard links above.</div> : (
@@ -1133,6 +1211,16 @@ export default function ActiveContributors({ profile, currentGrant }) {
   // Name and logo for printed reports and certificates (same as Participants certificates)
   const org = { orgName: settings?.org?.name || "Wikimedians of Kilimanjaro", logoUrl: window.location.origin + logo };
   const signature = settings?.certificate || {};
+  // Real names for usernames that come from events (participants list has them).
+  const nameByUsername = useMemo(() => {
+    const m = new Map();
+    for (const p of participants) {
+      const u = normalizeUsername(p.wikimediaUsername);
+      if (u && (p.name || "").trim() && !m.has(u)) m.set(u, p.name.trim());
+    }
+    return m;
+  }, [participants]);
+  const nameFor = (u) => nameByUsername.get(u) || u;
   // Report, History and Year summary only see reports counted the chosen way.
   const scopedReports = useMemo(() => reports.filter(r => reportScope(r) === scope), [reports, scope]);
 
@@ -1166,10 +1254,10 @@ export default function ActiveContributors({ profile, currentGrant }) {
         ))}
       </div>
 
-      {tab === "Report"  && <Report  members={members} reports={scopedReports} events={events} scope={scope} profile={profile} canEdit={canEdit} showToast={showToast} org={org} />}
+      {tab === "Report"  && <Report  members={members} reports={scopedReports} events={events} scope={scope} nameFor={nameFor} profile={profile} canEdit={canEdit} showToast={showToast} org={org} />}
       {tab === "History" && <History reports={scopedReports} />}
       {tab === "Year summary" && <YearSummary members={members} reports={scopedReports} scope={scope} currentGrant={currentGrant} profile={profile} org={org} signature={signature} />}
-      {tab === "Events"  && <Events events={events} members={members} forms={forms} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
+      {tab === "Events"  && <Events events={events} members={members} forms={forms} nameFor={nameFor} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
       {tab === "Members" && <Members members={members} volunteers={volunteers} participants={participants} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
     </div>
   );

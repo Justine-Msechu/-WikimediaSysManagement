@@ -129,40 +129,73 @@ export async function fetchEventMonthStats(usernames, events, month, wiki = DEFA
   const memberSet = new Set(members);
   const windows = eventWindowsInMonth(events, month);
 
-  const merged = new Map(members.map(u => [u, { pages: new Set(), revs: new Set() }]));
+  const blank = () => ({ pages: new Set(), revs: new Set(), events: new Set() });
+  const merged = new Map(members.map(u => [u, blank()]));
+  const outside = new Map();   // joined our events but not in the community list
   const used = [];
   const plan = [];
   const onDashboard = new Set();
   const onForm = new Set();
   for (const w of windows) {
-    const dash = new Set((await fetchCourseUsers(w.event.slug, { fetchImpl })).filter(u => memberSet.has(u)));
-    const form = new Set((w.event.formUsernames || []).map(normalizeUsername).filter(u => memberSet.has(u)));
+    const dash = new Set(await fetchCourseUsers(w.event.slug, { fetchImpl }));
+    const form = new Set((w.event.formUsernames || []).map(normalizeUsername).filter(Boolean));
     dash.forEach(u => onDashboard.add(u));
     form.forEach(u => onForm.add(u));
     const joined = [...new Set([...dash, ...form])];
-    plan.push({ w, joined, viaDashboard: dash.size, viaForm: [...form].filter(u => !dash.has(u)).length });
+    const mem = joined.filter(u => memberSet.has(u));
+    plan.push({
+      w, joined,
+      members: mem.length,
+      viaDashboard: mem.filter(u => dash.has(u)).length,
+      viaForm: mem.filter(u => !dash.has(u)).length,
+      notMembers: joined.length - mem.length,
+    });
   }
   const total = plan.reduce((s, p) => s + p.joined.length, 0);
   let done = 0;
   if (onProgress) onProgress(0, total);
 
-  for (const { w, joined, viaDashboard, viaForm } of plan) {
-    used.push({ slug: w.event.slug, title: w.event.title || w.event.slug, start: w.start, end: w.end, members: joined.length, viaDashboard, viaForm });
+  for (const { w, joined, ...counts } of plan) {
+    const title = w.event.title || w.event.slug;
+    used.push({ slug: w.event.slug, title, start: w.start, end: w.end, ...counts });
     if (joined.length === 0) continue;
     const contribs = await fetchRangeContribs(joined, w.start, w.end, wiki, {
       fetchImpl, delayMs,
       onProgress: (d) => onProgress && onProgress(done + d, total),
     });
-    for (const [u, e] of contribs) {
-      if (!merged.has(u)) continue;
-      const m = merged.get(u);
-      e.pages.forEach(p => m.pages.add(p));
-      e.revs.forEach(r => m.revs.add(r));
+    for (const u of joined) {
+      const target = memberSet.has(u) ? merged : outside;
+      if (!target.has(u)) target.set(u, blank());
+      const m = target.get(u);
+      m.events.add(title);
+      const e = contribs.get(u);
+      if (e) { e.pages.forEach(p => m.pages.add(p)); e.revs.forEach(r => m.revs.add(r)); }
     }
     done += joined.length;
   }
   const formOnly = new Set([...onForm].filter(u => !onDashboard.has(u)));
-  return { stats: contribsToStats(merged), formOnly, events: used };
+  const notMembers = [...outside].map(([username, e]) => ({
+    username, articles: e.pages.size, edits: e.revs.size, events: [...e.events], formOnly: formOnly.has(username),
+  })).sort((a, b) => b.articles - a.articles || a.username.localeCompare(b.username));
+  return { stats: contribsToStats(merged), formOnly, notMembers, events: used };
+}
+
+// Everyone who joined our events (dashboard + linked forms) but isn't in the
+// community list. events[].participants = dashboard usernames from the last refresh.
+// Returns [{ username, events: [titles] }].
+export function joinedNotMembers(events, memberUsernames, formUsernamesById = {}) {
+  const memberSet = new Set((memberUsernames || []).map(normalizeUsername).filter(Boolean));
+  const out = new Map();
+  for (const ev of events || []) {
+    const people = [...(ev.participants || []), ...(formUsernamesById[ev.id] || [])].map(normalizeUsername).filter(Boolean);
+    for (const u of new Set(people)) {
+      if (memberSet.has(u)) continue;
+      if (!out.has(u)) out.set(u, new Set());
+      out.get(u).add(ev.title || ev.slug);
+    }
+  }
+  return [...out].map(([username, evs]) => ({ username, events: [...evs] }))
+    .sort((a, b) => b.events.length - a.events.length || a.username.localeCompare(b.username));
 }
 
 // ── Finding events from our activities page ────────────────────────────────────

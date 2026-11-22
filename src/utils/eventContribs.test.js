@@ -1,4 +1,4 @@
-import { parseCourseSlug, courseUrl, eventDocId, eventWindowsInMonth, fetchCourse, fetchEventMonthStats, formJoiners, formMatchesEvent } from "./eventContribs";
+import { parseCourseSlug, courseUrl, eventDocId, eventWindowsInMonth, fetchCourse, fetchEventMonthStats, formJoiners, formMatchesEvent, joinedNotMembers } from "./eventContribs";
 import { reportScope } from "./wikiContribs";
 
 const ok = (body) => Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
@@ -73,10 +73,10 @@ describe("fetchEventMonthStats", () => {
     expect(stats.get("Baraka")).toEqual({ articles: 1, edits: 1 });
     expect(stats.get("Chausiku")).toEqual({ articles: 0, edits: 0 });   // member, but in no event
     expect(stats.has("Outsider")).toBe(false);                          // joined, but not a member
-    expect(used.map(e => [e.title, e.members])).toEqual([["One", 1], ["Two", 2]]);
-    // Event "One" only asks Wikipedia about Amina, for its own dates
+    expect(used.map(e => [e.title, e.members, e.notMembers])).toEqual([["One", 1, 1], ["Two", 2, 0]]);
+    // Event "One" asks Wikipedia about the people who joined it, for its own dates
     const one = new URL(calls.find(u => u.includes("ucstart=2026-03-10")));
-    expect(one.searchParams.get("ucuser")).toBe("Amina");
+    expect(one.searchParams.get("ucuser")).toBe("Amina|Outsider");
     expect(one.searchParams.get("ucend")).toBe("2026-03-12T00:00:00Z");
   });
 
@@ -88,6 +88,15 @@ describe("fetchEventMonthStats", () => {
     expect(res.stats.get("Chausiku")).toEqual({ articles: 1, edits: 1 });
     expect([...res.formOnly]).toEqual(["Chausiku"]);              // Baraka is on the dashboard too
     expect(res.events.find(e => e.title === "Two")).toMatchObject({ members: 3, viaDashboard: 2, viaForm: 1 });
+  });
+
+  test("people who joined but aren't community members are listed with their counts", async () => {
+    contribs.push({ user: "Outsider", pageid: 7, revid: 17, timestamp: "2026-03-10T10:00:00Z" });
+    contribs.push({ user: "Outsider", pageid: 8, revid: 18, timestamp: "2026-03-25T10:00:00Z" });   // after event One
+    const res = await fetchEventMonthStats(["Amina", "Baraka"], events, "2026-03", "sw.wikipedia.org", { fetchImpl, delayMs: 0 });
+    contribs.splice(-2);
+    expect(res.notMembers).toEqual([{ username: "Outsider", articles: 1, edits: 1, events: ["One"], formOnly: false }]);
+    expect(res.stats.has("Outsider")).toBe(false);
   });
 
   test("a month without events gives everyone 0", async () => {
@@ -165,4 +174,15 @@ test("formMatchesEvent uses the form's Wikipedia event link", () => {
   expect(formMatchesEvent({ wikiEventUrl: "https://sw.wikipedia.org/wiki/Event:WCK_WikiHealth/November_2026_Health" }, ev)).toBe(true);
   expect(formMatchesEvent({ wikiEventUrl: "https://sw.wikipedia.org/wiki/Event:Other" }, ev)).toBe(false);
   expect(formMatchesEvent({ wikiEventUrl: "" }, ev)).toBe(false);
+});
+
+test("joinedNotMembers lists people from the dashboard and linked forms who aren't members", () => {
+  const events = [
+    { id: "a", title: "One", participants: ["Amina", "New person"] },
+    { id: "b", title: "Two", participants: ["new_person"] },
+  ];
+  expect(joinedNotMembers(events, ["amina"], { b: ["Walk in"] })).toEqual([
+    { username: "New person", events: ["One", "Two"] },
+    { username: "Walk in", events: ["Two"] },
+  ]);
 });

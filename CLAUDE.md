@@ -201,6 +201,11 @@ index — services usually skip `orderBy` and sort client-side instead.
     username, not marked absent — `formJoiners()`), so walk-ins count; they're
     tagged "form only" in reports. Forms whose `wikiEventUrl` points at the
     event page / EventDetails id are suggested (`formMatchesEvent()`).
+    People who joined an event but **aren't community members** are not in
+    the report rows; they're listed separately ("Joined our events but not in
+    the members list" on Report, with their counts; "People in our events who
+    aren't members" on Events via `joinedNotMembers()`) with one-click add
+    (source "events", real name taken from Participants when known).
     Overlapping events don't double count (page/revision sets are merged).
     **Find events** walks the GSF activities page (`DEFAULT_ACTIVITIES_PAGE`)
     → each program → its navigation-tab links and every `Event:<program>/…`

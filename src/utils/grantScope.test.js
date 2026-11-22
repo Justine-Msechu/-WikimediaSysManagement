@@ -1,10 +1,20 @@
 import { oldestGrantId, participantsForGrant, budgetEntryFixes, reportAnswersFor } from "./grantScope";
 
-test("oldestGrantId picks the first grant created", () => {
+test("oldestGrantId picks the grant that starts first, then the one created first", () => {
   expect(oldestGrantId([
     { id: "new", createdAt: { seconds: 2000 } },
     { id: "old", createdAt: { seconds: 1000 } },
     { id: "nodate" },
+  ])).toBe("old");
+  // Old grant re-entered after the new one: its start date still makes it first.
+  expect(oldestGrantId([
+    { id: "2026-27", startDate: "2026-07-01", createdAt: { seconds: 1000 } },
+    { id: "2025-26", startDate: "2025-07-01", createdAt: { seconds: 2000 } },
+  ])).toBe("2025-26");
+  // An old grant with no dates, created long before the new one, is still first.
+  expect(oldestGrantId([
+    { id: "new", startDate: "2026-07-01", createdAt: { seconds: Date.parse("2026-06-01") / 1000 } },
+    { id: "old", createdAt: { seconds: Date.parse("2025-05-01") / 1000 } },
   ])).toBe("old");
   expect(oldestGrantId([])).toBe("");
 });
@@ -66,4 +76,21 @@ describe("belongsToGrant", () => {
     expect(grantMonthRange({ startDate: "2026-07-01", endDate: "2027-06-30" })).toEqual({ start: "2026-07", end: "2027-06" });
     expect(grantMonthRange({})).toBe(null);
   });
+});
+
+test("isReturning: in this grant and an earlier one", () => {
+  const { isReturning } = require("./grantScope");
+  expect(isReturning({ grantIds: ["g1", "g2"] }, "g2", "g1")).toBe(true);
+  expect(isReturning({ grantIds: ["g2"] }, "g2", "g1")).toBe(false);   // new this grant
+  expect(isReturning({}, "g1", "g1")).toBe(false);                      // old member, first grant only
+});
+
+test("reportForMembers keeps only the grant's members and recounts", () => {
+  const { reportForMembers } = require("./grantScope");
+  const r = { month: "2026-07", memberCount: 3, activeCount: 2, rows: [
+    { username: "A", articles: 70, active: true }, { username: "B", articles: 65, active: true }, { username: "C", articles: 0, active: false },
+  ] };
+  const v = reportForMembers(r, new Set(["B", "C"]));
+  expect(v.rows.map(x => x.username)).toEqual(["B", "C"]);
+  expect([v.memberCount, v.activeCount, v.stillEditingCount]).toEqual([2, 1, 1]);
 });

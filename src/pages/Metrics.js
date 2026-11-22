@@ -5,9 +5,9 @@ import { listenParticipants } from "../services/participantService";
 import { listenSettings } from "../services/settingsService";
 import { listenActivities } from "../services/activityService";
 import { listenPrograms } from "../services/programService";
-import { listenContributorReports } from "../services/contributorService";
-import { SCOPES, reportScope } from "../utils/wikiContribs";
-import { participantsForGrant, grantMonthRange } from "../utils/grantScope";
+import { listenContributorReports, listenCommunityMembers } from "../services/contributorService";
+import { SCOPES, reportScope, normalizeUsername, isEditing } from "../utils/wikiContribs";
+import { participantsForGrant, grantMonthRange, belongsToGrant, isReturning, reportForMembers } from "../utils/grantScope";
 import { rankingMonth, activeSummary, activeAtLeastOnce } from "../utils/eventSelection";
 
 function fmt(n) { return (n || 0).toLocaleString(); }
@@ -26,14 +26,15 @@ const METRIC_ROWS = [
 
 const PROJECT_FIELDS = ["Wikipedia", "Wikimedia Commons", "Wikidata", "Wiktionary", "Wikisource"];
 
-export default function Metrics({ profile, grantId, currentGrant }) {
+export default function Metrics({ profile, grantId, currentGrant, firstGrantId = "" }) {
   const [metrics,      setMetrics]      = useState(DEFAULT_METRICS);
   const [participants, setParticipants] = useState([]);
   const [activities,   setActivities]   = useState([]);
   const [programs,     setPrograms]     = useState([]);
   const [settings,     setSettings]     = useState(null);
   const [contribReports, setContribReports] = useState([]);
-  const [contribScope, setContribScope] = useState("");   // "" = pick automatically
+  const [contribScope, setContribScope] = useState("");
+  const [community,    setCommunity]    = useState([]);   // "" = pick automatically
   const [wikiStats,    setWikiStats]    = useState({});
   const [fetchingAll,  setFetchingAll]  = useState(false);
   const [fetchingOD,   setFetchingOD]   = useState(false);
@@ -50,7 +51,8 @@ export default function Metrics({ profile, grantId, currentGrant }) {
     const u4 = listenActivities(setActivities);
     const u5 = listenPrograms(setPrograms);
     const u6 = listenContributorReports(setContribReports);
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
+    const u7 = listenCommunityMembers(setCommunity);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, [grantId]);
 
   const save = async (patch) => {
@@ -135,8 +137,16 @@ export default function Metrics({ profile, grantId, currentGrant }) {
   const scope = contribScope || (hasEventReports ? "events" : "all");
   // Only months inside this grant's dates (a new grant has none yet).
   const grantMonths = grantMonthRange(currentGrant);
+  // ...and only this grant's community members (saved reports list everyone).
+  const grantMembers = community.filter(m => belongsToGrant(m, grantId, { firstGrantId }));
+  const grantMemberSet = new Set(grantMembers.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean));
   const scopedReports = contribReports.filter(r => reportScope(r) === scope
-    && (!currentGrant || (grantMonths && r.month >= grantMonths.start && r.month <= grantMonths.end)));
+    && (!currentGrant || (grantMonths && r.month >= grantMonths.start && r.month <= grantMonths.end)))
+    .map(r => (currentGrant ? reportForMembers(r, grantMemberSet, isEditing) : r));
+  // Retention: members who were also in an earlier grant, and those of them still editing this grant.
+  const returningMembers = grantMembers.filter(m => isReturning(m, grantId, firstGrantId)).map(m => normalizeUsername(m.wikimediaUsername));
+  const editedThisGrant = new Set(scopedReports.filter(r => !r.partial).flatMap(r => (r.rows || []).filter(isEditing).map(x => x.username)));
+  const returningEditing = returningMembers.filter(u => editedThisGrant.has(u)).length;
   const latestContribMonth = rankingMonth(scopedReports);
   const latestContrib = latestContribMonth ? activeSummary(scopedReports, latestContribMonth) : null;
   const contribOnce   = activeAtLeastOnce(scopedReports);
@@ -455,6 +465,7 @@ export default function Metrics({ profile, grantId, currentGrant }) {
             <div><span style={{ color: "#888" }}>Different people active in at least one month:</span> <strong>{contribOnce.people}</strong> ({contribOnce.months} month{contribOnce.months === 1 ? "" : "s"} saved)</div>
             <div><span style={{ color: "#888" }}>Still editing in {latestContribMonth} (1+ article):</span> <strong style={{ color: "#2563eb" }}>{latestContrib.editing}</strong></div>
             <div><span style={{ color: "#888" }}>Still edited in at least one month:</span> <strong style={{ color: "#2563eb" }}>{contribOnce.editing}</strong></div>
+            {grantId && <div><span style={{ color: "#888" }}>Returning from earlier grants (retention):</span> <strong style={{ color: "#2563eb" }}>{returningMembers.length}</strong>{returningMembers.length > 0 && <> — {returningEditing} edited in this grant</>}</div>}
           </div>
           <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
             Counts come from reports saved on the Active contributors page (all wikis together). Save each month's report there first.
@@ -466,6 +477,10 @@ export default function Metrics({ profile, grantId, currentGrant }) {
               <button className="btn btn-sm btn-primary" onClick={() => applyActiveContributors(latestContrib.active)}>Use latest month ({latestContrib.active})</button>
               <button className="btn btn-sm" onClick={() => applyActiveContributors(contribOnce.people)}>Use at least once ({contribOnce.people})</button>
               <button className="btn btn-sm" style={{ color: "#2563eb" }} onClick={() => applyRetainedFromReports(latestContrib.editing)}>Retained editors = still editing ({latestContrib.editing})</button>
+              {grantId && returningMembers.length > 0 && (
+                <button className="btn btn-sm" style={{ color: "#2563eb" }} onClick={() => applyRetainedFromReports(returningEditing)}
+                  title="Members from earlier grants who edited at least once in this grant">Retained editors = returning & editing ({returningEditing})</button>
+              )}
             </div>
           )}
           </>)}

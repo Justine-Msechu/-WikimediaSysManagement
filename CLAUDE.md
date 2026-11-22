@@ -191,7 +191,14 @@ index — services usually skip `orderBy` and sort client-side instead.
     Reports, History, Year summary and Events use only months inside the
     grant's start/end dates; the Report month picker is limited to them. A
     grant without dates shows a "set the dates" warning and no reports.
-    Contributor reports themselves are stored by wiki + month (not grant).
+    Contributor reports themselves are stored by wiki + month (not grant) and
+    list everyone who was a member then; each grant sees only its own members'
+    rows (`reportForMembers()`), and saving keeps other grants' rows.
+    **Returning** = member of this grant who was also in an earlier grant
+    (`isReturning()`) — the grant's retention; badge on Members / Year summary,
+    count + "Retained editors = returning & editing" button on Metrics.
+  - "First grant" (`oldestGrantId()`) = earliest start date (or creation day
+    when a grant has no dates). Records from before grants belong to it.
   Shared across grants on purpose: announcements, deadlines, settings.
 - **Approval flow:** programs and sessions go `draft → submitted → approved /
   rejected`. Approved programs are locked (only admins edit; coordinators may

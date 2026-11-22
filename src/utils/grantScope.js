@@ -2,8 +2,8 @@
 // Pure JS (no React / Firebase). Every grant-data page should show only the
 // selected grant's records, so a new grant starts empty.
 
-// The grant created first (grants are listed newest first). Data saved before
-// grants existed (e.g. old final report answers) belongs to it.
+// The first grant: earliest start date (then the one created first). Data saved
+// before grants existed (old members, volunteers, forms, report answers) belongs to it.
 export function oldestGrantId(grants) {
   const ms = (g) => {
     const c = g.createdAt;
@@ -13,7 +13,9 @@ export function oldestGrantId(grants) {
     const t = Date.parse(c);
     return Number.isNaN(t) ? Infinity : t;
   };
-  const sorted = [...(grants || [])].sort((a, b) => ms(a) - ms(b));
+  // A grant without a start date is placed by the day it was created.
+  const key = (g) => g.startDate || (Number.isFinite(ms(g)) ? new Date(ms(g)).toISOString().slice(0, 10) : "9999");
+  const sorted = [...(grants || [])].sort((a, b) => key(a).localeCompare(key(b)) || ms(a) - ms(b));
   return sorted[0]?.id || "";
 }
 
@@ -84,4 +86,25 @@ export function grantMonthRange(grant) {
   const s = (grant?.startDate || "").slice(0, 7);
   const e = (grant?.endDate || "").slice(0, 7);
   return s && e && s <= e ? { start: s, end: e } : null;
+}
+
+// Members of this grant who were also in an earlier grant — returning
+// volunteers, the grant's retention. Old records with no grantIds count as the first grant's.
+export function isReturning(rec, grantId, firstGrantId = "") {
+  if (!grantId) return false;
+  const ids = Array.isArray(rec?.grantIds) && rec.grantIds.length ? rec.grantIds : [firstGrantId].filter(Boolean);
+  return ids.includes(grantId) && ids.some(id => id !== grantId);
+}
+
+// A saved monthly report seen from one grant: only that grant's members' rows,
+// with the counts recalculated.
+export function reportForMembers(report, memberUsernames, isEditing = (r) => (Number(r.articles) || 0) >= 1) {
+  const rows = (report.rows || []).filter(r => memberUsernames.has(r.username));
+  return {
+    ...report,
+    rows,
+    memberCount: rows.length,
+    activeCount: rows.filter(r => r.active).length,
+    stillEditingCount: rows.filter(isEditing).length,
+  };
 }

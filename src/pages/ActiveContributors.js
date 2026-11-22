@@ -10,7 +10,7 @@ import {
 } from "../utils/eventContribs";
 import { listenForms, getAllRegistrations } from "../services/registrationService";
 import { listenPrograms } from "../services/programService";
-import { belongsToGrant, grantIdsWith, grantMonthRange, participantsForGrant } from "../utils/grantScope";
+import { belongsToGrant, grantIdsWith, grantMonthRange, participantsForGrant, isReturning, reportForMembers } from "../utils/grantScope";
 import { listenVolunteers } from "../services/volunteerService";
 import { listenParticipants } from "../services/participantService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
@@ -144,7 +144,7 @@ async function withFormUsernames(events) {
   });
 }
 
-function Report({ members, reports, events, scope, profile, canEdit, showToast, org, nameFor, addMembers, monthRange }) {
+function Report({ members, reports, allReports = [], events, scope, profile, canEdit, showToast, org, nameFor, addMembers, monthRange }) {
   // Months are limited to the selected grant's dates.
   const maxMonth = monthRange && monthRange.end < currentMonth() ? monthRange.end : currentMonth();
   const minMonth = monthRange ? monthRange.start : "";
@@ -209,14 +209,19 @@ function Report({ members, reports, events, scope, profile, canEdit, showToast, 
     if (!view || view.isSaved) return;
     setSaving(true);
     try {
+      // One saved report per wiki + month is shared by all grants: keep the rows
+      // of other grants' members, replace only this grant's members.
+      const mine = new Set(view.rows.map(r => r.username));
+      const original = allReports.find(r => r.id === reportId(wiki, month, scope));
+      const rows = [...view.rows, ...((original?.rows || []).filter(r => !mine.has(r.username)))];
       await saveContributorReport({
         wiki, month, scope,
         threshold:   view.threshold,
-        memberCount,
-        activeCount,
-        stillEditingCount: editingCount,
+        memberCount: rows.length,
+        activeCount: rows.filter(r => r.active).length,
+        stillEditingCount: rows.filter(isEditing).length,
         partial:     view.partial,
-        rows:        view.rows,
+        rows,
         events:      view.events || [],
         notMembers:  view.notMembers || [],
         generatedBy: profile?.name || "",
@@ -492,7 +497,7 @@ function MonthStrip({ months, byMonth, covered }) {
   );
 }
 
-function YearSummary({ members, reports, scope, currentGrant, profile, org, signature }) {
+function YearSummary({ members, reports, scope, currentGrant, profile, org, signature, returning = new Set() }) {
   const base = useMemo(() => defaultPeriod(currentGrant), [currentGrant]);
   const qs   = useMemo(() => quarters(base.start, base.end), [base]);
   const [mode,   setMode]   = useState("year");      // "year" | "Q1".. | "custom"
@@ -645,6 +650,7 @@ function YearSummary({ members, reports, scope, currentGrant, profile, org, sign
       <div className="card-grid">
         {[
           ["People",                         t.people,       "#1c2b1e"],
+          ...(currentGrant ? [["Returning from earlier grants", summary.rows.filter(r => returning.has(r.username)).length, "#2563eb"]] : []),
           ["Active contributors",            t.active,       "#2d7a4f"],
           [`Retained (${RETAINED_MIN_MONTHS}+ months editing)`, t.retained, "#2563eb"],
           ["Still editing (at least 1 month)", t.editedOnce, "#2563eb"],
@@ -678,7 +684,8 @@ function YearSummary({ members, reports, scope, currentGrant, profile, org, sign
                 {rows.map((r, i) => (
                   <tr key={r.username}>
                     <td style={{ fontSize: 12, color: "#888" }}>{i + 1}</td>
-                    <td style={{ fontWeight: 500 }}>{r.name}{r.bestOfMonth.length > 0 && <span title={`Best contributor: ${r.bestOfMonth.map(m => monthLabel(m)).join(", ")}`} style={{ color: "#d97706", marginLeft: 4 }}>★</span>}</td>
+                    <td style={{ fontWeight: 500 }}>{r.name}{r.bestOfMonth.length > 0 && <span title={`Best contributor: ${r.bestOfMonth.map(m => monthLabel(m)).join(", ")}`} style={{ color: "#d97706", marginLeft: 4 }}>★</span>}
+                      {returning.has(r.username) && <span className="badge badge-blue" style={{ marginLeft: 6, fontSize: 10 }} title="Also a member in an earlier grant — counts as retention">Returning</span>}</td>
                     <td style={{ fontSize: 12 }}>{r.username}</td>
                     <td><span className={`badge ${LABEL_BADGE[r.label]}`}>{YEAR_LABELS[r.label]}</span></td>
                     <td>{r.monthsActive}</td>
@@ -1033,7 +1040,7 @@ function BringMembers({ earlier, bring }) {
   );
 }
 
-function Members({ members, volunteers, participants, profile, canEdit, isAdmin, showToast, addMembers, earlierMembers = [], bringMembers }) {
+function Members({ members, volunteers, participants, profile, canEdit, isAdmin, showToast, addMembers, earlierMembers = [], bringMembers, returning = new Set() }) {
   const [name,     setName]     = useState("");
   const [username, setUsername] = useState("");
   const [bulk,     setBulk]     = useState("");
@@ -1196,7 +1203,8 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
 
       <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name or username..." style={{ flex: 1, minWidth: 200, fontSize: 13 }} />
-        <span style={{ fontSize: 12, color: "#888" }}>{members.length} member{members.length === 1 ? "" : "s"}, {members.filter(m => m.isActive !== false).length} in reports</span>
+        <span style={{ fontSize: 12, color: "#888" }}>{members.length} member{members.length === 1 ? "" : "s"}, {members.filter(m => m.isActive !== false).length} in reports
+          {returning.size > 0 && <>, <strong style={{ color: "#2563eb" }}>{members.filter(m => returning.has(normalizeUsername(m.wikimediaUsername))).length} returning from earlier grants</strong> (retention)</>}</span>
       </div>
 
       <div className="panel" style={{ padding: 0 }}>
@@ -1209,7 +1217,7 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
               <tbody>
                 {filtered.map(m => (
                   <tr key={m.id}>
-                    <td style={{ fontWeight: 500 }}>{m.name}</td>
+                    <td style={{ fontWeight: 500 }}>{m.name}{returning.has(normalizeUsername(m.wikimediaUsername)) && <span className="badge badge-blue" style={{ marginLeft: 6, fontSize: 10 }} title="Also a member in an earlier grant — counts as retention">Returning</span>}</td>
                     <td style={{ fontSize: 12 }}>
                       <a href={contribsLink(WIKIS[0].id, m.wikimediaUsername || "")} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb" }}>{m.wikimediaUsername}</a>
                     </td>
@@ -1279,7 +1287,11 @@ export default function ActiveContributors({ profile, currentGrant, grantId = ""
   const members    = useMemo(() => allMembers.filter(m => belongsToGrant(m, grantId, { firstGrantId })), [allMembers, grantId, firstGrantId]);
   const earlierMembers = allMembers.filter(m => !belongsToGrant(m, grantId, grantOpts));
   const inGrant    = (m) => !currentGrant || (!!monthRange && m >= monthRange.start && m <= monthRange.end);
-  const reports    = allReports.filter(r => inGrant(r.month));
+  // Saved reports list everyone who was a member that month — show only this grant's members.
+  const memberSet  = useMemo(() => new Set(members.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean)), [members]);
+  const reports    = allReports.filter(r => inGrant(r.month)).map(r => (currentGrant ? reportForMembers(r, memberSet, isEditing) : r));
+  // Returning = also a member in an earlier grant → the grant's retention.
+  const returning  = useMemo(() => new Set(members.filter(m => isReturning(m, grantId, firstGrantId)).map(m => normalizeUsername(m.wikimediaUsername))), [members, grantId, firstGrantId]);
   const events     = allEvents.filter(ev => !currentGrant || (!!monthRange && (ev.start || "").slice(0, 7) <= monthRange.end && (ev.end || "").slice(0, 7) >= monthRange.start));
   const volunteers = allVolunteers.filter(v => belongsToGrant(v, grantId, { firstGrantId, programs }));
   const grantParticipants = participantsForGrant(participants, programs, grantId);
@@ -1330,12 +1342,12 @@ export default function ActiveContributors({ profile, currentGrant, grantId = ""
         ))}
       </div>
 
-      {tab === "Report"  && !noDates && !(monthRange && monthRange.start > currentMonth()) && <Report  members={members} reports={scopedReports} events={events} scope={scope} nameFor={nameFor} addMembers={addMembers} monthRange={monthRange} profile={profile} canEdit={canEdit} showToast={showToast} org={org} />}
+      {tab === "Report"  && !noDates && !(monthRange && monthRange.start > currentMonth()) && <Report  members={members} reports={scopedReports} allReports={allReports} events={events} scope={scope} nameFor={nameFor} addMembers={addMembers} monthRange={monthRange} profile={profile} canEdit={canEdit} showToast={showToast} org={org} />}
       {tab === "History" && <History reports={scopedReports} />}
-      {tab === "Year summary" && <YearSummary members={members} reports={scopedReports} scope={scope} currentGrant={currentGrant} profile={profile} org={org} signature={signature} />}
+      {tab === "Year summary" && <YearSummary members={members} reports={scopedReports} scope={scope} currentGrant={currentGrant} profile={profile} org={org} signature={signature} returning={returning} />}
       {tab === "Events"  && <Events events={events} members={members} forms={forms} nameFor={nameFor} addMembers={addMembers} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
       {tab === "Members" && <Members members={members} volunteers={volunteers} participants={grantParticipants} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast}
-        addMembers={addMembers} earlierMembers={grantId ? earlierMembers : []} bringMembers={bringMembers} />}
+        addMembers={addMembers} earlierMembers={grantId ? earlierMembers : []} bringMembers={bringMembers} returning={returning} />}
     </div>
   );
 }

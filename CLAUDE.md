@@ -80,11 +80,14 @@ src/
   components/         RichTextEditor, EventSelection, Import*Modal,
                       OnboardingModal, BackToTop
   utils/              Pure helpers (no React/Firebase) — testable:
-                      wikiContribs.js, eventSelection.js, budgetImport.js,
+                      wikiContribs.js, eventSelection.js, yearSummary.js,
+                      contributorPrint.js, certificateArt.js, budgetImport.js,
                       timelineImport.js, wikiImport.js, spendingReport.js,
                       timelineReport.js
   pages/              One page per nav item (see below)
   data/plannedTimeline.js
+public/
+  certificate/        Wikimedia project logo SVGs for certificate watermarks
 ```
 
 **Legacy files from the pre-Firebase localStorage version — not imported by the
@@ -189,10 +192,37 @@ index — services usually skip `orderBy` and sort client-side instead.
   grant's start month; wikis are combined per month; missing months are flagged.
 - **Best contributor of the month** = most different articles (ties share it,
   nobody wins an empty month) — `bestContributors()` / `summary.bestByMonth`.
-- **Printing** (`utils/contributorPrint.js`): monthly report, year/quarter
-  summary and community member certificates (wording follows the recognition
-  label; best-of-month is printed on the certificate). HTML opened in a new
-  window with a Print / Save PDF button, like Participants certificates.
+- **Printing** (`utils/contributorPrint.js`): monthly report and year/quarter
+  summary. HTML opened in a new window with a Print / Save PDF button
+  (`openPrintWindow`).
+
+### Certificates
+- Two kinds, sharing one footer and watermark:
+  - **Community member certificates** — Active contributors → Year summary
+    (all, filtered by search, or one row). `certificatesHtml()`. Title, badge and
+    wording follow the recognition label (Active contributor → Certificate of
+    Recognition; Retained → Certificate of Appreciation; Participated →
+    Certificate of Participation); best-of-month wins are printed on it.
+  - **Participant certificates** — Participants page → Cert (`printCertificate`
+    in Participants.js).
+- **Footer** (`certificateFooterHtml` + `CERT_FOOTER_CSS`): coordinator
+  signature image with "Name, Title" under the line, and the **date the
+  certificate is printed**. No official stamp (the group doesn't have one).
+- **Signature** is uploaded by an admin in **Settings → Certificate signature**
+  and stored in Firestore `settings/main.certificate`
+  `{ signatureImage (PNG data URL, resized to ≤600px), signatoryName,
+  signatoryTitle }`. **Never commit the signature image** — the repo and the
+  site are public. Printing without one shows a plain "Coordinator signature"
+  line (member certificates warn first).
+- **Watermark** (`certificateArtHtml`, `certificateIconRowHtml`,
+  `CERT_ART_CSS`; URLs from `utils/certificateArt.js`): faint Wikimedia logo in
+  the centre, six faint project logos round the edges (sized in % so they fit
+  both certificate sizes), and a small colour row under the footer. The SVGs
+  are official Wikimedia Commons files (Foundation trademarks, used under the
+  affiliate's rights) kept in `public/certificate/` — **not** imported through
+  webpack, because CRA's SVG loader fails on one file's editor markup.
+- Org name comes from Settings → Organisation; logo from `src/assets/logo.png`.
+  If watermarks don't print, enable "Background graphics" in the print dialog.
 - **Metrics** row `activeContributors` is filled from saved reports (latest
   finished month, or different people active at least once). It is the group's
   own metric — don't merge it into the Foundation's editor metrics.

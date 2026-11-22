@@ -77,13 +77,14 @@ function WikiSelect({ value, onChange }) {
 // ── Report tab ─────────────────────────────────────────────────────────────────
 // People who joined our events but aren't community members — pick and add them.
 // people: [{ username, events[], articles?, edits?, formOnly? }]
-function NotMembersPanel({ people, members, nameFor, canEdit, profile, showToast, title, note, wiki = DEFAULT_WIKI, addMembers }) {
+function NotMembersPanel({ people, members, nameFor, canEdit, profile, showToast, title, note, wiki = DEFAULT_WIKI, addMembers, earlier = new Set() }) {
   const [picked, setPicked] = useState({});
   const [busy, setBusy] = useState(false);
   const existing = useMemo(() => new Set(members.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean)), [members]);
   const list = (people || []).filter(p => !existing.has(p.username));
   const hasCounts = list.some(p => p.articles !== undefined);
   const chosen = list.filter(p => picked[p.username] ?? true);
+  const returningCount = list.filter(p => earlier.has(p.username)).length;
   if (list.length === 0) return null;
 
   const add = async () => {
@@ -109,7 +110,10 @@ function NotMembersPanel({ people, members, nameFor, canEdit, profile, showToast
         <div className="panel-title" style={{ color: "#b45309", margin: 0 }}>{title} ({list.length})</div>
         {canEdit && <button className="btn btn-primary btn-sm" onClick={add} disabled={busy || chosen.length === 0}>{busy ? "Adding…" : `Add ${chosen.length} to members`}</button>}
       </div>
-      <div style={{ fontSize: 12, color: "#666", margin: "6px 0 10px" }}>{note}</div>
+      <div style={{ fontSize: 12, color: "#666", margin: "6px 0 10px" }}>
+        {note}
+        {returningCount > 0 && <> <strong style={{ color: "#2563eb" }}>{returningCount} {returningCount === 1 ? "was a member" : "were members"} in an earlier grant</strong> — adding them marks them as <strong>Returning</strong> (retention); the others are new members.</>}
+      </div>
       <div style={{ overflowX: "auto" }}>
         <table>
           <thead><tr>{canEdit && <th></th>}<th>Name</th><th>Username</th>{hasCounts && <th>Different articles</th>}{hasCounts && <th>Edits</th>}<th>Events</th></tr></thead>
@@ -121,6 +125,9 @@ function NotMembersPanel({ people, members, nameFor, canEdit, profile, showToast
                 <td style={{ fontSize: 12 }}>
                   <a href={contribsLink(wiki, p.username)} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb" }}>{p.username}</a>
                   {p.formOnly && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>form only</span>}
+                  {earlier.has(p.username)
+                    ? <span className="badge badge-blue" style={{ marginLeft: 6, fontSize: 10 }} title="Member in an earlier grant — counts as retention when added">Returning</span>
+                    : <span className="badge badge-green" style={{ marginLeft: 6, fontSize: 10 }}>New</span>}
                 </td>
                 {hasCounts && <td style={{ fontWeight: 600 }}>{p.articles}</td>}
                 {hasCounts && <td style={{ fontSize: 12 }}>{p.edits}</td>}
@@ -144,7 +151,7 @@ async function withFormUsernames(events) {
   });
 }
 
-function Report({ members, reports, allReports = [], events, scope, profile, canEdit, showToast, org, nameFor, addMembers, monthRange }) {
+function Report({ members, reports, allReports = [], events, scope, profile, canEdit, showToast, org, nameFor, addMembers, monthRange, earlier }) {
   // Months are limited to the selected grant's dates.
   const maxMonth = monthRange && monthRange.end < currentMonth() ? monthRange.end : currentMonth();
   const minMonth = monthRange ? monthRange.start : "";
@@ -329,7 +336,7 @@ function Report({ members, reports, allReports = [], events, scope, profile, can
           )}
 
           {eventsOnly && (
-            <NotMembersPanel people={view.notMembers} members={members} nameFor={nameFor} canEdit={canEdit} profile={profile} showToast={showToast} wiki={wiki} addMembers={addMembers}
+            <NotMembersPanel people={view.notMembers} members={members} nameFor={nameFor} canEdit={canEdit} profile={profile} showToast={showToast} wiki={wiki} addMembers={addMembers} earlier={earlier}
               title="Joined our events but not in the members list"
               note={`These people joined ${monthLabel(month)}'s Kilimanjaro events but aren't community members, so they are not in the report above. Counts are their edits during the events. Add them, then click "Fetch from Wikipedia" again to include them.`} />
           )}
@@ -713,7 +720,7 @@ function YearSummary({ members, reports, scope, currentGrant, profile, org, sign
 }
 
 // ── Events tab — Kilimanjaro events (Outreach Dashboard courses) ───────────────
-function Events({ events, members, forms, profile, canEdit, isAdmin, showToast, nameFor, addMembers }) {
+function Events({ events, members, forms, profile, canEdit, isAdmin, showToast, nameFor, addMembers, earlier }) {
   const [links,   setLinks]   = useState("");
   const [busy,    setBusy]    = useState(false);
   const [errors,  setErrors]  = useState([]);
@@ -935,9 +942,9 @@ function Events({ events, members, forms, profile, canEdit, isAdmin, showToast, 
         </div>
       )}
 
-      <NotMembersPanel people={outsiders} members={members} nameFor={nameFor} canEdit={canEdit} profile={profile} showToast={showToast} addMembers={addMembers}
-        title="People in our events who aren't members"
-        note={`Everyone who joined these events on the Outreach Dashboard (as of the last refresh) or on a linked registration form, but isn't in the community members list. Their edits aren't counted until you add them. Click "Refresh all from dashboard" first to catch late sign-ups.`} />
+      <NotMembersPanel people={outsiders} members={members} nameFor={nameFor} canEdit={canEdit} profile={profile} showToast={showToast} addMembers={addMembers} earlier={earlier}
+        title="People in this grant's events who aren't members of this grant yet"
+        note={`Everyone who joined this grant's events on the Outreach Dashboard (as of the last refresh) or on a linked registration form, but isn't in this grant's member list. Their edits aren't counted until you add them. Click "Refresh all from dashboard" first to catch late sign-ups.`} />
 
       <div className="panel" style={{ padding: 0 }}>
         {sorted.length === 0 ? <div className="empty">No Kilimanjaro events yet. Paste their Outreach Dashboard links above.</div> : (
@@ -1286,6 +1293,7 @@ export default function ActiveContributors({ profile, currentGrant, grantId = ""
   const grantOpts  = { firstGrantId };
   const members    = useMemo(() => allMembers.filter(m => belongsToGrant(m, grantId, { firstGrantId })), [allMembers, grantId, firstGrantId]);
   const earlierMembers = allMembers.filter(m => !belongsToGrant(m, grantId, grantOpts));
+  const earlierSet = new Set(earlierMembers.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean));
   const inGrant    = (m) => !currentGrant || (!!monthRange && m >= monthRange.start && m <= monthRange.end);
   // Saved reports list everyone who was a member that month — show only this grant's members.
   const memberSet  = useMemo(() => new Set(members.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean)), [members]);
@@ -1342,10 +1350,10 @@ export default function ActiveContributors({ profile, currentGrant, grantId = ""
         ))}
       </div>
 
-      {tab === "Report"  && !noDates && !(monthRange && monthRange.start > currentMonth()) && <Report  members={members} reports={scopedReports} allReports={allReports} events={events} scope={scope} nameFor={nameFor} addMembers={addMembers} monthRange={monthRange} profile={profile} canEdit={canEdit} showToast={showToast} org={org} />}
+      {tab === "Report"  && !noDates && !(monthRange && monthRange.start > currentMonth()) && <Report  members={members} reports={scopedReports} allReports={allReports} earlier={earlierSet} events={events} scope={scope} nameFor={nameFor} addMembers={addMembers} monthRange={monthRange} profile={profile} canEdit={canEdit} showToast={showToast} org={org} />}
       {tab === "History" && <History reports={scopedReports} />}
       {tab === "Year summary" && <YearSummary members={members} reports={scopedReports} scope={scope} currentGrant={currentGrant} profile={profile} org={org} signature={signature} returning={returning} />}
-      {tab === "Events"  && <Events events={events} members={members} forms={forms} nameFor={nameFor} addMembers={addMembers} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
+      {tab === "Events"  && <Events events={events} members={members} forms={forms} nameFor={nameFor} addMembers={addMembers} earlier={earlierSet} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
       {tab === "Members" && <Members members={members} volunteers={volunteers} participants={grantParticipants} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast}
         addMembers={addMembers} earlierMembers={grantId ? earlierMembers : []} bringMembers={bringMembers} returning={returning} />}
     </div>

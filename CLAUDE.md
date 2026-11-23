@@ -167,10 +167,13 @@ Roles (on `users/{uid}.role`): `admin`, `coordinator`, `finance_officer`,
   - volunteers update only `status`, `volunteerNotes`, `hoursSpent` on their
     own tasks; audit entries must carry the writer's own `userId`;
     notifications: staff may only mark `read`.
-- The rules from the security review (commit 86b0a66) need
-  `firebase deploy --only firestore:rules` by the user. After deploying,
-  check: public registration, coordinator saves/submits a budget entry,
-  finance approves on Review, volunteer updates a task in My tasks.
+- The rules from the security review (commit 86b0a66) are **deployed**
+  (released 2026-11-23) and were checked with Firebase's Rules test API
+  (`projects/{id}:test` with a `testSuite` and mocked `get()`/`exists()` for
+  user and form docs — no deploy, no emulator): 24 cases for coordinator /
+  finance / volunteer / deactivated / public access all behave as intended;
+  the old rules fail 12 of them. The screens look the same — the rules stop
+  requests made around the UI. Finance officers can now approve on Review.
 - Check rules compile without deploying: `firebase deploy --only firestore:rules --dry-run`.
   There's no emulator setup (needs Java).
 - Firebase Storage isn't set up on the project (files go to Google Drive);
@@ -453,7 +456,8 @@ Part 4: Financial — Q15 total spent · Q16 by category · Q17 other revenue
 ```
 
 Final report Part 2 (`FinalReport.js` METRIC_ROWS) mirrors the Foundation's
-fixed metrics only. Part 4 Q15 (total spent, % of grant, remaining) and Q16
+fixed metrics only — results saved on Metrics, so they read 0 until applied
+there. The overview cards and Q6 women line count the Participants list. Part 4 Q15 (total spent, % of grant, remaining) and Q16
 (by budget group) are filled from the grant's **approved** budget entries —
 `spendingSummary()` in `utils/grantSpending.js`, same figure as Budget/Dashboard.
 

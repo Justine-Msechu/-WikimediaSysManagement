@@ -1,11 +1,13 @@
+import { sanitizeHtml } from "../utils/sanitizeHtml";
 import React, { useRef, useState } from "react";
 
 // Convert \n to <br> in text segments only (not inside HTML tags)
+// Always sanitized: only simple formatting survives (see utils/sanitizeHtml).
 export function renderHtml(html) {
   if (!html) return "";
-  return html.split(/(<[^>]+>)/).map((part, i) =>
+  return sanitizeHtml(html.split(/(<[^>]+>)/).map((part, i) =>
     i % 2 === 0 ? part.replace(/\n/g, "<br>") : part
-  ).join("");
+  ).join(""));
 }
 
 function makeList(tag, selected) {

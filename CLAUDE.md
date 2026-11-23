@@ -82,7 +82,7 @@ src/
                       OnboardingModal, BackToTop
   utils/              Pure helpers (no React/Firebase) — testable:
                       wikiContribs.js, eventContribs.js, eventSelection.js, yearSummary.js,
-                      grantScope.js, monthlyNews.js, names.js, grantSpending.js,
+                      grantScope.js, monthlyNews.js, names.js, grantSpending.js, sanitizeHtml.js,
                       contributorPrint.js, certificateArt.js, budgetImport.js,
                       timelineImport.js, wikiImport.js, spendingReport.js,
                       timelineReport.js
@@ -140,6 +140,38 @@ Roles (on `users/{uid}.role`): `admin`, `coordinator`, `finance_officer`,
   delete to admins when only admins may delete).
 - Public (not logged in) writes are allowed only for `registrations` and
   `participants`, with field validation.
+
+## Security rules (keep these when changing code)
+
+- **Rich text is always sanitized.** Show user/stored HTML only through
+  `renderHtml()` (RichTextEditor), which runs `sanitizeHtml()`
+  (`utils/sanitizeHtml.js`, allowlist of simple tags, only `href` on links,
+  http/https/mailto/tel). Never put stored text into `dangerouslySetInnerHTML`
+  or a print window without `renderHtml()` / `esc()` — public registrants
+  control names, so unescaped text = XSS in a coordinator's session.
+- **Firestore rules enforce roles, not just the UI:**
+  - deactivated users (`isActive == false`) get no role (`myRole()` = "disabled").
+  - users may change only `lastLogin`, `name`, `phone` on their own doc
+    (never role, isActive, email, volunteerId).
+  - only admin / finance approve or reject: coordinators can set budget
+    entries and programs to draft / submitted only, can't edit approved
+    entries except `grantId`; finance may change program approval fields and
+    `subPrograms` (Review).
+  - public `registrations` / `participants` creates: fixed key list, length
+    limits, the form must exist and not be `status: "closed"` (`openForm()`).
+    If you add a field to the public form, add it to these key lists.
+  - the public page may only add 1 to a form's `registrationCount`.
+  - volunteers update only `status`, `volunteerNotes`, `hoursSpent` on their
+    own tasks; audit entries must carry the writer's own `userId`;
+    notifications: staff may only mark `read`.
+- Check rules compile without deploying: `firebase deploy --only firestore:rules --dry-run`.
+  There's no emulator setup (needs Java).
+- Firebase Storage isn't set up on the project (files go to Google Drive);
+  `storage.rules` is ready (role-based) but not in firebase.json.
+- Known gaps: the Africa's Talking SMS key lives in `settings` (readable by
+  all staff, used from the browser) — a server function would be needed to
+  hide it; `xlsx` 0.18.5 on npm has known issues with untrusted files (only
+  staff import files); `react-quill-new` is an unused dependency.
 
 ## Main Firestore collections
 

@@ -8,8 +8,14 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function me() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // A deactivated account (Users → Deactivate, isActive == false) has no
+    // role at all — blocked here, not only in the app's UI.
     function myRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return me().get("isActive", true) == false ? "disabled" : me().get("role", "");
     }
 
     function isAdmin() {
@@ -34,7 +40,34 @@ service cloud.firestore {
 
     // Returns the volunteerId stored on the logged-in user's profile
     function myVolunteerId() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.volunteerId;
+      return me().get("volunteerId", "");
+    }
+
+    function changedOnly(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // Statuses a coordinator may set — approving / rejecting is for admin and finance.
+    function coordinatorStatus() {
+      return request.resource.data.get("status", "draft") in ["draft", "submitted"];
+    }
+
+    // ...or, on an update, leaving the status as it was (e.g. fixing a typo in
+    // a rejected entry). Used together with "not approved yet".
+    function coordinatorUpdateStatus() {
+      return coordinatorStatus()
+        || request.resource.data.get("status", "") == resource.data.get("status", "");
+    }
+
+    // A registration form that exists and isn't closed.
+    function openForm(formId) {
+      return exists(/databases/$(database)/documents/registrationForms/$(formId))
+        && get(/databases/$(database)/documents/registrationForms/$(formId)).data.get("status", "open") != "closed";
+    }
+
+    function str(field, max) {
+      return !(field in request.resource.data)
+        || (request.resource.data[field] is string && request.resource.data[field].size() <= max);
     }
 
     // ── /users ─────────────────────────────────────────────────────────────
@@ -44,13 +77,12 @@ service cloud.firestore {
       allow get:    if isAuth() && (request.auth.uid == uid || isAdmin());
       allow list:   if isAdmin();
       allow create: if isAdmin();
-      // Admins can update anything. Non-admins may update their own doc only if
-      // role, isActive, and email are unchanged (prevents self-escalation).
+      // Admins can update anything. Others may change only harmless fields of
+      // their own doc — never role, isActive, email or volunteerId (a volunteer
+      // changing volunteerId could open another volunteer's tasks).
       allow update: if isAdmin() ||
-        (isAuth() && request.auth.uid == uid &&
-         request.resource.data.role     == resource.data.role &&
-         request.resource.data.isActive == resource.data.isActive &&
-         request.resource.data.email    == resource.data.email);
+        (isAuth() && request.auth.uid == uid && myRole() != "disabled" &&
+         changedOnly(["lastLogin", "name", "phone", "updatedAt"]));
       allow delete: if isAdmin();
     }
 
@@ -90,10 +122,13 @@ service cloud.firestore {
       // budgets for approval on an already-approved program, since sessions
       // get added and approved incrementally over the grant year. That's only
       // safe because it's restricted to touching just the subPrograms field.
+      // Finance officers approve / return programs and sessions on Review
+      // (status and approval fields, and the sessions inside subPrograms).
+      // Coordinators can't approve their own program.
       allow update: if isAdmin() ||
-        (isCoordinator() && resource.data.status != "approved") ||
-        (isCoordinator() && resource.data.status == "approved" &&
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(["subPrograms", "updatedAt"]));
+        (isFinance() && changedOnly(["status", "approvedBy", "approvedAt", "rejectionComment", "rejectedAt", "subPrograms", "updatedAt"])) ||
+        (isCoordinator() && resource.data.get("status", "draft") != "approved" && coordinatorUpdateStatus()) ||
+        (isCoordinator() && resource.data.status == "approved" && changedOnly(["subPrograms", "updatedAt"]));
       allow delete: if isAdmin() ||
         (isCoordinator() && resource.data.status == "draft");
     }
@@ -118,11 +153,18 @@ service cloud.firestore {
     // Public registration auto-writes here too — field validation prevents spam.
     match /participants/{docId} {
       allow read:   if isAnyStaff();
+      // Public sign-ups: only the fields the registration page sends, short
+      // values, and a real registration form that isn't closed.
       allow create: if isCoordinator()
                     || (request.resource.data.name is string
                         && request.resource.data.name.size() > 0
                         && request.resource.data.name.size() <= 300
-                        && request.resource.data.formId is string);
+                        && request.resource.data.formId is string
+                        && request.resource.data.keys().hasOnly(["name", "wikimediaUsername", "email", "phone", "gender", "region", "isNew", "programId", "grantId", "source", "registeredViaForm", "formId", "createdAt", "updatedAt"])
+                        && request.resource.data.get("source", "") == "self-registered"
+                        && str("wikimediaUsername", 255) && str("email", 254) && str("phone", 40)
+                        && str("programId", 128) && str("grantId", 128)
+                        && openForm(request.resource.data.formId));
       allow update: if isCoordinator();
       allow delete: if isCoordinator();
     }
@@ -134,7 +176,11 @@ service cloud.firestore {
       allow get:    if true;          // public needs to load form definition
       allow list:   if isAnyStaff();
       allow create: if isCoordinator();
-      allow update: if isCoordinator();
+      // The public page adds 1 to registrationCount (so maxRegistrations works)
+      // and may touch nothing else.
+      allow update: if isCoordinator()
+                    || (changedOnly(["registrationCount", "updatedAt"])
+                        && request.resource.data.registrationCount == resource.data.get("registrationCount", 0) + 1);
       allow delete: if isCoordinator();
     }
 
@@ -145,20 +191,28 @@ service cloud.firestore {
       allow create: if request.resource.data.name is string
                     && request.resource.data.name.size() > 0
                     && request.resource.data.name.size() <= 300
-                    && request.resource.data.formId is string;
+                    && request.resource.data.formId is string
+                    && (isCoordinator()
+                        || (request.resource.data.keys().hasOnly(["name", "wikimediaUsername", "email", "phone", "age", "skills", "isNew", "programId", "grantId", "formId", "registeredAt", "attendance", "createdAt", "updatedAt"])
+                            && request.resource.data.get("attendance", "") == ""
+                            && str("wikimediaUsername", 255) && str("email", 254) && str("phone", 40)
+                            && str("skills", 2000) && str("programId", 128) && str("grantId", 128)
+                            && openForm(request.resource.data.formId)));
       allow read:   if isAnyStaff();
       allow update: if isCoordinator();  // attendance marking
       allow delete: if isAdmin();
     }
 
     // ── /budgetEntries ─────────────────────────────────────────────────────
-    // Finance officers and admins manage budget; coordinators read.
-    // Approval status change restricted to finance + admin (enforced by the
-    // app layer; Firestore rules grant write to isFinance).
+    // Finance officers and admins approve. Coordinators create and edit draft /
+    // submitted entries but can never approve or reject one, nor change an
+    // approved entry (except moving it to its program's grant on Budget).
     match /budgetEntries/{docId} {
       allow read:   if isAnyStaff();
-      allow create: if isFinance() || isCoordinator();
-      allow update: if isFinance() || isCoordinator();
+      allow create: if isFinance() || (isCoordinator() && coordinatorStatus());
+      allow update: if isFinance()
+                    || (isCoordinator() && resource.data.get("status", "draft") != "approved" && coordinatorUpdateStatus())
+                    || (isCoordinator() && changedOnly(["grantId", "updatedAt"]));
       allow delete: if isFinance();
     }
 
@@ -183,7 +237,9 @@ service cloud.firestore {
     // Any authenticated user (or the app itself) may append an audit record.
     // Only admins may read the log. Nobody deletes audit records.
     match /auditLogs/{docId} {
-      allow create: if isAuth();
+      // Records are written as yourself (no entries in someone else's name).
+      allow create: if isAuth() && myRole() != "disabled"
+                    && request.resource.data.get("userId", "") == request.auth.uid;
       allow read:   if isAdmin();
       allow update: if false;
       allow delete: if false;
@@ -202,7 +258,7 @@ service cloud.firestore {
     match /notifications/{docId} {
       allow read:   if isAnyStaff();
       allow create: if isAnyStaff();
-      allow update: if isAnyStaff();
+      allow update: if isAdmin() || (isAnyStaff() && changedOnly(["read", "updatedAt"]));
       allow delete: if isAdmin();
     }
 
@@ -264,9 +320,11 @@ service cloud.firestore {
                     || (isVolunteer() && myVolunteerId() in resource.data.volunteerIds);
       allow create: if isCoordinator();
       // Support both old single-field (volunteerId) and new array (volunteerIds) format
+      // Volunteers may only update progress on their own tasks (status, notes, hours).
       allow update: if isCoordinator()
-        || (isVolunteer() && myVolunteerId() in resource.data.volunteerIds)
-        || (isVolunteer() && resource.data.volunteerId == myVolunteerId());
+        || (isVolunteer() && changedOnly(["status", "volunteerNotes", "hoursSpent", "updatedAt"])
+            && (myVolunteerId() in resource.data.get("volunteerIds", [])
+                || resource.data.get("volunteerId", "") == myVolunteerId()));
       allow delete: if isCoordinator();
     }
 

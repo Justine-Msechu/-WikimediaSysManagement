@@ -2,17 +2,31 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
+    // Role from the user's Firestore profile (cross-service rules). Volunteers
+    // and deactivated accounts get no access to evidence files.
+    function profile() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+    function isStaff() {
+      return request.auth != null
+        && profile().get("isActive", true) != false
+        && profile().get("role", "") in ["admin", "coordinator", "finance_officer", "viewer"];
+    }
+    function isCoordinator() {
+      return isStaff() && profile().get("role", "") in ["admin", "coordinator"];
+    }
+
     // ── Activity evidence files ───────────────────────────────────────────────
     // Path: activities/{activityId}/{fileName}
     // Matches what fileService.js generates via activityFilePath().
     match /activities/{activityId}/{fileName} {
 
-      // Any authenticated staff member can download evidence files.
-      allow read: if request.auth != null;
+      // Staff can download evidence files.
+      allow read: if isStaff();
 
       // Authenticated users can upload. Enforces file size (10 MB) and
       // restricts to safe content types (images, PDFs, spreadsheets, Word docs).
-      allow create: if request.auth != null
+      allow create: if isStaff()
                     && request.resource.size <= 10 * 1024 * 1024
                     && (request.resource.contentType.matches('image/.*')
                         || request.resource.contentType == 'application/pdf'
@@ -22,7 +36,7 @@ service firebase.storage {
                         || request.resource.contentType.matches('application/msword.*'));
 
       // Allow replace/overwrite with same content-type restrictions.
-      allow update: if request.auth != null
+      allow update: if isCoordinator()
                     && request.resource.size <= 10 * 1024 * 1024
                     && (request.resource.contentType.matches('image/.*')
                         || request.resource.contentType == 'application/pdf'
@@ -31,8 +45,8 @@ service firebase.storage {
                         || request.resource.contentType.matches('application/vnd\\..*')
                         || request.resource.contentType.matches('application/msword.*'));
 
-      // Only authenticated users can delete (UI restricts this to coordinator+).
-      allow delete: if request.auth != null;
+      // Only coordinators and admins delete (same as the app).
+      allow delete: if isCoordinator();
     }
 
     // Deny everything else by default (no catch-all rule needed — Storage

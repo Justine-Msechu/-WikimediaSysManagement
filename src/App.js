@@ -255,7 +255,7 @@ function AppShell() {
       case "metrics":      return <Metrics      key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} firstGrantId={oldestGrantId(grants)} grants={grants} />;
       case "participants": return <Participants key={currentGrantId} profile={profile} grantId={currentGrantId} firstGrantId={oldestGrantId(grants)} />;
       case "risks":        return <RiskRegister key={currentGrantId} profile={profile} grantId={currentGrantId} />;
-      case "donor":        return <DonorDashboard key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} />;
+      case "donor":        return <DonorDashboard key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} firstGrantId={oldestGrantId(grants)} />;
       case "report":       return <FinalReport  key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} firstGrantId={oldestGrantId(grants)} />;
       case "audit":        return role === "admin" ? <AuditLog profile={profile} /> : <Dashboard key={currentGrantId} firstGrantId={oldestGrantId(grants)} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
       case "users":        return role === "admin" ? <Users    profile={profile} /> : <Dashboard key={currentGrantId} firstGrantId={oldestGrantId(grants)} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;

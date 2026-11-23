@@ -406,6 +406,9 @@ Final report Part 2 (`FinalReport.js` METRIC_ROWS) mirrors the Foundation's
 fixed metrics only. Part 4 Q15 (total spent, % of grant, remaining) and Q16
 (by budget group) are filled from the grant's **approved** budget entries —
 `spendingSummary()` in `utils/grantSpending.js`, same figure as Budget/Dashboard.
+Donor report: participants, women and new editors come from the grant's
+Participants list (`participantsForGrant`, same as Dashboard/Metrics), with a
+note when activity-typed counts differ; articles created/improved stay from activities.
 
 ## Affiliate Health Criteria mapping
 

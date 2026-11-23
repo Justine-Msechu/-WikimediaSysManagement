@@ -5,6 +5,8 @@ import { listenSettings } from "../services/settingsService";
 import { listenMetrics, listenMetricsByGrant, DEFAULT_METRICS } from "../services/metricsService";
 import { listenBudgetEntries } from "../services/budgetService";
 import { listenPrograms } from "../services/programService";
+import { listenForms } from "../services/registrationService";
+import { participantsForGrant } from "../utils/grantScope";
 
 function fmt(n) { return (n || 0).toLocaleString(); }
 function pct(r, t) { if (!t) return 0; return Math.min(100, Math.round((r / t) * 100)); }
@@ -25,13 +27,14 @@ const METRIC_ROWS = [
   { key: "allOrganizers", label: "Organizers" },
 ];
 
-export default function DonorDashboard({ profile, grantId, currentGrant }) {
+export default function DonorDashboard({ profile, grantId, currentGrant, firstGrantId = "" }) {
   const [activities,    setActivities]    = useState([]);
   const [participants,  setParticipants]  = useState([]);
   const [settings,      setSettings]      = useState(null);
   const [metrics,       setMetrics]       = useState(DEFAULT_METRICS);
   const [budgetEntries, setBudgetEntries] = useState([]);
   const [programs,      setPrograms]      = useState([]);
+  const [forms,         setForms]         = useState([]);
 
   useEffect(() => {
     const u1 = listenActivities(setActivities);
@@ -40,7 +43,8 @@ export default function DonorDashboard({ profile, grantId, currentGrant }) {
     const u4 = grantId ? listenMetricsByGrant(grantId, setMetrics) : listenMetrics(setMetrics);
     const u5 = listenBudgetEntries(setBudgetEntries);
     const u6 = listenPrograms(setPrograms);
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
+    const u7 = listenForms(setForms);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, [grantId]);
 
   const visibleActivities = grantId ? activities.filter(a => a.grantId === grantId) : activities;
@@ -52,9 +56,15 @@ export default function DonorDashboard({ profile, grantId, currentGrant }) {
   const totalBudgetTZS = grant.totalUSD ? Math.round(grant.totalUSD / (grant.conversionRate || 0.000413)) : 0;
   const approvedSpend  = visibleEntries.filter(e => e.status === "approved").reduce((s, e) => s + (e.amount || 0), 0);
 
-  const totalParticipants = visibleActivities.reduce((s, a) => s + (a.participants || 0), 0);
-  const totalWomen        = visibleActivities.reduce((s, a) => s + (a.women || 0), 0);
-  const totalNewEditors   = visibleActivities.reduce((s, a) => s + (a.newEditors || 0), 0);
+  // People come from the Participants list (same as Dashboard and Metrics), not
+  // the numbers typed on each activity.
+  const grantParticipants = participantsForGrant(participants, programs, grantId, { forms, firstGrantId });
+  const isWoman           = (p) => /^(female|woman|f|mwanamke|ke|kike)$/i.test(String(p.gender || "").trim());
+  const totalParticipants = grantParticipants.length;
+  const totalWomen        = grantParticipants.filter(isWoman).length;
+  const totalNewEditors   = grantParticipants.filter(p => p.isNew).length;
+  const genderKnown       = grantParticipants.filter(p => (p.gender || "").trim()).length;
+  const activityCount     = visibleActivities.reduce((s, a) => s + (a.participants || 0), 0);
   const totalCreated      = visibleActivities.reduce((s, a) => s + (a.created || 0), 0);
   const totalImproved     = visibleActivities.reduce((s, a) => s + (a.improved || 0), 0);
 
@@ -71,17 +81,22 @@ export default function DonorDashboard({ profile, grantId, currentGrant }) {
       <div className="card-grid" style={{ marginBottom: 24 }}>
         {[
           { label: "Activities",           value: visibleActivities.length,        color: "#1c2b1e" },
-          { label: "Total participants",   value: fmt(totalParticipants),   color: "#2d7a4f" },
-          { label: "Women participants",   value: `${fmt(totalWomen)} (${womenPct}%)`, color: "#9333ea" },
+          { label: "Total participants",   value: fmt(totalParticipants),   color: "#2d7a4f", note: activityCount !== totalParticipants ? `Activities report ${fmt(activityCount)}` : "" },
+          { label: "Women participants",   value: `${fmt(totalWomen)} (${womenPct}%)`, color: "#9333ea", note: genderKnown < totalParticipants ? `Gender recorded for ${fmt(genderKnown)}` : "" },
           { label: "New editors",          value: fmt(totalNewEditors),     color: "#2563eb" },
           { label: "Articles created",     value: fmt(totalCreated),        color: "#0891b2" },
           { label: "Articles improved",    value: fmt(totalImproved),       color: "#059669" },
-        ].map(({ label, value, color }) => (
+        ].map(({ label, value, color, note }) => (
           <div key={label} className="stat-card">
             <div className="stat-label">{label}</div>
             <div className="stat-value" style={{ color }}>{value}</div>
+            {note && <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{note}</div>}
           </div>
         ))}
+      </div>
+      <div style={{ fontSize: 12, color: "#888", marginTop: -14, marginBottom: 20 }}>
+        Participants, women and new editors are counted from the Participants list for this grant (the same numbers as the Dashboard and Metrics).
+        Articles created / improved come from the activity reports.
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
@@ -133,7 +148,7 @@ export default function DonorDashboard({ profile, grantId, currentGrant }) {
                 <div key={p.id} style={{ background: "#f9f9f7", borderRadius: 8, padding: 14, borderTop: `3px solid ${p.color || "#4a9e6b"}` }}>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>{p.name}</div>
                   <div style={{ fontSize: 12, color: "#888" }}>{acts.length} activities</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: p.color || "#2d7a4f", marginTop: 4 }}>{acts.reduce((s, a) => s + (a.participants || 0), 0)}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: p.color || "#2d7a4f", marginTop: 4 }}>{grantParticipants.filter(x => x.programId === p.id).length}</div>
                   <div style={{ fontSize: 11, color: "#888" }}>participants</div>
                 </div>
               );

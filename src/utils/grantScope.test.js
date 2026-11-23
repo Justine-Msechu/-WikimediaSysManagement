@@ -143,3 +143,13 @@ describe("grant members come from participation", () => {
     expect(earlierPeople(map, grants, "new").has("Baraka")).toBe(true);
   });
 });
+
+test("participantStats and participantMonth", () => {
+  const { participantStats, participantMonth } = require("./grantScope");
+  expect(participantStats([
+    { gender: "Female", isNew: true }, { gender: "Male" }, { gender: "" }, { gender: "kike" },
+  ])).toEqual({ total: 4, women: 2, newEditors: 1, genderKnown: 3 });
+  expect(participantMonth({ createdAt: { seconds: Date.parse("2026-11-05T10:00:00Z") / 1000 } })).toBe("2026-11");
+  expect(participantMonth({ registeredAt: "2026-10-02T00:00:00Z" })).toBe("2026-10");
+  expect(participantMonth({})).toBe("");
+});

@@ -10,7 +10,7 @@ import { listenDeadlines } from "../services/deadlineService";
 import { listenInvoices } from "../services/invoiceService";
 import { listenPrograms } from "../services/programService";
 import { spendingReportHtml } from "../utils/spendingReport";
-import { participantsForGrant } from "../utils/grantScope";
+import { participantsForGrant, participantStats, participantMonth } from "../utils/grantScope";
 import { listenForms } from "../services/registrationService";
 import logo from "../assets/logo.png";
 
@@ -135,9 +135,16 @@ export default function Dashboard({ profile, goPage, grantId, grants, firstGrant
     },
   ].filter(Boolean);
 
-  const totalParticipants = filteredActivities.reduce((s, a) => s + (a.participants || 0), 0);
-  const totalWomen        = filteredActivities.reduce((s, a) => s + (a.women       || 0), 0);
-  const totalNewEditors   = filteredActivities.reduce((s, a) => s + (a.newEditors  || 0), 0);
+  // People come from the grant's Participants list (sign-ups, imports, manual
+  // entries) — the numbers typed on activities are often left empty.
+  const people            = participantStats(grantParticipants);
+  const totalParticipants = people.total;
+  const totalWomen        = people.women;
+  const totalNewEditors   = people.newEditors;
+  // Activities: logged on the Activities page for this grant, plus sessions planned in its programs.
+  const grantPrograms     = grantId ? programs.filter(p => p.grantId === grantId) : programs;
+  const sessionCount      = grantPrograms.reduce((s, p) => s + (p.subPrograms || []).length, 0);
+  const unlinkedActivities = grantId ? activities.filter(a => !a.grantId).length : 0;
 
   const STAT_METRICS = [
     { key: "participants",  label: "Participants" },
@@ -151,7 +158,7 @@ export default function Dashboard({ profile, goPage, grantId, grants, firstGrant
   const chartData   = months.map(m => ({ label: m.label, value: filteredActivities.filter(a => a.date?.startsWith(m.key)).length }));
   const chartPeople = months.map(m => ({
     label: m.label,
-    value: filteredActivities.filter(a => a.date?.startsWith(m.key)).reduce((s, a) => s + (a.participants || 0), 0),
+    value: grantParticipants.filter(p => participantMonth(p) === m.key).length,
   }));
 
   // Upcoming deadlines for widget
@@ -189,18 +196,25 @@ export default function Dashboard({ profile, goPage, grantId, grants, firstGrant
       {/* Stat cards */}
       <div className="card-grid" style={{ marginBottom: 24 }}>
         {[
-          { label: "Activities logged",  value: filteredActivities.length, color: "#1c2b1e" },
+          { label: "Activities logged",  value: filteredActivities.length, color: "#1c2b1e",
+            note: [sessionCount ? `${sessionCount} session${sessionCount === 1 ? "" : "s"} in programs` : "", unlinkedActivities ? `${unlinkedActivities} not linked to a grant` : ""].filter(Boolean).join(" · "),
+            page: unlinkedActivities ? "activities" : "" },
           { label: "Total participants", value: fmt(totalParticipants), color: "#2d7a4f" },
-          { label: "Women participants", value: fmt(totalWomen),        color: "#9333ea" },
-          { label: "New editors",        value: fmt(totalNewEditors),   color: "#2563eb" },
-          { label: "Registry size",      value: grantParticipants.length, color: "#0891b2" },
+          { label: "Women participants", value: fmt(totalWomen),        color: "#9333ea",
+            note: totalParticipants && people.genderKnown < totalParticipants ? `Gender recorded for ${fmt(people.genderKnown)} of ${fmt(totalParticipants)}` : "" },
+          { label: "New editors",        value: fmt(totalNewEditors),   color: "#2563eb", note: "Never edited before joining" },
           showFinancials && { label: "Budget used", value: `${budgetPct}%`, color: budgetPct > 90 ? "#c0392b" : "#2d7a4f" },
-        ].filter(Boolean).map(({ label, value, color }) => (
-          <div key={label} className="stat-card">
+        ].filter(Boolean).map(({ label, value, color, note, page }) => (
+          <div key={label} className="stat-card" style={page ? { cursor: "pointer" } : undefined} onClick={page ? () => goPage(page) : undefined}
+            title={page ? "Open Activities to link them to this grant" : undefined}>
             <div className="stat-label">{label}</div>
             <div className="stat-value" style={{ color }}>{value}</div>
+            {note && <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{note}</div>}
           </div>
         ))}
+      </div>
+      <div style={{ fontSize: 12, color: "#888", marginTop: -14, marginBottom: 20 }}>
+        Participants, women and new editors are counted from this grant's Participants list (registration forms, imports and manual entries).
       </div>
 
       {/* Charts row */}

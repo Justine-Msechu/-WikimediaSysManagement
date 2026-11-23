@@ -195,3 +195,26 @@ export function earlierPeople(participation, grants, grantId) {
   order.slice(0, Math.max(0, idx)).forEach(id => (participation.get(id) || []).forEach(u => earlier.add(u)));
   return earlier;
 }
+
+// Women / new editors from a participant list (Dashboard, Donor report).
+const WOMAN = /^(female|woman|f|mwanamke|ke|kike)$/i;
+export function participantStats(list) {
+  const people = list || [];
+  return {
+    total:       people.length,
+    women:       people.filter(p => WOMAN.test(String(p.gender || "").trim())).length,
+    newEditors:  people.filter(p => p.isNew).length,
+    genderKnown: people.filter(p => String(p.gender || "").trim()).length,
+  };
+}
+
+// "YYYY-MM" a participant was added (createdAt Timestamp / ISO), or "".
+export function participantMonth(p) {
+  const c = p?.createdAt;
+  let d = null;
+  if (c && typeof c.toDate === "function") d = c.toDate();
+  else if (c && typeof c.seconds === "number") d = new Date(c.seconds * 1000);
+  else if (c) d = new Date(c);
+  if (d && !Number.isNaN(d.getTime())) return d.toISOString().slice(0, 7);
+  return String(p?.registeredAt || p?.date || "").slice(0, 7);
+}

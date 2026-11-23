@@ -6,7 +6,7 @@ import { listenMetrics, listenMetricsByGrant, DEFAULT_METRICS } from "../service
 import { listenBudgetEntries } from "../services/budgetService";
 import { listenPrograms } from "../services/programService";
 import { listenForms } from "../services/registrationService";
-import { participantsForGrant } from "../utils/grantScope";
+import { participantsForGrant, participantStats } from "../utils/grantScope";
 
 function fmt(n) { return (n || 0).toLocaleString(); }
 function pct(r, t) { if (!t) return 0; return Math.min(100, Math.round((r / t) * 100)); }
@@ -59,11 +59,7 @@ export default function DonorDashboard({ profile, grantId, currentGrant, firstGr
   // People come from the Participants list (same as Dashboard and Metrics), not
   // the numbers typed on each activity.
   const grantParticipants = participantsForGrant(participants, programs, grantId, { forms, firstGrantId });
-  const isWoman           = (p) => /^(female|woman|f|mwanamke|ke|kike)$/i.test(String(p.gender || "").trim());
-  const totalParticipants = grantParticipants.length;
-  const totalWomen        = grantParticipants.filter(isWoman).length;
-  const totalNewEditors   = grantParticipants.filter(p => p.isNew).length;
-  const genderKnown       = grantParticipants.filter(p => (p.gender || "").trim()).length;
+  const { total: totalParticipants, women: totalWomen, newEditors: totalNewEditors, genderKnown } = participantStats(grantParticipants);
   const activityCount     = visibleActivities.reduce((s, a) => s + (a.participants || 0), 0);
   const totalCreated      = visibleActivities.reduce((s, a) => s + (a.created || 0), 0);
   const totalImproved     = visibleActivities.reduce((s, a) => s + (a.improved || 0), 0);

@@ -2,7 +2,7 @@
 // Pure JS. Built from the rows of a saved (or freshly fetched) monthly report,
 // which are already limited to the selected grant's volunteers.
 
-import { bestContributors, isEditing, wikiInfo, normalizeUsername, WIKIS } from "./wikiContribs";
+import { bestContributors, isEditing, wikiInfo, normalizeUsername, WIKIS, DEFAULT_WIKI, POINTS_WIKIS, projectPoints } from "./wikiContribs";
 
 /**
  * rows: report rows { name, username, articles, edits, created, bytes, pageIds[], newArticles[] }
@@ -74,6 +74,44 @@ export function newsText(news, { monthName, wiki = "sw.wikipedia.org", wikiLabel
 }
 
 /**
+ * Best contributor across our four projects (POINTS_WIKIS), by points.
+ * reports: [{ wiki, rows }] for one month.
+ * Returns { ranking: [{ username, name, points, parts: [{ wiki, pages, points }] }] (most first),
+ *           best: the top person(s) — ties share it, nobody wins with 0 }
+ */
+export function bestAcrossProjects(reports) {
+  const people = new Map();
+  for (const r of reports || []) {
+    const w = r.wiki || DEFAULT_WIKI;
+    if (!POINTS_WIKIS.includes(w)) continue;
+    for (const row of r.rows || []) {
+      const u = normalizeUsername(row.username);
+      const pages = Number(row.articles) || 0;
+      if (!u || !pages) continue;
+      if (!people.has(u)) people.set(u, { username: u, name: row.name || u, exact: 0, parts: [] });
+      const p = people.get(u);
+      const pts = projectPoints(w, pages);
+      p.exact += pts;
+      p.parts.push({ wiki: w, pages, points: Math.round(pts) });
+    }
+  }
+  const order = (w) => POINTS_WIKIS.indexOf(w);
+  const ranking = [...people.values()]
+    .map(({ exact, ...p }) => ({ ...p, points: Math.round(exact), parts: p.parts.sort((a, b) => order(a.wiki) - order(b.wiki)) }))
+    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name));
+  const max = ranking[0]?.points || 0;
+  return { ranking, best: max > 0 ? ranking.filter(p => p.points === max) : [] };
+}
+
+// "300 items on Wikidata, 10 articles on Swahili Wikipedia"
+export function pointsBreakdown(parts, lang = "en") {
+  return (parts || []).map(({ wiki, pages }) => {
+    const w = wikiInfo(wiki);
+    return lang === "sw" ? `${SW_UNITS[w.unit] || "makala"} ${n(pages)} kwenye ${w.short}` : `${n(pages)} ${word(pages, w)} on ${w.label}`;
+  }).join(", ");
+}
+
+/**
  * The month across all projects.
  * reports: [{ wiki, rows }] — one per project (saved or freshly fetched), same month and scope.
  * Returns { projects: [{ wiki, info, news }] (projects with edits, in WIKIS order),
@@ -92,7 +130,8 @@ export function projectsNews(reports) {
     edits += news.edits;
     if (news.editing > 0) projects.push({ wiki: w.id, info: w, news });
   }
-  return { projects, missing: WIKIS.filter(w => !byWiki.has(w.id)).map(w => w.id), volunteers: people.size, edits };
+  const { ranking, best } = bestAcrossProjects(reports);
+  return { projects, missing: WIKIS.filter(w => !byWiki.has(w.id)).map(w => w.id), volunteers: people.size, edits, ranking, best };
 }
 
 // One paragraph covering every project.
@@ -106,10 +145,12 @@ export function projectsText(all, { monthName, orgName = "Wikimedia Community Ki
         ? `${u} ${n(news.articles)} kwenye ${info.short}${news.created ? ` (zilizopakiwa ${n(news.created)})` : ""}`
         : `${u} ${n(news.articles)} kwenye ${info.short}${news.created ? ` (mpya ${n(news.created)})` : ""}`;
     });
-    return `Mwezi ${monthName}, wanajamii ${n(all.volunteers)} wa ${orgName} walichangia miradi ya Wikimedia${eventsOnly ? " kupitia matukio yetu" : ""}: ${list(parts)}, kwa jumla ya marekebisho ${n(all.edits)}. Asanteni wote kwa michango yenu!`;
+    const bestSw = all.best?.length ? ` Mchangiaji bora wa miradi yote: ${all.best.map(b => `${b.name} (alama ${n(b.points)}: ${pointsBreakdown(b.parts, "sw")})`).join(" na ")}.` : "";
+    return `Mwezi ${monthName}, wanajamii ${n(all.volunteers)} wa ${orgName} walichangia miradi ya Wikimedia${eventsOnly ? " kupitia matukio yetu" : ""}: ${list(parts)}, kwa jumla ya marekebisho ${n(all.edits)}.${bestSw} Asanteni wote kwa michango yenu!`;
   }
   const parts = all.projects.map(({ info, news }) => info.kind === "media"
     ? `${n(news.articles)} ${word(news.articles, info)} on ${info.label}${news.created ? ` (${n(news.created)} uploaded)` : ""}`
     : `${n(news.articles)} ${word(news.articles, info)} on ${info.label}${news.created ? ` (${n(news.created)} new)` : ""}`);
-  return `In ${monthName}, ${n(all.volunteers)} volunteers of ${orgName} contributed across Wikimedia projects${eventsOnly ? " through our events" : ""}: ${list(parts)}, with ${n(all.edits)} edits in total. Thank you all for your contributions!`;
+  const best = all.best?.length ? ` Best contributor across our projects: ${all.best.map(b => `${b.name} (${n(b.points)} points: ${pointsBreakdown(b.parts)})`).join(" & ")}.` : "";
+  return `In ${monthName}, ${n(all.volunteers)} volunteers of ${orgName} contributed across Wikimedia projects${eventsOnly ? " through our events" : ""}: ${list(parts)}, with ${n(all.edits)} edits in total.${best} Thank you all for your contributions!`;
 }

@@ -282,8 +282,16 @@ index — services usually skip `orderBy` and sort client-side instead.
   contributor (reached the active level on any project in any month) > Retained (still editing in
   `RETAINED_MIN_MONTHS` = 3+ months) > Participated. Quarters count from the
   grant's start month; wikis are combined per month; missing months are flagged.
-- **Best contributor of the month** = most different articles (ties share it,
-  nobody wins an empty month) — `bestContributors()` / `summary.bestByMonth`.
+- **Best contributor of the month** (ties share it, nobody wins an empty month):
+  - **Across our projects** (All projects panel, newsletter text, Year summary
+    "All wikis", certificates' ★ wins) = most **points** over the four projects
+    `POINTS_WIKIS` (Swahili Wikipedia, Wikidata, Commons, Swahili Wiktionary;
+    not English Wikipedia). Reaching a project's standard active level
+    (`thresholdFor()`) = `POINTS_PER_LEVEL` (100) points, so 30 articles =
+    100 items = 20 files. `projectPoints()`, `bestAcrossProjects()` (ranking
+    with per-project breakdown), `summary.bestByMonth[].byPoints/points`.
+  - **On one project** (Report tab, History, Year summary with one wiki) = most
+    different pages there — `bestContributors()`.
 - **Monthly news** (`utils/monthlyNews.js`, panel on the Report tab): for the
   newsletter — volunteers who edited, different articles (each counted once
   across volunteers, via `pageIds` saved on each row), new articles started

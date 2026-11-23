@@ -48,3 +48,23 @@ test("Wikidata and Commons wording, and all projects together", () => {
   expect(en).toContain("4 articles on Swahili Wikipedia (2 new), 1 item on Wikidata (5 new) and 12 files on Wikimedia Commons (10 uploaded)");
   expect(projectsText(all, { monthName: "Oktoba 2026", lang: "sw" })).toContain("faili 12 kwenye Wikimedia Commons");
 });
+
+test("best contributor across our four projects by points", () => {
+  const { bestAcrossProjects, projectsNews, projectsText } = require("./monthlyNews");
+  const reports = [
+    { wiki: "sw.wikipedia.org", rows: [{ username: "Amina", name: "Amina", articles: 40 }, { username: "Chausiku", name: "Chausiku", articles: 10 }] },
+    { wiki: "www.wikidata.org", rows: [{ username: "Baraka", name: "Baraka", articles: 300 }] },
+    { wiki: "commons.wikimedia.org", rows: [{ username: "Chausiku", name: "Chausiku", articles: 25 }] },
+    { wiki: "en.wikipedia.org", rows: [{ username: "Dora", name: "Dora", articles: 999 }] },   // not one of our four
+  ];
+  const r = bestAcrossProjects(reports);
+  expect(r.ranking.map(p => [p.name, p.points])).toEqual([["Baraka", 300], ["Chausiku", 158], ["Amina", 133]]);
+  expect(r.best.map(p => p.name)).toEqual(["Baraka"]);
+  expect(r.ranking[1].parts).toEqual([
+    { wiki: "sw.wikipedia.org", pages: 10, points: 33 },
+    { wiki: "commons.wikimedia.org", pages: 25, points: 125 },
+  ]);
+  expect(bestAcrossProjects([]).best).toEqual([]);
+  expect(projectsText(projectsNews(reports), { monthName: "October 2026" }))
+    .toContain("Best contributor across our projects: Baraka (300 points: 300 items on Wikidata).");
+});

@@ -89,3 +89,16 @@ describe("buildYearSummary", () => {
     expect(lines[1]).toBe("1,Amina Juma,Amina,Active contributor,1,2,135,270,2026-07,70,70,65,,,,");
   });
 });
+
+test("all wikis: best of the month by points across our projects", () => {
+  const { buildYearSummary } = require("./yearSummary");
+  const reports = [
+    { wiki: "sw.wikipedia.org", month: "2026-10", rows: [{ username: "Amina", articles: 40 }] },
+    { wiki: "www.wikidata.org", month: "2026-10", rows: [{ username: "Baraka", articles: 300 }] },
+  ];
+  const opts = { start: "2026-10", end: "2026-10", now: new Date("2026-12-01") };
+  const all = buildYearSummary(reports, [], opts);
+  expect(all.bestByMonth[0]).toMatchObject({ byPoints: true, points: 300, people: [{ username: "Baraka" }] });
+  const sw = buildYearSummary(reports, [], { ...opts, wiki: "sw.wikipedia.org" });
+  expect(sw.bestByMonth[0]).toMatchObject({ byPoints: false, articles: 40, people: [{ username: "Amina" }] });
+});

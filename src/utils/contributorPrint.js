@@ -167,8 +167,8 @@ export function yearReportHtml({ summary, start, end, wikiLabel, quarterRows = [
       <td class="num">${s.totals.editedOnce}</td><td class="num">${s.totals.active}</td><td class="num">${s.totals.articles.toLocaleString()}</td></tr>`).join("")}
     </tbody></table>` : ""}
     <h2>★ Best contributor of each month</h2>
-    ${summary.bestByMonth.length ? `<table><thead><tr><th>Month</th><th>Best contributor</th><th class="num">Different articles</th></tr></thead><tbody>
-      ${summary.bestByMonth.map(b => `<tr><td>${esc(monthName(b.month))}</td><td>${b.people.length ? names(b.people) : "—"}</td><td class="num">${b.articles || ""}</td></tr>`).join("")}
+    ${summary.bestByMonth.length ? `<table><thead><tr><th>Month</th><th>Best contributor</th><th class="num">${summary.bestByMonth.some(b => b.byPoints) ? "Points" : "Different articles"}</th></tr></thead><tbody>
+      ${summary.bestByMonth.map(b => `<tr><td>${esc(monthName(b.month))}</td><td>${b.people.length ? names(b.people) : "—"}</td><td class="num">${(b.byPoints ? b.points : b.articles) || ""}</td></tr>`).join("")}
     </tbody></table>` : `<div class="sub">No saved months in this period.</div>`}
     <h2>Every member</h2>
     <table><thead><tr><th>#</th><th>Name</th><th>Username</th><th>Recognition</th><th class="num">Months active</th><th class="num">Months editing</th><th class="num">Total articles</th><th>Best month</th></tr></thead><tbody>

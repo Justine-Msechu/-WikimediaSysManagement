@@ -2,7 +2,7 @@
 // Pure JS (no React / Firebase). Built from saved monthly contributor reports,
 // no extra Wikipedia requests.
 
-import { normalizeUsername, isEditing, shiftMonth, currentMonth, isArticleWiki } from "./wikiContribs";
+import { normalizeUsername, isEditing, shiftMonth, currentMonth, isArticleWiki, projectPoints } from "./wikiContribs";
 
 // Still editing in at least this many months → retained member.
 export const RETAINED_MIN_MONTHS = 3;
@@ -82,7 +82,8 @@ export function buildYearSummary(reports, members, { start, end, wiki = "all", n
       const u = normalizeUsername(row.username);
       if (!u) continue;
       const p = person(u, row.name);
-      const cell = p.byMonth[r.month] || (p.byMonth[r.month] = { articles: 0, edits: 0, active: false, editing: false });
+      const cell = p.byMonth[r.month] || (p.byMonth[r.month] = { articles: 0, edits: 0, points: 0, active: false, editing: false });
+      cell.points += projectPoints(r.wiki, row.articles);   // our four projects, for best of the month
       if (wiki !== "all" || isArticleWiki(r.wiki)) cell.articles += Number(row.articles) || 0;
       cell.edits    += Number(row.edits) || 0;
       cell.active    = cell.active || !!row.active;
@@ -103,12 +104,20 @@ export function buildYearSummary(reports, members, { start, end, wiki = "all", n
     return { ...p, monthsActive, monthsEditing, totalArticles, totalEdits, bestMonth: best, isActiveContributor, isRetained, label };
   });
 
-  // Best contributor of each saved month (wikis combined; ties share it)
+  // Best contributor of each saved month (ties share it). All wikis: most
+  // points across our four projects; one wiki: most different pages there.
+  const byPoints = wiki === "all";
+  const score = (r, m) => (byPoints ? Math.round(r.byMonth[m]?.points || 0) : r.byMonth[m]?.articles || 0);
   const coveredMonths = months.filter(m => covered.has(m));
   const bestByMonth = coveredMonths.map(m => {
-    const max = Math.max(0, ...rows.map(r => r.byMonth[m]?.articles || 0));
-    const people = max > 0 ? rows.filter(r => (r.byMonth[m]?.articles || 0) === max) : [];
-    return { month: m, articles: max, people: people.map(r => ({ name: r.name, username: r.username })) };
+    const max = Math.max(0, ...rows.map(r => score(r, m)));
+    const people = max > 0 ? rows.filter(r => score(r, m) === max) : [];
+    return {
+      month: m, byPoints,
+      points: byPoints ? max : 0,
+      articles: byPoints ? Math.max(0, ...people.map(r => r.byMonth[m]?.articles || 0)) : max,
+      people: people.map(r => ({ name: r.name, username: r.username })),
+    };
   });
   const wins = new Map();
   for (const b of bestByMonth) for (const p of b.people) wins.set(p.username, [...(wins.get(p.username) || []), b.month]);

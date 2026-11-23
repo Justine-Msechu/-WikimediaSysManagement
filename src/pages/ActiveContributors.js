@@ -18,9 +18,9 @@ import { listenSettings } from "../services/settingsService";
 import { monthReportHtml, yearReportHtml, certificatesHtml, openPrintWindow } from "../utils/contributorPrint";
 import logo from "../assets/logo.png";
 import { certificateArt } from "../utils/certificateArt";
-import { monthlyNews, newsText, projectsNews, projectsText } from "../utils/monthlyNews";
+import { monthlyNews, newsText, projectsNews, projectsText, pointsBreakdown } from "../utils/monthlyNews";
 import {
-  WIKIS, DEFAULT_WIKI, DEFAULT_THRESHOLD, wikiInfo, thresholdFor, fetchUserProjects,
+  WIKIS, DEFAULT_WIKI, DEFAULT_THRESHOLD, wikiInfo, thresholdFor, fetchUserProjects, POINTS_WIKIS, POINTS_PER_LEVEL,
   normalizeUsername, currentMonth, lastFullMonth, isPartialMonth, previousMonths,
   fetchMonthStats, checkUsernames, buildReportRows, rowsToCsv, isEditing, bestContributors, STILL_EDITING_MIN,
   SCOPES, DEFAULT_SCOPE, reportScope, scopeLabel,
@@ -201,6 +201,26 @@ function AllProjectsPanel({ reports, month, eventsOnly, orgName }) {
           </tbody>
         </table>
       </div>
+      {all.best.length > 0 && (
+        <div style={{ border: "2px solid #d97706", background: "#fffaf0", borderRadius: 8, padding: "10px 14px", margin: "12px 0" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#b45309", letterSpacing: 1, textTransform: "uppercase" }}>★ Best contributor across our projects{all.best.length > 1 ? " (shared)" : ""}</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#1c2b1e", marginTop: 2 }}>{all.best.map(b => b.name).join(" & ")} — {all.best[0].points.toLocaleString()} points</div>
+          <div style={{ fontSize: 13, color: "#666" }}>{all.best.map(b => pointsBreakdown(b.parts)).join(" · ")}</div>
+          {all.ranking.length > 1 && (
+            <details style={{ marginTop: 6, fontSize: 13 }}>
+              <summary style={{ cursor: "pointer", color: "#b45309" }}>Top {Math.min(10, all.ranking.length)}</summary>
+              <ol style={{ margin: "6px 0 0 18px", padding: 0 }}>
+                {all.ranking.slice(0, 10).map(p => (
+                  <li key={p.username}><strong>{p.name}</strong> — {p.points.toLocaleString()} points <span style={{ color: "#888" }}>({p.parts.map(x => `${wikiInfo(x.wiki).label} ${x.points}`).join(" + ")})</span></li>
+                ))}
+              </ol>
+            </details>
+          )}
+          <div style={{ fontSize: 11, color: "#888", marginTop: 6 }}>
+            Reaching a project's active level = {POINTS_PER_LEVEL} points: {POINTS_WIKIS.map(id => `${thresholdFor(id)} ${wikiInfo(id).unit} on ${wikiInfo(id).label}`).join(", ")}. English Wikipedia isn't counted.
+          </div>
+        </div>
+      )}
       <div style={{ fontSize: 13, margin: "10px 0 6px" }}>
         <strong>{all.volunteers}</strong> different volunteer{all.volunteers === 1 ? "" : "s"} edited at least one project · <strong>{all.edits.toLocaleString()}</strong> edits in all
       </div>
@@ -844,12 +864,20 @@ function YearSummary({ members, reports, scope, currentGrant, profile, org, sign
       {summary.bestByMonth.some(b => b.people.length) && (
         <div className="panel" style={{ border: "1px solid #f0d5b0", background: "#fffaf0", marginBottom: 20 }}>
           <div className="panel-title" style={{ color: "#b45309" }}>★ Best contributor of each month</div>
+          {summary.bestByMonth.some(b => b.byPoints) && (
+            <div style={{ fontSize: 12, color: "#888", marginTop: -6, marginBottom: 10 }}>
+              By points across our four projects: reaching a project's active level = {POINTS_PER_LEVEL} points
+              ({POINTS_WIKIS.map(id => `${thresholdFor(id)} ${wikiInfo(id).unit} on ${wikiInfo(id).label}`).join(" = ")}).
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
             {summary.bestByMonth.map(b => (
               <div key={b.month} style={{ fontSize: 13 }}>
                 <div style={{ fontSize: 11, color: "#888" }}>{monthLabel(b.month)}</div>
                 <div style={{ fontWeight: 600 }}>{b.people.length ? b.people.map(p => p.name).join(" & ") : "No edits"}</div>
-                {b.articles > 0 && <div style={{ fontSize: 12, color: "#b45309" }}>{b.articles} articles</div>}
+                {b.byPoints
+                  ? b.points > 0 && <div style={{ fontSize: 12, color: "#b45309" }}>{b.points.toLocaleString()} points</div>
+                  : b.articles > 0 && <div style={{ fontSize: 12, color: "#b45309" }}>{b.articles} articles</div>}
               </div>
             ))}
           </div>

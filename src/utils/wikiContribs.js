@@ -23,6 +23,18 @@ export function wikiInfo(id) {
   return WIKIS.find(w => w.id === id) || { id, label: id, short: id, kind: "article", namespaces: "0", unit: "articles", one: "article", newUnit: "new articles", threshold: DEFAULT_THRESHOLD };
 }
 export const thresholdFor = (id) => wikiInfo(id).threshold;
+// ── Points: best contributor across our projects ─────────────────────────────
+// Our four projects. Reaching a project's active level = 100 points, so work
+// counts the same everywhere (30 articles = 100 Wikidata items = 20 files).
+// Uses each project's standard threshold, so points are the same every month.
+export const POINTS_WIKIS = ["sw.wikipedia.org", "www.wikidata.org", "commons.wikimedia.org", "sw.wiktionary.org"];
+export const POINTS_PER_LEVEL = 100;
+export function projectPoints(wiki, pages) {
+  const w = wiki || DEFAULT_WIKI;   // old reports without a wiki = Swahili Wikipedia
+  if (!POINTS_WIKIS.includes(w)) return 0;
+  return ((Number(pages) || 0) * POINTS_PER_LEVEL) / thresholdFor(w);
+}
+
 // Wikipedia articles (and other text wikis) — what event seats and article totals use.
 export const isArticleWiki = (id) => wikiInfo(id || DEFAULT_WIKI).kind === "article";
 // "Still editing" = edited at least this many different articles in the month.

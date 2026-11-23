@@ -87,7 +87,7 @@ export default function Metrics({ profile, grantId, currentGrant, firstGrantId =
 
   // Scope to current grant
   const grantActivities  = grantId ? activities.filter(a => a.grantId === grantId) : activities;
-  const grantParticipants = participantsForGrant(participants, programs, grantId);
+  const grantParticipants = participantsForGrant(participants, programs, grantId, { forms, firstGrantId });
 
   const registryCounts = {
     participants:    grantParticipants.length,

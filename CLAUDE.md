@@ -82,7 +82,7 @@ src/
                       OnboardingModal, BackToTop
   utils/              Pure helpers (no React/Firebase) — testable:
                       wikiContribs.js, eventContribs.js, eventSelection.js, yearSummary.js,
-                      grantScope.js, monthlyNews.js, names.js,
+                      grantScope.js, monthlyNews.js, names.js, grantSpending.js,
                       contributorPrint.js, certificateArt.js, budgetImport.js,
                       timelineImport.js, wikiImport.js, spendingReport.js,
                       timelineReport.js
@@ -165,8 +165,11 @@ index — services usually skip `orderBy` and sort client-side instead.
   (`utils/grantScope.js`):
   - activities, programs, budget entries, invoices, risks carry `grantId`;
     budget entries created by approvals (Review) take the program's `grantId`.
-  - participants belong to a grant by `grantId` or through one of its
-    programs (`participantsForGrant()`); don't count the whole registry.
+  - participants belong to a grant by `grantId`, through one of its
+    programs, or (self-registered, no grant/program) through the grant's
+    registration form (`participantsForGrant(…, { forms, firstGrantId })` —
+    pass forms everywhere). Public registration now saves the form's
+    `grantId` on the participant. Don't count the whole registry.
   - money (total, rate) comes from the selected grant only — no fallback to
     the legacy `settings.grant` when a grant is selected.
   - metrics are per grant (`metrics/{grantId}`); `DEFAULT_METRICS` targets are
@@ -400,7 +403,9 @@ Part 4: Financial — Q15 total spent · Q16 by category · Q17 other revenue
 ```
 
 Final report Part 2 (`FinalReport.js` METRIC_ROWS) mirrors the Foundation's
-fixed metrics only.
+fixed metrics only. Part 4 Q15 (total spent, % of grant, remaining) and Q16
+(by budget group) are filled from the grant's **approved** budget entries —
+`spendingSummary()` in `utils/grantSpending.js`, same figure as Budget/Dashboard.
 
 ## Affiliate Health Criteria mapping
 

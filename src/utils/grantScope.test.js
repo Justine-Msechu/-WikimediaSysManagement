@@ -31,6 +31,19 @@ test("participantsForGrant: tagged with the grant or in one of its programs", ()
   expect(participantsForGrant(people, programs, "g3")).toEqual([]);   // a brand-new grant is empty
 });
 
+test("participantsForGrant: self-registered through a grant's form (no program)", () => {
+  const programs = [{ id: "p1", grantId: "g1" }];
+  const forms = [{ id: "f2", grantId: "g2", programId: "" }, { id: "fOld", programId: "" }];
+  const people = [
+    { id: "x", formId: "f2", programId: "" },     // form tagged with g2
+    { id: "y", formId: "fOld" },                   // old form without grant → first grant
+    { id: "z", grantId: "g1", formId: "f2" },      // explicit grant wins
+  ];
+  const opts = { forms, firstGrantId: "g1" };
+  expect(participantsForGrant(people, programs, "g2", opts).map(p => p.id)).toEqual(["x"]);
+  expect(participantsForGrant(people, programs, "g1", opts).map(p => p.id)).toEqual(["y", "z"]);
+});
+
 test("budgetEntryFixes finds entries with a missing or wrong grant tag", () => {
   const programs = [{ id: "p1", grantId: "old" }, { id: "p2", grantId: "new" }];
   const entries = [

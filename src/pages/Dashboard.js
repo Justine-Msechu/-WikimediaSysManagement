@@ -11,6 +11,7 @@ import { listenInvoices } from "../services/invoiceService";
 import { listenPrograms } from "../services/programService";
 import { spendingReportHtml } from "../utils/spendingReport";
 import { participantsForGrant } from "../utils/grantScope";
+import { listenForms } from "../services/registrationService";
 import logo from "../assets/logo.png";
 
 function pct(r, t) { if (!t) return 0; return Math.min(999, Math.round((r / t) * 100)); }
@@ -56,7 +57,7 @@ function daysUntil(date) {
   return Math.round((new Date(date).setHours(0,0,0,0) - new Date(todayStr()).setHours(0,0,0,0)) / 86400000);
 }
 
-export default function Dashboard({ profile, goPage, grantId, grants }) {
+export default function Dashboard({ profile, goPage, grantId, grants, firstGrantId = "" }) {
   const [activities,     setActivities]     = useState([]);
   const [participants,   setParticipants]   = useState([]);
   const [settings,       setSettings]       = useState(null);
@@ -66,6 +67,7 @@ export default function Dashboard({ profile, goPage, grantId, grants }) {
   const [deadlines,      setDeadlines]      = useState([]);
   const [invoices,       setInvoices]       = useState([]);
   const [programs,       setPrograms]       = useState([]);
+  const [forms,          setForms]          = useState([]);
 
   useEffect(() => {
     const u1 = listenActivities(setActivities);
@@ -79,7 +81,8 @@ export default function Dashboard({ profile, goPage, grantId, grants }) {
     const u7 = listenDeadlines(setDeadlines);
     const u8 = listenInvoices(setInvoices);
     const u9 = listenPrograms(setPrograms);
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); };
+    const u10 = listenForms(setForms);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); };
   }, [grantId]);
 
   // Filter in JS when a grant is selected (keep subscriptions unfiltered for simplicity)
@@ -98,7 +101,7 @@ export default function Dashboard({ profile, goPage, grantId, grants }) {
   const grant          = currentGrant ? {} : (settings?.grant || {});
   const grantTotalUSD  = currentGrant ? currentGrant.totalUSD : grant.totalUSD;
   const grantRate      = currentGrant ? currentGrant.conversionRate : grant.conversionRate;
-  const grantParticipants = participantsForGrant(participants, programs, grantId);
+  const grantParticipants = participantsForGrant(participants, programs, grantId, { forms, firstGrantId });
   const totalBudgetTZS = grantTotalUSD ? Math.round(grantTotalUSD / (grantRate || 0.000413)) : 0;
   const approvedSpend  = filteredEntries.filter(e => e.status === "approved").reduce((s, e) => s + (e.amount || 0), 0);
   const budgetPct      = totalBudgetTZS ? Math.min(100, Math.round((approvedSpend / totalBudgetTZS) * 100)) : 0;

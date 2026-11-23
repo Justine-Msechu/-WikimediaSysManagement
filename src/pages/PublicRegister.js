@@ -157,6 +157,7 @@ export default function PublicRegister({ formId }) {
         skills:            vals.skills.trim(),
         isNew:             vals.wikistatus === "no",
         programId:         form?.programId || "",
+        grantId:           form?.grantId || "",
       });
       setSubmitted(true);
     } catch (err) {

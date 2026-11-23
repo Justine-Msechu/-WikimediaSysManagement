@@ -19,11 +19,19 @@ export function oldestGrantId(grants) {
   return sorted[0]?.id || "";
 }
 
-// Participants of a grant: tagged with the grant, or linked to one of its programs.
-export function participantsForGrant(participants, programs, grantId) {
+// Participants of a grant: tagged with the grant, linked to one of its programs,
+// or (self-registered, no grant or program) registered through one of its forms.
+export function participantsForGrant(participants, programs, grantId, { forms = [], firstGrantId = "" } = {}) {
   if (!grantId) return participants || [];
   const ids = new Set((programs || []).filter(p => p.grantId === grantId).map(p => p.id));
-  return (participants || []).filter(p => p.grantId === grantId || (p.programId && ids.has(p.programId)));
+  const programGrant = new Map((programs || []).filter(p => p.grantId).map(p => [p.id, p.grantId]));
+  const formById = new Map((forms || []).map(f => [f.id, f]));
+  return (participants || []).filter(p => {
+    if (p.grantId) return p.grantId === grantId;
+    if (p.programId && programGrant.has(p.programId)) return ids.has(p.programId);
+    const f = formById.get(p.formId || p.registeredViaForm);
+    return !!f && belongsToGrant(f, grantId, { firstGrantId, programs });
+  });
 }
 
 /**
@@ -146,7 +154,7 @@ export function grantParticipation({ grants, participants, programs, forms, regi
   }
   for (const g of grants || []) {
     const set = new Set();
-    for (const p of participantsForGrant(participants, programs, g.id)) {
+    for (const p of participantsForGrant(participants, programs, g.id, { forms, firstGrantId })) {
       const u = uname(p.wikimediaUsername);
       if (u) set.add(u);
     }

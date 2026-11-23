@@ -1614,7 +1614,7 @@ export default function ActiveContributors({ profile, currentGrant, grantId = ""
   const reports    = allReports.filter(r => inGrant(r.month)).map(r => (currentGrant ? reportForMembers(r, memberSet, isEditing) : r));
   const events     = allEvents.filter(ev => !currentGrant || (!!monthRange && (ev.start || "").slice(0, 7) <= monthRange.end && (ev.end || "").slice(0, 7) >= monthRange.start));
   const volunteers = allVolunteers.filter(v => belongsToGrant(v, grantId, { firstGrantId, programs }));
-  const grantParticipants = participantsForGrant(participants, programs, grantId);
+  const grantParticipants = participantsForGrant(participants, programs, grantId, { forms, firstGrantId });
   const addMembers = (list) => addCommunityMembersBulk(list, { existing: allMembers });
 
   // Report, History and Year summary only see reports counted the chosen way.

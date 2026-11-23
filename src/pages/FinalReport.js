@@ -6,6 +6,8 @@ import { listenMetrics, listenMetricsByGrant, DEFAULT_METRICS } from "../service
 import { listenActivities } from "../services/activityService";
 import { listenPrograms } from "../services/programService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import { listenBudgetEntries, listenBudgetEntriesByGrant, getGroup } from "../services/budgetService";
+import { spendingSummary } from "../utils/grantSpending";
 import logo from "../assets/logo.png";
 
 function fmt(n)  { return (n || 0).toLocaleString(); }
@@ -49,6 +51,7 @@ export default function FinalReport({ profile, grantId, currentGrant, firstGrant
   const [metrics,    setMetrics]    = useState(DEFAULT_METRICS);
   const [activities, setActivities] = useState([]);
   const [programs,   setPrograms]   = useState([]);
+  const [entries,    setEntries]    = useState([]);
 
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
 
@@ -57,7 +60,8 @@ export default function FinalReport({ profile, grantId, currentGrant, firstGrant
     const u2 = grantId ? listenMetricsByGrant(grantId, setMetrics) : listenMetrics(setMetrics);
     const u3 = listenActivities(setActivities);
     const u4 = listenPrograms(setPrograms);
-    return () => { u1(); u2(); u3(); u4(); };
+    const u5 = grantId ? listenBudgetEntriesByGrant(grantId, setEntries) : listenBudgetEntries(setEntries);
+    return () => { u1(); u2(); u3(); u4(); u5(); };
   }, [grantId]);
 
   const visibleActivities = grantId ? activities.filter(a => a.grantId === grantId) : activities;
@@ -66,6 +70,9 @@ export default function FinalReport({ profile, grantId, currentGrant, firstGrant
   // Answers are kept per grant; a new grant starts with an empty report.
   const answers   = reportAnswersFor(settings, grantId, firstGrantId);
   const grant     = currentGrant || settings?.grant || {};
+  // Q15 / Q16 come from the Budget page: this grant's approved entries.
+  const spend     = spendingSummary(entries, { rate: Number(grant.conversionRate) || 0, totalUSD: grant.totalUSD, groupOf: getGroup });
+  const usd       = (n) => `USD ${Math.round(n || 0).toLocaleString()}`;
 
   const setAns = async (key, val) => {
     await updateSettings(grantId
@@ -117,6 +124,9 @@ export default function FinalReport({ profile, grantId, currentGrant, firstGrant
       "PART 4: FINANCIAL REPORTING",
       "-".repeat(40),
       `Grant total: USD ${fmt(grant.totalUSD)} | TZS rate: ${grant.conversionRate || "0.000413"}`,
+      `Q15: Total spent (approved budget entries): TZS ${fmt(spend.spentTZS)} (${usd(spend.spentUSD)})${spend.totalUSD ? ` — ${spend.pctUsed}% of the grant, ${usd(spend.remainingUSD)} remaining` : ""}`,
+      `Q16: Spending by category:\n${spend.groups.length ? spend.groups.map(g => `  ${g.group}: TZS ${fmt(g.tzs)} (${usd(g.usd)}, ${g.pct}%)`).join("\n") : "  (no approved budget entries yet)"}`,
+      "",
       `Q17: Other funding:\n${answers.q17 || "(not filled)"}`,
       "",
       `Q18: Financial report link:\n${answers.q18 || "(not filled)"}`,
@@ -259,6 +269,31 @@ export default function FinalReport({ profile, grantId, currentGrant, firstGrant
       <QuestionBlock qnum="Q13" question="What is one capacity area your organization should focus on in the coming year and why?" ansKey="q13" answers={answers} onChange={setAns} canEdit={canEdit} />
 
       <div className="rpt-part-header">Part 4: Financial reporting</div>
+
+      <div className="rpt-q-block">
+        <div className="rpt-q-num">Q15</div>
+        <div className="rpt-q-text">How much of the grant has been spent?</div>
+        <div className="rpt-q-data" style={{ fontSize: 13 }}>
+          <strong>TZS {fmt(spend.spentTZS)}</strong> ({usd(spend.spentUSD)})
+          {spend.totalUSD > 0 && <> of {usd(spend.totalUSD)} — <strong>{spend.pctUsed}%</strong> used, {usd(spend.remainingUSD)} remaining</>}
+          <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>From the Budget page: this grant's approved budget entries.</div>
+        </div>
+      </div>
+
+      <div className="rpt-q-block">
+        <div className="rpt-q-num">Q16</div>
+        <div className="rpt-q-text">Spending by category</div>
+        <div className="rpt-q-data">
+          {spend.groups.length === 0 ? <div style={{ fontSize: 13, color: "#888" }}>No approved budget entries for this grant yet.</div> : (
+            <table style={{ fontSize: 12 }}>
+              <thead><tr><th>Category</th><th>TZS</th><th>USD</th><th>Share</th></tr></thead>
+              <tbody>
+                {spend.groups.map(g => <tr key={g.group}><td>{g.group}</td><td>{fmt(g.tzs)}</td><td>{Math.round(g.usd).toLocaleString()}</td><td>{g.pct}%</td></tr>)}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
 
       <QuestionBlock qnum="Q17" question="Have you received any other sources of revenue or funding during this grant period? If yes, describe." ansKey="q17" answers={answers} onChange={setAns} canEdit={canEdit} />
 

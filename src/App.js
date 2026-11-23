@@ -244,21 +244,21 @@ function AppShell() {
     }
 
     switch (page) {
-      case "dashboard":    return <Dashboard    key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} currentGrant={currentGrant} />;
-      case "grant":        return role === "admin" ? <Grant profile={profile} currentGrantId={currentGrantId} onSelectGrant={setCurrentGrant} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} currentGrant={currentGrant} />;
+      case "dashboard":    return <Dashboard    key={currentGrantId} firstGrantId={oldestGrantId(grants)} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} currentGrant={currentGrant} />;
+      case "grant":        return role === "admin" ? <Grant profile={profile} currentGrantId={currentGrantId} onSelectGrant={setCurrentGrant} /> : <Dashboard key={currentGrantId} firstGrantId={oldestGrantId(grants)} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} currentGrant={currentGrant} />;
       case "programs":     return <Programs     key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} />;
       case "activities":   return <Activities   key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} />;
       case "timeline":     return <Timeline     key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} currentGrant={currentGrant} />;
       case "budget":       return <Budget       key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} />;
-      case "invoices":     return ["admin","finance_officer"].includes(role) ? <Invoices key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} currentGrant={currentGrant} />;
+      case "invoices":     return ["admin","finance_officer"].includes(role) ? <Invoices key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} /> : <Dashboard key={currentGrantId} firstGrantId={oldestGrantId(grants)} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} currentGrant={currentGrant} />;
       case "review":       return <Review       key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} />;
-      case "metrics":      return <Metrics      key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} firstGrantId={oldestGrantId(grants)} />;
-      case "participants": return <Participants key={currentGrantId} profile={profile} grantId={currentGrantId} />;
+      case "metrics":      return <Metrics      key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} firstGrantId={oldestGrantId(grants)} grants={grants} />;
+      case "participants": return <Participants key={currentGrantId} profile={profile} grantId={currentGrantId} firstGrantId={oldestGrantId(grants)} />;
       case "risks":        return <RiskRegister key={currentGrantId} profile={profile} grantId={currentGrantId} />;
       case "donor":        return <DonorDashboard key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} />;
       case "report":       return <FinalReport  key={currentGrantId} profile={profile} grantId={currentGrantId} currentGrant={currentGrant} firstGrantId={oldestGrantId(grants)} />;
-      case "audit":        return role === "admin" ? <AuditLog profile={profile} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
-      case "users":        return role === "admin" ? <Users    profile={profile} /> : <Dashboard key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
+      case "audit":        return role === "admin" ? <AuditLog profile={profile} /> : <Dashboard key={currentGrantId} firstGrantId={oldestGrantId(grants)} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
+      case "users":        return role === "admin" ? <Users    profile={profile} /> : <Dashboard key={currentGrantId} firstGrantId={oldestGrantId(grants)} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
       case "volunteers":    return <Volunteers        key={currentGrantId} profile={profile} grantId={currentGrantId} firstGrantId={oldestGrantId(grants)} />;
       case "contributors":  return <ActiveContributors key={currentGrantId} profile={profile} currentGrant={currentGrant} grantId={currentGrantId} firstGrantId={oldestGrantId(grants)} grants={grants} />;
       case "register":      return <RegistrationForms key={currentGrantId} profile={profile} grantId={currentGrantId} firstGrantId={oldestGrantId(grants)} />;
@@ -266,7 +266,7 @@ function AppShell() {
       case "deadlines":     return <Deadlines         profile={profile} />;
       case "settings":      return <Settings          profile={profile} goPage={goPage} />;
       case "help":          return <Help              profile={profile} />;
-      default:             return <Dashboard    key={currentGrantId} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
+      default:             return <Dashboard    key={currentGrantId} firstGrantId={oldestGrantId(grants)} profile={profile} goPage={goPage} grantId={currentGrantId} grants={grants} />;
     }
   };
 

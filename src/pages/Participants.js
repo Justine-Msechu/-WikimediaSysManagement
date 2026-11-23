@@ -7,6 +7,7 @@ import { certificateFooterHtml, certificateArtHtml, certificateIconRowHtml, CERT
 import { certificateArt } from "../utils/certificateArt";
 import { listenPrograms } from "../services/programService";
 import { getForms, getAllRegistrations, listenForms } from "../services/registrationService";
+import { participantsForGrant } from "../utils/grantScope";
 import logo from "../assets/logo.png";
 
 const GENDERS  = ["Female", "Male", "Non-binary", "Prefer not to say"];
@@ -18,7 +19,7 @@ function emptyParticipant(programId = "") {
   return { name: "", wikimediaUsername: "", email: "", phone: "", gender: "", region: "", isNew: false, programId, notes: "" };
 }
 
-export default function Participants({ profile, grantId }) {
+export default function Participants({ profile, grantId, firstGrantId = "" }) {
   const [participants, setParticipants] = useState([]);
   const [programs,   setPrograms]    = useState([]);
   const [programFilter, setProgramFilter] = useState("");
@@ -245,10 +246,8 @@ export default function Participants({ profile, grantId }) {
   const visiblePrograms = grantId ? programs.filter(p => p.grantId === grantId) : programs;
 
   // Scope participants to the active grant — direct grantId match first, fall back to programId chain
-  const grantProgramIds = grantId ? new Set(visiblePrograms.map(p => p.id)) : null;
-  const visibleParticipants = grantId
-    ? participants.filter(p => p.grantId === grantId || grantProgramIds.has(p.programId))
-    : participants;
+  // (also self-registered people from one of the grant's forms — participantsForGrant)
+  const visibleParticipants = participantsForGrant(participants, programs, grantId, { forms, firstGrantId });
 
   // When a program is selected: pull directly from registrations of forms linked to that program
   // When "All programs": use the general participants registry

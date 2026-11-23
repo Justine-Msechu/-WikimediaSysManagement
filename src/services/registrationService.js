@@ -72,6 +72,7 @@ export async function submitRegistration(formId, regData) {
     region:            "",
     isNew:             regData.isNew || false,
     programId:         regData.programId || "",
+    grantId:           regData.grantId || "",
     source:            "self-registered",
     registeredViaForm: formId,
     formId,

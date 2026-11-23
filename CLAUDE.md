@@ -139,7 +139,10 @@ Roles (on `users/{uid}.role`): `admin`, `coordinator`, `finance_officer`,
   delete `isAdmin()`. Keep UI buttons consistent with the rules (e.g. only show
   delete to admins when only admins may delete).
 - Public (not logged in) writes are allowed only for `registrations` and
-  `participants`, with field validation.
+  `participants` (fixed key lists, length limits, open form only), plus a +1
+  on a form's `registrationCount` — see "Security rules" below.
+- Deactivated users (`isActive == false`) are blocked by the rules too, not
+  just by the app's "account inactive" screen.
 
 ## Security rules (keep these when changing code)
 
@@ -164,6 +167,10 @@ Roles (on `users/{uid}.role`): `admin`, `coordinator`, `finance_officer`,
   - volunteers update only `status`, `volunteerNotes`, `hoursSpent` on their
     own tasks; audit entries must carry the writer's own `userId`;
     notifications: staff may only mark `read`.
+- The rules from the security review (commit 86b0a66) need
+  `firebase deploy --only firestore:rules` by the user. After deploying,
+  check: public registration, coordinator saves/submits a budget entry,
+  finance approves on Review, volunteer updates a task in My tasks.
 - Check rules compile without deploying: `firebase deploy --only firestore:rules --dry-run`.
   There's no emulator setup (needs Java).
 - Firebase Storage isn't set up on the project (files go to Google Drive);
@@ -237,6 +244,14 @@ index — services usually skip `orderBy` and sort client-side instead.
   - "First grant" (`oldestGrantId()`) = earliest start date (or creation day
     when a grant has no dates). Records from before grants belong to it.
   Shared across grants on purpose: announcements, deadlines, settings.
+- **People counts (Dashboard, Donor report, Metrics)** come from the grant's
+  Participants list (`participantsForGrant()` + `participantStats()`), never
+  the numbers typed on activities (often left empty). Dashboard
+  "Participants per month" uses the month each participant was added
+  (`participantMonth()`); "Activities logged" counts the grant's activities and
+  notes program sessions and activities not linked to any grant (click → Activities).
+  Donor report notes when activity-typed counts differ; articles
+  created/improved still come from activities.
 - **Approval flow:** programs and sessions go `draft → submitted → approved /
   rejected`. Approved programs are locked (only admins edit; coordinators may
   still touch `subPrograms`). Approving creates approved `budgetEntries` for
@@ -438,13 +453,6 @@ Final report Part 2 (`FinalReport.js` METRIC_ROWS) mirrors the Foundation's
 fixed metrics only. Part 4 Q15 (total spent, % of grant, remaining) and Q16
 (by budget group) are filled from the grant's **approved** budget entries —
 `spendingSummary()` in `utils/grantSpending.js`, same figure as Budget/Dashboard.
-Dashboard and Donor report: participants, women and new editors come from
-the grant's Participants list (`participantsForGrant` + `participantStats()`,
-same as Metrics) — not the numbers typed on activities (often empty). Dashboard
-"Participants per month" uses the month each participant was added
-(`participantMonth()`); "Activities logged" counts the grant's activities and
-notes program sessions and activities not linked to any grant. Donor report
-notes when activity-typed counts differ; articles created/improved stay from activities.
 
 ## Affiliate Health Criteria mapping
 

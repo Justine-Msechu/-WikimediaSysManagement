@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { listenPrograms, addProgram, updateProgram, deleteProgram, submitProgram, submitSubProgram, DEFAULT_PROGRAMS, PROGRAM_CATEGORIES } from "../services/programService";
 import { listenActivities } from "../services/activityService";
+import { listenParticipants } from "../services/participantService";
+import { participantStats } from "../utils/grantScope";
 import { listenBudgetEntries } from "../services/budgetService";
 import { listenSettings } from "../services/settingsService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
@@ -58,6 +60,7 @@ function hasBudget(p) {
 export default function Programs({ profile, grantId, currentGrant }) {
   const [programs,    setPrograms]    = useState([]);
   const [activities,  setActivities]  = useState([]);
+  const [participants, setParticipants] = useState([]);
   const [budgetEntries, setBudgetEntries] = useState([]);
   const [settings,    setSettings]    = useState(null);
   const [showForm,    setShowForm]    = useState(false);
@@ -78,7 +81,8 @@ export default function Programs({ profile, grantId, currentGrant }) {
     const u2 = listenActivities(setActivities);
     const u3 = listenSettings(setSettings);
     const u4 = listenBudgetEntries(setBudgetEntries);
-    return () => { u1(); u2(); u3(); u4(); };
+    const u5 = listenParticipants(setParticipants);
+    return () => { u1(); u2(); u3(); u4(); u5(); };
   }, []);
 
   const rate = Number(currentGrant?.conversionRate || settings?.grant?.conversionRate || 0.000438);
@@ -169,11 +173,13 @@ export default function Programs({ profile, grantId, currentGrant }) {
 
   const statsFor = (pid) => {
     const acts = activities.filter(a => a.programId === pid);
+    // People from the Participants list (registered through this program's forms or added to it).
+    const people = participantStats(participants.filter(p => p.programId === pid));
     return {
       sessions:     acts.length,
-      participants: acts.reduce((s, a) => s + (a.participants || 0), 0),
-      women:        acts.reduce((s, a) => s + (a.women || 0), 0),
-      newEditors:   acts.reduce((s, a) => s + (a.newEditors || 0), 0),
+      participants: people.total,
+      women:        people.women,
+      newEditors:   people.newEditors,
     };
   };
 

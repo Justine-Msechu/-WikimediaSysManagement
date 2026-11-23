@@ -244,9 +244,12 @@ index — services usually skip `orderBy` and sort client-side instead.
   - "First grant" (`oldestGrantId()`) = earliest start date (or creation day
     when a grant has no dates). Records from before grants belong to it.
   Shared across grants on purpose: announcements, deadlines, settings.
-- **People counts (Dashboard, Donor report, Metrics)** come from the grant's
-  Participants list (`participantsForGrant()` + `participantStats()`), never
-  the numbers typed on activities (often left empty). Dashboard
+- **People counts (Dashboard, Donor report, Metrics, Final report overview,
+  Programs cards)** come from the Participants list (`participantsForGrant()`
+  + `participantStats()`; Programs: participants with that `programId`), never
+  the numbers typed on activities (often left empty). Final report Part 2
+  (14.1 / 14.2) still shows the saved `metrics/{grantId}` results — filled on
+  the Metrics page ("Apply counts to results", active contributors buttons). Dashboard
   "Participants per month" uses the month each participant was added
   (`participantMonth()`); "Activities logged" counts the grant's activities and
   notes program sessions and activities not linked to any grant (click → Activities).

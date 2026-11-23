@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
 import RichTextEditor, { renderHtml } from "../components/RichTextEditor";
 import { listenSettings, updateSettings } from "../services/settingsService";
-import { reportAnswersFor } from "../utils/grantScope";
+import { reportAnswersFor, participantsForGrant, participantStats } from "../utils/grantScope";
+import { listenParticipants } from "../services/participantService";
+import { listenForms } from "../services/registrationService";
 import { listenMetrics, listenMetricsByGrant, DEFAULT_METRICS } from "../services/metricsService";
 import { listenActivities } from "../services/activityService";
 import { listenPrograms } from "../services/programService";
@@ -52,6 +54,8 @@ export default function FinalReport({ profile, grantId, currentGrant, firstGrant
   const [activities, setActivities] = useState([]);
   const [programs,   setPrograms]   = useState([]);
   const [entries,    setEntries]    = useState([]);
+  const [participants, setParticipants] = useState([]);
+  const [forms,      setForms]      = useState([]);
 
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
 
@@ -61,7 +65,9 @@ export default function FinalReport({ profile, grantId, currentGrant, firstGrant
     const u3 = listenActivities(setActivities);
     const u4 = listenPrograms(setPrograms);
     const u5 = grantId ? listenBudgetEntriesByGrant(grantId, setEntries) : listenBudgetEntries(setEntries);
-    return () => { u1(); u2(); u3(); u4(); u5(); };
+    const u6 = listenParticipants(setParticipants);
+    const u7 = listenForms(setForms);
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, [grantId]);
 
   const visibleActivities = grantId ? activities.filter(a => a.grantId === grantId) : activities;
@@ -80,8 +86,11 @@ export default function FinalReport({ profile, grantId, currentGrant, firstGrant
       : { reportAnswers: { ...answers, [key]: val } });
   };
 
-  const totalParticipants = visibleActivities.reduce((s, a) => s + (a.participants || 0), 0);
-  const totalWomen        = visibleActivities.reduce((s, a) => s + (a.women || 0), 0);
+  // People from the grant's Participants list (same as Dashboard / Metrics),
+  // not the numbers typed on activities.
+  const people            = participantStats(participantsForGrant(participants, programs, grantId, { forms, firstGrantId }));
+  const totalParticipants = people.total;
+  const totalWomen        = people.women;
   const womenPct          = totalParticipants > 0 ? Math.round((totalWomen / totalParticipants) * 100) : 0;
 
   const downloadReport = () => {
@@ -157,7 +166,7 @@ export default function FinalReport({ profile, grantId, currentGrant, firstGrant
             { label: "Activities",        value: visibleActivities.length,      color: "#1c2b1e" },
             { label: "Total participants", value: fmt(totalParticipants), color: "#2d7a4f" },
             { label: "Women",             value: `${fmt(totalWomen)} (${womenPct}%)`, color: "#9333ea" },
-            { label: "New editors",       value: fmt(visibleActivities.reduce((s, a) => s + (a.newEditors || 0), 0)), color: "#2563eb" },
+            { label: "New editors",       value: fmt(people.newEditors), color: "#2563eb" },
           ].map(({ label, value, color }) => (
             <div key={label} className="stat-card"><div className="stat-label">{label}</div><div className="stat-value" style={{ color }}>{value}</div></div>
           ))}

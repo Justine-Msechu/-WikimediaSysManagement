@@ -269,6 +269,13 @@ index — services usually skip `orderBy` and sort client-side instead.
   grant's start month; wikis are combined per month; missing months are flagged.
 - **Best contributor of the month** = most different articles (ties share it,
   nobody wins an empty month) — `bestContributors()` / `summary.bestByMonth`.
+- **Monthly news** (`utils/monthlyNews.js`, panel on the Report tab): for the
+  newsletter — volunteers who edited, different articles (each counted once
+  across volunteers, via `pageIds` saved on each row), new articles started
+  (`new` flag from usercontribs, titles in `newArticles`), edits, text added
+  (`bytes` = sum of `sizediff`), best contributor, and a ready paragraph in
+  English or Kiswahili (`newsText()`). Reports saved before these fields show
+  "—" until fetched and saved again. History shows different/new articles per month.
 - **Printing** (`utils/contributorPrint.js`): monthly report and year/quarter
   summary. HTML opened in a new window with a Print / Save PDF button
   (`openPrintWindow`).

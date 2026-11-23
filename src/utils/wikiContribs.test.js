@@ -54,7 +54,7 @@ describe("fetchMonthStats", () => {
       contrib("Amina", 1), contrib("Amina", 1), contrib("Amina", 1), contrib("Amina", 2),
     ] } }]);
     const stats = await fetchMonthStats(["Amina"], "2026-10", "sw.wikipedia.org", opts(impl));
-    expect(stats.get("Amina")).toEqual({ articles: 2, edits: 4 });
+    expect(stats.get("Amina")).toMatchObject({ articles: 2, edits: 4 });
   });
 
   test("follows continuation until the API stops returning it", async () => {
@@ -78,7 +78,7 @@ describe("fetchMonthStats", () => {
       contrib("Amina", 3, "2026-11-01T00:00:00Z"),
     ] } }]);
     const stats = await fetchMonthStats(["Amina"], "2026-10", "sw.wikipedia.org", opts(impl));
-    expect(stats.get("Amina")).toEqual({ articles: 2, edits: 2 });
+    expect(stats.get("Amina")).toMatchObject({ articles: 2, edits: 2 });
   });
 
   test("sends the documented query parameters", async () => {
@@ -106,7 +106,7 @@ describe("fetchMonthStats", () => {
     const sizes = calls.map(u => u.searchParams.get("ucuser").split("|").length);
     expect(sizes).toEqual([50, 50, 20]);
     expect(stats.size).toBe(120);
-    expect(stats.get("User7")).toEqual({ articles: 0, edits: 0 });
+    expect(stats.get("User7")).toMatchObject({ articles: 0, edits: 0 });
     expect(progress[progress.length - 1]).toEqual([120, 120]);
   });
 });
@@ -153,7 +153,18 @@ describe("rowsToCsv", () => {
     const csv = rowsToCsv([{ name: "Juma, A.", username: "Juma", articles: 61, edits: 90, active: true }],
       { month: "2026-10", wiki: "sw.wikipedia.org", threshold: 60 });
     const lines = csv.split("\r\n");
-    expect(lines[0]).toBe("#,Name,Username,Different articles,Total edits,Active (>= 60),Still editing (>= 1),Month,Wiki");
-    expect(lines[1]).toBe('1,"Juma, A.",Juma,61,90,Yes,Yes,2026-10,sw.wikipedia.org');
+    expect(lines[0]).toBe("#,Name,Username,Different articles,Total edits,Active (>= 60),Still editing (>= 1),New articles,Bytes added,Month,Wiki");
+    expect(lines[1]).toBe('1,"Juma, A.",Juma,61,90,Yes,Yes,,,2026-10,sw.wikipedia.org');
   });
+});
+
+test("new articles, bytes and page ids are collected per volunteer", async () => {
+  const { fetchMonthStats } = require("./wikiContribs");
+  const fetchImpl = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ query: { usercontribs: [
+    { user: "Amina", pageid: 1, revid: 10, timestamp: "2026-10-02T00:00:00Z", title: "Mlima Meru", new: true, sizediff: 3000 },
+    { user: "Amina", pageid: 1, revid: 11, timestamp: "2026-10-03T00:00:00Z", title: "Mlima Meru", sizediff: 200 },
+    { user: "Amina", pageid: 2, revid: 12, timestamp: "2026-10-04T00:00:00Z", title: "Arusha", sizediff: -50 },
+  ] } }) });
+  const stats = await fetchMonthStats(["Amina"], "2026-10", "sw.wikipedia.org", { fetchImpl, delayMs: 0 });
+  expect(stats.get("Amina")).toEqual({ articles: 2, edits: 3, created: 1, bytes: 3150, pageIds: [1, 2], newArticles: ["Mlima Meru"] });
 });

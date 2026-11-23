@@ -69,9 +69,9 @@ describe("fetchEventMonthStats", () => {
 
   test("counts only members who joined, inside the event dates, without double counting", async () => {
     const { stats, events: used } = await fetchEventMonthStats(["Amina", "Baraka", "Chausiku"], events, "2026-03", "sw.wikipedia.org", { fetchImpl, delayMs: 0 });
-    expect(stats.get("Amina")).toEqual({ articles: 2, edits: 3 });
-    expect(stats.get("Baraka")).toEqual({ articles: 1, edits: 1 });
-    expect(stats.get("Chausiku")).toEqual({ articles: 0, edits: 0 });   // member, but in no event
+    expect(stats.get("Amina")).toMatchObject({ articles: 2, edits: 3 });
+    expect(stats.get("Baraka")).toMatchObject({ articles: 1, edits: 1 });
+    expect(stats.get("Chausiku")).toMatchObject({ articles: 0, edits: 0 });   // member, but in no event
     expect(stats.has("Outsider")).toBe(false);                          // joined, but not a member
     expect(used.map(e => [e.title, e.members, e.notMembers])).toEqual([["One", 1, 1], ["Two", 2, 0]]);
     // Event "One" asks Wikipedia about the people who joined it, for its own dates
@@ -85,7 +85,7 @@ describe("fetchEventMonthStats", () => {
     contribs.push({ user: "Chausiku", pageid: 9, revid: 19, timestamp: "2026-03-16T09:00:00Z" });
     const res = await fetchEventMonthStats(["Amina", "Baraka", "Chausiku"], withForm, "2026-03", "sw.wikipedia.org", { fetchImpl, delayMs: 0 });
     contribs.pop();
-    expect(res.stats.get("Chausiku")).toEqual({ articles: 1, edits: 1 });
+    expect(res.stats.get("Chausiku")).toMatchObject({ articles: 1, edits: 1 });
     expect([...res.formOnly]).toEqual(["Chausiku"]);              // Baraka is on the dashboard too
     expect(res.events.find(e => e.title === "Two")).toMatchObject({ members: 3, viaDashboard: 2, viaForm: 1 });
   });
@@ -101,7 +101,7 @@ describe("fetchEventMonthStats", () => {
 
   test("a month without events gives everyone 0", async () => {
     const { stats, events: used } = await fetchEventMonthStats(["Amina"], events, "2026-05", "sw.wikipedia.org", { fetchImpl, delayMs: 0 });
-    expect(stats.get("Amina")).toEqual({ articles: 0, edits: 0 });
+    expect(stats.get("Amina")).toMatchObject({ articles: 0, edits: 0 });
     expect(used).toEqual([]);
   });
 });

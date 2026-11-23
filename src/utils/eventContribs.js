@@ -129,7 +129,7 @@ export async function fetchEventMonthStats(usernames, events, month, wiki = DEFA
   const memberSet = new Set(members);
   const windows = eventWindowsInMonth(events, month);
 
-  const blank = () => ({ pages: new Set(), revs: new Set(), events: new Set() });
+  const blank = () => ({ pages: new Set(), revs: new Map(), created: new Map(), events: new Set() });
   const merged = new Map(members.map(u => [u, blank()]));
   const outside = new Map();   // joined our events but not in the community list
   const used = [];
@@ -169,7 +169,11 @@ export async function fetchEventMonthStats(usernames, events, month, wiki = DEFA
       const m = target.get(u);
       m.events.add(title);
       const e = contribs.get(u);
-      if (e) { e.pages.forEach(p => m.pages.add(p)); e.revs.forEach(r => m.revs.add(r)); }
+      if (e) {
+        e.pages.forEach(p => m.pages.add(p));
+        e.revs.forEach((v, k) => m.revs.set(k, v));
+        e.created.forEach((v, k) => m.created.set(k, v));
+      }
     }
     done += joined.length;
   }

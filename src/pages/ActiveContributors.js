@@ -18,6 +18,7 @@ import { listenSettings } from "../services/settingsService";
 import { monthReportHtml, yearReportHtml, certificatesHtml, openPrintWindow } from "../utils/contributorPrint";
 import logo from "../assets/logo.png";
 import { certificateArt } from "../utils/certificateArt";
+import { monthlyNews, newsText } from "../utils/monthlyNews";
 import {
   WIKIS, DEFAULT_WIKI, DEFAULT_THRESHOLD,
   normalizeUsername, currentMonth, lastFullMonth, isPartialMonth, previousMonths,
@@ -71,6 +72,76 @@ function WikiSelect({ value, onChange }) {
     <select value={value} onChange={e => onChange(e.target.value)}>
       {WIKIS.map(w => <option key={w.id} value={w.id}>{w.label}</option>)}
     </select>
+  );
+}
+
+// ── Monthly news — numbers and a paragraph for the newsletter ────────────────────
+const SW_MONTHS = ["Januari", "Februari", "Machi", "Aprili", "Mei", "Juni", "Julai", "Agosti", "Septemba", "Oktoba", "Novemba", "Desemba"];
+
+function MonthlyNewsPanel({ rows, month, wiki, eventsOnly, orgName, threshold, partial }) {
+  const [lang, setLang] = useState("en");
+  const [copied, setCopied] = useState(false);
+  const news = useMemo(() => monthlyNews(rows), [rows]);
+  const [y, m] = month.split("-").map(Number);
+  const monthName = lang === "sw" ? `${SW_MONTHS[m - 1]} ${y}`
+    : new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+  const wikiName = lang === "sw" && wiki === "sw.wikipedia.org" ? "Wikipedia ya Kiswahili" : wikiLabel(wiki);
+  const text = newsText(news, { monthName, wikiLabel: wikiName, orgName, eventsOnly, lang, threshold });
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch { window.prompt("Copy the text:", text); }
+  };
+
+  return (
+    <div className="panel" style={{ border: "1px solid #b7e0c8", background: "#f6fbf8", marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+        <div className="panel-title" style={{ color: "#2d7a4f", margin: 0 }}>📰 Monthly news — {monthLabel(month)}{partial ? " (so far)" : ""}</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button className={`btn btn-sm ${lang === "en" ? "btn-primary" : ""}`} onClick={() => setLang("en")}>English</button>
+          <button className={`btn btn-sm ${lang === "sw" ? "btn-primary" : ""}`} onClick={() => setLang("sw")}>Kiswahili</button>
+        </div>
+      </div>
+      {!news.detailed && (
+        <div className="alert alert-warn">This report was saved before new-article counts existed. Click "Fetch from Wikipedia" and save again to get new articles and an exact total.</div>
+      )}
+      <div className="card-grid" style={{ marginBottom: 12 }}>
+        {[
+          ["Volunteers who edited", news.editing, "#2563eb"],
+          ["Different articles", news.articles, "#2d7a4f"],
+          ["New articles", news.detailed ? news.created : "—", "#7c3aed"],
+          ["Edits", news.edits, "#1c2b1e"],
+          ["Text added", news.detailed ? `${Math.round(Math.max(0, news.bytes) / 1000).toLocaleString()} KB` : "—", "#1c2b1e"],
+        ].map(([label, value, color]) => (
+          <div key={label} className="stat-card">
+            <div className="stat-label">{label}</div>
+            <div className="stat-value" style={{ color }}>{typeof value === "number" ? value.toLocaleString() : value}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>Text for the newsletter</div>
+      <textarea readOnly value={text} rows={4} style={{ width: "100%", fontSize: 13, fontFamily: "inherit", background: "#fff" }} onFocus={e => e.target.select()} />
+      <div className="btn-row" style={{ marginTop: 6 }}>
+        <button className="btn btn-sm btn-primary" onClick={copy}>{copied ? "✓ Copied" : "Copy text"}</button>
+      </div>
+      {news.newArticles.length > 0 && (
+        <details style={{ marginTop: 10, fontSize: 13 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>New articles ({news.newArticles.length})</summary>
+          <div style={{ columns: "260px", marginTop: 8 }}>
+            {news.newArticles.map(a => (
+              <div key={`${a.title}|${a.username}`} style={{ breakInside: "avoid", marginBottom: 2 }}>
+                <a href={`https://${wiki}/wiki/${encodeURIComponent(a.title.replace(/ /g, "_"))}`} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb" }}>{a.title}</a>
+                <span style={{ color: "#888" }}> · {a.name}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+      <div style={{ fontSize: 12, color: "#888", marginTop: 8 }}>
+        Different articles counts each article once even if several volunteers edited it. New articles = articles a volunteer started this month.
+        {eventsOnly ? " Only edits made in Kilimanjaro events." : " All edits on the wiki."} Volunteers = this grant's community members.
+      </div>
+    </div>
   );
 }
 
@@ -364,6 +435,8 @@ function Report({ members, community = [], reports, allReports = [], events, sco
             ))}
           </div>
 
+          <MonthlyNewsPanel rows={view.rows} month={month} wiki={wiki} eventsOnly={eventsOnly} orgName={org.orgName} threshold={view.threshold} partial={view.partial} />
+
           <div className="panel" style={{ padding: 0 }}>
             {view.rows.length === 0 ? <div className="empty">No members in this report.</div> : (
               <div style={{ overflowX: "auto" }}>
@@ -449,7 +522,7 @@ function History({ reports }) {
         {sorted.length === 0 ? <div className="empty">No saved reports for {wikiLabel(wiki)} yet. Save one from the Report tab.</div> : (
           <div style={{ overflowX: "auto" }}>
             <table>
-              <thead><tr><th>Month</th><th>Members</th><th>Still editing</th><th>Active</th><th>Rate</th><th>Best contributor</th><th>Rule</th><th>Saved by</th></tr></thead>
+              <thead><tr><th>Month</th><th>Members</th><th>Still editing</th><th>Active</th><th>Different articles</th><th>New articles</th><th>Rate</th><th>Best contributor</th><th>Rule</th><th>Saved by</th></tr></thead>
               <tbody>
                 {sorted.map(r => (
                   <tr key={r.id}>
@@ -457,6 +530,10 @@ function History({ reports }) {
                     <td>{r.memberCount}</td>
                     <td style={{ color: "#2563eb" }}>{reportEditing(r)}</td>
                     <td style={{ fontWeight: 600, color: "#2d7a4f" }}>{r.activeCount}</td>
+                    {(() => { const nw = monthlyNews(r.rows); return (<>
+                      <td>{nw.articles.toLocaleString()}</td>
+                      <td style={{ color: "#7c3aed" }}>{nw.detailed ? nw.created.toLocaleString() : "—"}</td>
+                    </>); })()}
                     <td>{pctText(r.activeCount, r.memberCount)}</td>
                     <td style={{ fontSize: 12 }}>{(() => { const b = bestContributors(r.rows || []); return b.length ? <>★ {b.map(x => x.name).join(" & ")} <span style={{ color: "#888" }}>({b[0].articles})</span></> : ""; })()}</td>
                     <td style={{ fontSize: 12 }}>≥ {r.threshold} articles</td>

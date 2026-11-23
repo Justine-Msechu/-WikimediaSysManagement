@@ -117,13 +117,14 @@ function chunk(arr, size) {
 /**
  * Collect each user's article edits between two UTC timestamps (start
  * inclusive, end exclusive). Returns Map<normalizedUsername, { pages: Set(pageid),
- * revs: Set(revid) }> — sets, so results from overlapping windows can be merged.
+ * revs: Map(revid → bytes changed), created: Map(pageid → title) }> — keyed,
+ * so results from overlapping windows can be merged without double counting.
  */
 export async function fetchRangeContribs(usernames, start, end, wiki = DEFAULT_WIKI, opts = {}) {
   const { fetchImpl = fetch, onProgress, delayMs = PAUSE_MS } = opts;
   const names = uniqueNormalized(usernames);
   const out = new Map();
-  const entry = (u) => out.get(u) || out.set(u, { pages: new Set(), revs: new Set() }).get(u);
+  const entry = (u) => out.get(u) || out.set(u, { pages: new Set(), revs: new Map(), created: new Map() }).get(u);
   names.forEach(entry);
 
   let checked = 0;
@@ -144,7 +145,7 @@ export async function fetchRangeContribs(usernames, start, end, wiki = DEFAULT_W
         ucdir:       "newer",
         ucstart:     start,
         ucend:       end,
-        ucprop:      "ids|timestamp",
+        ucprop:      "ids|timestamp|title|flags|sizediff",
         uclimit:     "max",
         ...cont,
       }));
@@ -153,7 +154,8 @@ export async function fetchRangeContribs(usernames, start, end, wiki = DEFAULT_W
         if (!c.timestamp || c.timestamp >= end) continue;   // ucend is inclusive
         const e = entry(normalizeUsername(c.user));
         e.pages.add(c.pageid);
-        e.revs.add(c.revid ?? `${c.pageid}@${c.timestamp}#${e.revs.size}`);
+        e.revs.set(c.revid ?? `${c.pageid}@${c.timestamp}#${e.revs.size}`, Number(c.sizediff) || 0);
+        if (c.new !== undefined && c.new !== false) e.created.set(c.pageid, c.title || String(c.pageid));   // they started this article
       }
 
       if (!json.continue) break;
@@ -168,7 +170,18 @@ export async function fetchRangeContribs(usernames, start, end, wiki = DEFAULT_W
 // Map<user, { pages, revs }> → Map<user, { articles, edits }>
 export function contribsToStats(contribs) {
   const stats = new Map();
-  for (const [user, e] of contribs) stats.set(user, { articles: e.pages.size, edits: e.revs.size });
+  for (const [user, e] of contribs) {
+    let bytes = 0;
+    e.revs.forEach(v => { bytes += v; });
+    stats.set(user, {
+      articles: e.pages.size,
+      edits:    e.revs.size,
+      created:  e.created.size,             // new articles they started
+      bytes,                                // net bytes added (can be negative)
+      pageIds:  [...e.pages],               // for "different articles" across all volunteers
+      newArticles: [...e.created.values()],
+    });
+  }
   return stats;
 }
 
@@ -218,6 +231,10 @@ export function buildReportRows(members, stats, threshold = DEFAULT_THRESHOLD) {
         username,
         articles: s.articles,
         edits:    s.edits,
+        created:  s.created || 0,
+        bytes:    s.bytes || 0,
+        pageIds:  s.pageIds || [],
+        newArticles: s.newArticles || [],
         active:   s.articles >= t,
         editing:  s.articles >= STILL_EDITING_MIN,
       };
@@ -244,10 +261,10 @@ function csvCell(v) {
 
 // Plain CSV text. The page adds a UTF-8 BOM when downloading so Excel reads it.
 export function rowsToCsv(rows, { month, wiki, threshold } = {}) {
-  const header = ["#", "Name", "Username", "Different articles", "Total edits", `Active (>= ${threshold})`, `Still editing (>= ${STILL_EDITING_MIN})`, "Month", "Wiki"];
+  const header = ["#", "Name", "Username", "Different articles", "Total edits", `Active (>= ${threshold})`, `Still editing (>= ${STILL_EDITING_MIN})`, "New articles", "Bytes added", "Month", "Wiki"];
   const lines = [header.map(csvCell).join(",")];
   (rows || []).forEach((r, i) => {
-    lines.push([i + 1, r.name, r.username, r.articles, r.edits, r.active ? "Yes" : "No", isEditing(r) ? "Yes" : "No", month, wiki].map(csvCell).join(","));
+    lines.push([i + 1, r.name, r.username, r.articles, r.edits, r.active ? "Yes" : "No", isEditing(r) ? "Yes" : "No", r.created ?? "", r.bytes ?? "", month, wiki].map(csvCell).join(","));
   });
   return lines.join("\r\n");
 }

@@ -38,7 +38,8 @@ and the final learning report.
 - Libraries: `date-fns`, `lucide-react`, `xlsx` (Excel import/export),
   `react-quill-new` (rich text, via `components/RichTextEditor.js`)
 - External APIs called from the browser: MediaWiki Action API (anonymous CORS,
-  `origin=*`), Outreach Dashboard JSON, EmailJS (email), Africa's Talking (SMS),
+  `origin=*`) on Swahili/English Wikipedia, Wikidata, Commons, Swahili
+  Wiktionary and Meta (global accounts), Outreach Dashboard JSON, EmailJS (email), Africa's Talking (SMS),
   Google Drive (file uploads), QR code images (api.qrserver.com)
 
 ## How to run
@@ -81,7 +82,7 @@ src/
                       OnboardingModal, BackToTop
   utils/              Pure helpers (no React/Firebase) — testable:
                       wikiContribs.js, eventContribs.js, eventSelection.js, yearSummary.js,
-                      grantScope.js,
+                      grantScope.js, monthlyNews.js,
                       contributorPrint.js, certificateArt.js, budgetImport.js,
                       timelineImport.js, wikiImport.js, spendingReport.js,
                       timelineReport.js
@@ -344,7 +345,8 @@ index — services usually skip `orderBy` and sort client-side instead.
 - Seats = form `seats`, else `maxRegistrations`, else everyone. `newMemberPct`
   (default 30%) of seats is kept for new members.
 - Members are ranked by different articles in the latest saved, finished month
-  **before the event's month**; new members go in registration order. Seats one
+  **before the event's month** (Wikipedia-like wikis only — `isArticleWiki()`,
+  so Wikidata items / Commons files don't count); new members go in registration order. Seats one
   group can't fill go to the other; the rest are "Waiting list".
 - Coordinators add new registrants (with a username) to the community list —
   the public form never writes to `communityMembers`.

@@ -18,6 +18,7 @@ import { listenSettings } from "../services/settingsService";
 import { monthReportHtml, yearReportHtml, certificatesHtml, openPrintWindow } from "../utils/contributorPrint";
 import logo from "../assets/logo.png";
 import { certificateArt } from "../utils/certificateArt";
+import { tidyName, nameProblem } from "../utils/names";
 import { monthlyNews, newsText, projectsNews, projectsText, pointsBreakdown } from "../utils/monthlyNews";
 import {
   WIKIS, DEFAULT_WIKI, DEFAULT_THRESHOLD, wikiInfo, thresholdFor, fetchUserProjects, POINTS_WIKIS, POINTS_PER_LEVEL,
@@ -336,6 +337,7 @@ function Report({ members, community = [], reports, allReports = [], events, sco
   const [saving,    setSaving]    = useState(false);
 
   const eligible = members.filter(m => m.isActive !== false && (m.wikimediaUsername || "").trim());
+  const memberNames = useMemo(() => new Map(community.map(m => [normalizeUsername(m.wikimediaUsername), m.name || ""])), [community]);
   const saved = reports.find(r => r.id === reportId(wiki, month, scope));
   const freshMatches = fresh && fresh.wiki === wiki && fresh.month === month && fresh.scope === scope;
   const eventsOnly = scope === "events";
@@ -350,10 +352,15 @@ function Report({ members, community = [], reports, allReports = [], events, sco
       return { rows, threshold: Number(threshold) || 0, partial: isPartialMonth(month), isSaved: false, events: fresh.events, notMembers: fresh.notMembers || [] };
     }
     if (saved) {
-      return { rows: saved.rows || [], threshold: saved.threshold, partial: saved.partial, isSaved: true, saved, events: saved.events || [], notMembers: saved.notMembers || [] };
+      // Saved rows keep the name from when they were saved — show the member's current name.
+      const rows = (saved.rows || []).map(r => {
+        const n = (memberNames.get(normalizeUsername(r.username)) || "").trim();
+        return n && n !== r.name ? { ...r, name: n } : r;
+      });
+      return { rows, threshold: saved.threshold, partial: saved.partial, isSaved: true, saved, events: saved.events || [], notMembers: saved.notMembers || [] };
     }
     return null;
-  }, [freshMatches, fresh, saved, threshold, month]);
+  }, [freshMatches, fresh, saved, threshold, month, memberNames]);
 
   const activeCount = view ? view.rows.filter(r => r.active).length : 0;
   const editingCount = view ? view.rows.filter(isEditing).length : 0;
@@ -1243,7 +1250,7 @@ function Events({ events, members, forms, profile, canEdit, isAdmin, showToast, 
 }
 
 // ── Members tab ────────────────────────────────────────────────────────────────
-function Members({ members, volunteers, participants, profile, canEdit, isAdmin, showToast, addMembers, returning = new Set(), grantPeople = null, grantsOf = () => [], grantTitle = "" }) {
+function Members({ members, volunteers, participants, profile, canEdit, isAdmin, showToast, addMembers, returning = new Set(), grantPeople = null, grantsOf = () => [], grantTitle = "", participantName = new Map() }) {
   const [name,     setName]     = useState("");
   const [username, setUsername] = useState("");
   const [bulk,     setBulk]     = useState("");
@@ -1252,6 +1259,8 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
   const [missing,  setMissing]  = useState([]);
   const [projects, setProjects] = useState(null);   // Map<username, [{ host, label, edits }]> — this session only
   const [projBusy, setProjBusy] = useState(null);   // { done, total }
+  const [editing,  setEditing]  = useState(null);   // { id, value } — name being edited
+  const [onlyCheck, setOnlyCheck] = useState(false); // show only names to check
 
   const existing = useMemo(
     () => new Set(members.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean)),
@@ -1340,6 +1349,23 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
     showToast(`Imported ${n} from Participants.`);
   };
 
+  // Fix a member's name (used on reports and certificates).
+  const saveName = async (m, raw) => {
+    const value = String(raw || "").replace(/\s+/g, " ").trim();
+    if (!value) { alert("The name can't be empty."); return; }
+    if (value === (m.name || "")) { setEditing(null); return; }
+    try {
+      await updateCommunityMember(m.id, { name: value });
+      await addAudit(profile, AUDIT_ACTIONS.UPDATE, "contributors", {
+        targetId: m.id, recordTitle: value, details: `Renamed community member ${m.wikimediaUsername}: "${m.name || ""}" → "${value}"`,
+      });
+      setEditing(null);
+      showToast("Name saved.");
+    } catch (e) {
+      alert(`Could not save the name: ${e.message}`);
+    }
+  };
+
   const toggleActive = async (m) => {
     await updateCommunityMember(m.id, { isActive: m.isActive === false });
   };
@@ -1352,8 +1378,10 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
   };
 
   const q = search.toLowerCase();
+  const toCheck = members.filter(m => nameProblem(m.name, m.wikimediaUsername)).length;
   const filtered = members.filter(m =>
-    !q || m.name?.toLowerCase().includes(q) || m.wikimediaUsername?.toLowerCase().includes(q)
+    (!q || m.name?.toLowerCase().includes(q) || m.wikimediaUsername?.toLowerCase().includes(q))
+    && (!onlyCheck || nameProblem(m.name, m.wikimediaUsername))
   );
 
   // Which Wikimedia projects each member edits (global account on Meta).
@@ -1429,6 +1457,12 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
         <span style={{ fontSize: 12, color: "#888" }}>{members.length} member{members.length === 1 ? "" : "s"}, {members.filter(m => m.isActive !== false).length} in reports
           {grantPeople && <>, <strong>{members.filter(m => grantPeople.has(normalizeUsername(m.wikimediaUsername))).length} took part in {grantTitle || "this grant"}</strong></>}
           {returning.size > 0 && <>, <strong style={{ color: "#2563eb" }}>{members.filter(m => returning.has(normalizeUsername(m.wikimediaUsername))).length} returning from earlier grants</strong> (retention)</>}</span>
+        {toCheck > 0 && (
+          <button className={`btn btn-sm ${onlyCheck ? "btn-primary" : ""}`} onClick={() => setOnlyCheck(v => !v)}
+            title="Names that may not look right on a certificate (username, one name, all capitals…)">
+            {onlyCheck ? "Show all" : `✎ ${toCheck} name${toCheck === 1 ? "" : "s"} to check`}
+          </button>
+        )}
         <button className="btn btn-sm" onClick={checkProjects} disabled={!!projBusy || filtered.length === 0}
           title="Look up each member's global account to see every Wikimedia project they edit (all-time edit counts)">
           {projBusy ? `Checking ${projBusy.done} of ${projBusy.total}…` : `🌍 Check projects${q ? ` (${filtered.length} shown)` : ""}`}
@@ -1445,7 +1479,32 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
               <tbody>
                 {filtered.map(m => (
                   <tr key={m.id}>
-                    <td style={{ fontWeight: 500 }}>{m.name}{returning.has(normalizeUsername(m.wikimediaUsername)) && <span className="badge badge-blue" style={{ marginLeft: 6, fontSize: 10 }} title="Also a member in an earlier grant — counts as retention">Returning</span>}</td>
+                    <td style={{ fontWeight: 500, minWidth: 180 }}>
+                      {editing?.id === m.id ? (() => {
+                        const suggestion = participantName.get(normalizeUsername(m.wikimediaUsername));
+                        const tidy = tidyName(editing.value);
+                        return (
+                          <div>
+                            <input autoFocus value={editing.value} onChange={e => setEditing({ id: m.id, value: e.target.value })}
+                              onKeyDown={e => { if (e.key === "Enter") saveName(m, editing.value); if (e.key === "Escape") setEditing(null); }}
+                              style={{ fontSize: 13, width: "100%", minWidth: 160 }} placeholder="Full name as on the certificate" />
+                            <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                              <button className="btn btn-sm btn-primary" onClick={() => saveName(m, editing.value)}>Save</button>
+                              <button className="btn btn-sm" onClick={() => setEditing(null)}>Cancel</button>
+                              {tidy && tidy !== editing.value && <button className="btn btn-sm" onClick={() => setEditing({ id: m.id, value: tidy })} title="Fix spaces and capital letters">Tidy → {tidy}</button>}
+                              {suggestion && suggestion !== editing.value && <button className="btn btn-sm" onClick={() => setEditing({ id: m.id, value: suggestion })} title="Name from the Participants list">Use “{suggestion}”</button>}
+                            </div>
+                          </div>
+                        );
+                      })() : (
+                        <>
+                          {m.name}
+                          {canEdit && <button className="btn btn-sm" style={{ marginLeft: 6, padding: "0 6px", fontSize: 11 }} title="Edit name (used on reports and certificates)" onClick={() => setEditing({ id: m.id, value: m.name || "" })}>✎</button>}
+                          {(() => { const why = nameProblem(m.name, m.wikimediaUsername); return why && <span className="badge badge-amber" style={{ marginLeft: 6, fontSize: 10 }} title="Check this name before printing certificates">{why}</span>; })()}
+                          {returning.has(normalizeUsername(m.wikimediaUsername)) && <span className="badge badge-blue" style={{ marginLeft: 6, fontSize: 10 }} title="Also a member in an earlier grant — counts as retention">Returning</span>}
+                        </>
+                      )}
+                    </td>
                     <td style={{ fontSize: 12 }}>
                       <a href={contribsLink(WIKIS[0].id, m.wikimediaUsername || "")} target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb" }}>{m.wikimediaUsername}</a>
                     </td>
@@ -1601,7 +1660,7 @@ export default function ActiveContributors({ profile, currentGrant, grantId = ""
       {tab === "History" && <History reports={scopedReports} />}
       {tab === "Year summary" && <YearSummary members={members} reports={scopedReports} scope={scope} currentGrant={currentGrant} profile={profile} org={org} signature={signature} returning={returning} />}
       {tab === "Events"  && <Events events={events} members={allMembers} forms={forms} nameFor={nameFor} addMembers={addMembers} earlier={earlierSet} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast} />}
-      {tab === "Community members" && <Members members={allMembers} volunteers={volunteers} participants={grantParticipants} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast}
+      {tab === "Community members" && <Members members={allMembers} volunteers={volunteers} participants={grantParticipants} participantName={nameByUsername} profile={profile} canEdit={canEdit} isAdmin={isAdmin} showToast={showToast}
         addMembers={addMembers} returning={returning} grantPeople={grantPeople} grantsOf={grantsOf} grantTitle={currentGrant?.title || currentGrant?.grantNumber || ""} />}
     </div>
   );

@@ -82,7 +82,7 @@ src/
                       OnboardingModal, BackToTop
   utils/              Pure helpers (no React/Firebase) — testable:
                       wikiContribs.js, eventContribs.js, eventSelection.js, yearSummary.js,
-                      grantScope.js, monthlyNews.js,
+                      grantScope.js, monthlyNews.js, names.js,
                       contributorPrint.js, certificateArt.js, budgetImport.js,
                       timelineImport.js, wikiImport.js, spendingReport.js,
                       timelineReport.js
@@ -333,6 +333,14 @@ index — services usually skip `orderBy` and sort client-side instead.
   are official Wikimedia Commons files (Foundation trademarks, used under the
   affiliate's rights) kept in `public/certificate/` — **not** imported through
   webpack, because CRA's SVG loader fails on one file's editor markup.
+- **Names on certificates** come from the community member's `name`.
+  Coordinators fix them on Community members (✎ next to the name: Save, "Tidy"
+  = `tidyName()` fixes spaces and ALL CAPS / all small letters, or "Use" the
+  name from the Participants list). `nameProblem()` (`utils/names.js`) flags
+  names to check (missing, same as the username, numbers/symbols, one case,
+  only one name) with a "names to check" filter. Saved reports keep the old
+  name in their rows, so the Report tab and Year summary show the member's
+  current name; renames are audited.
 - Org name comes from Settings → Organisation; logo from `src/assets/logo.png`.
   If watermarks don't print, enable "Background graphics" in the print dialog.
 - **Metrics** row `activeContributors` is filled from saved reports (latest

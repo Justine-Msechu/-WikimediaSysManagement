@@ -168,3 +168,52 @@ test("new articles, bytes and page ids are collected per volunteer", async () =>
   const stats = await fetchMonthStats(["Amina"], "2026-10", "sw.wikipedia.org", { fetchImpl, delayMs: 0 });
   expect(stats.get("Amina")).toEqual({ articles: 2, edits: 3, created: 1, bytes: 3150, pageIds: [1, 2], newArticles: ["Mlima Meru"] });
 });
+
+describe("other Wikimedia projects", () => {
+  const { fetchMonthStats, wikiInfo, thresholdFor, isArticleWiki, fetchUserProjects, rowsToCsv } = require("./wikiContribs");
+
+  test("each project has its own namespaces, words and threshold", () => {
+    expect(thresholdFor("sw.wikipedia.org")).toBe(30);
+    expect(wikiInfo("www.wikidata.org")).toMatchObject({ unit: "items", namespaces: "0|120|146" });
+    expect(wikiInfo("commons.wikimedia.org")).toMatchObject({ unit: "files", newUnit: "uploads", namespaces: "6" });
+    expect(isArticleWiki("sw.wikipedia.org")).toBe(true);
+    expect(isArticleWiki("www.wikidata.org")).toBe(false);
+    expect(isArticleWiki(undefined)).toBe(true);   // old reports = Swahili Wikipedia
+  });
+
+  test("Commons counts files and uploads", async () => {
+    const calls = [];
+    const fetchImpl = async (url) => {
+      calls.push(new URL(url));
+      return { ok: true, json: async () => ({ query: { usercontribs: [
+        { user: "Amina", pageid: 10, revid: 1, title: "File:Kibo.jpg", timestamp: "2026-10-02T00:00:00Z", new: true, sizediff: 500 },
+        { user: "Amina", pageid: 11, revid: 2, title: "File:Moshi.jpg", timestamp: "2026-10-03T00:00:00Z", sizediff: 20 },
+      ] } }) };
+    };
+    const stats = await fetchMonthStats(["Amina"], "2026-10", "commons.wikimedia.org", { fetchImpl, delayMs: 0 });
+    expect(calls[0].origin).toBe("https://commons.wikimedia.org");
+    expect(calls[0].searchParams.get("ucnamespace")).toBe("6");
+    expect(stats.get("Amina")).toMatchObject({ articles: 2, created: 1, newArticles: ["File:Kibo.jpg"] });
+    expect(rowsToCsv([], { wiki: "commons.wikimedia.org", threshold: 20 })).toContain("Different files");
+  });
+
+  test("fetchUserProjects lists projects with edits from the global account", async () => {
+    const fetchImpl = async (url) => {
+      const u = new URL(url);
+      expect(u.origin).toBe("https://meta.wikimedia.org");
+      const who = u.searchParams.get("guiuser");
+      const body = who === "Nobody" ? { query: { globaluserinfo: { missing: true } } } : { query: { globaluserinfo: { merged: [
+        { wiki: "swwiki", url: "https://sw.wikipedia.org", editcount: 900 },
+        { wiki: "wikidatawiki", url: "https://www.wikidata.org", editcount: 1200 },
+        { wiki: "metawiki", url: "https://meta.wikimedia.org", editcount: 0 },
+      ] } } };
+      return { ok: true, json: async () => body };
+    };
+    const res = await fetchUserProjects(["Amina", "Nobody"], { fetchImpl, delayMs: 0 });
+    expect(res.get("Amina")).toEqual([
+      { host: "www.wikidata.org", label: "Wikidata", edits: 1200 },
+      { host: "sw.wikipedia.org", label: "Swahili Wikipedia", edits: 900 },
+    ]);
+    expect(res.get("Nobody")).toEqual([]);
+  });
+});

@@ -3,7 +3,7 @@
 // registrants who are already community members, and keeps a share of the seats
 // for new members.
 
-import { normalizeUsername, isEditing } from "./wikiContribs";
+import { normalizeUsername, isEditing, isArticleWiki } from "./wikiContribs";
 
 export const DEFAULT_NEW_MEMBER_PCT = 30;
 
@@ -22,7 +22,7 @@ export function rankingMonth(reports, beforeMonth = "") {
 export function articlesForMonth(reports, month) {
   const out = new Map();
   for (const r of reports || []) {
-    if (r.month !== month) continue;
+    if (r.month !== month || !isArticleWiki(r.wiki)) continue;   // Wikipedia articles, not Wikidata items or files
     for (const row of r.rows || []) {
       const u = normalizeUsername(row.username);
       if (!u) continue;

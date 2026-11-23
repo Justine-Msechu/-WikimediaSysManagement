@@ -2,15 +2,29 @@
 // Pure JS (no React / Firebase) so it can be unit-tested with a fake fetch.
 //
 // Rule: a community member is ACTIVE in a month if they edited at least
-// `threshold` DIFFERENT articles (main namespace, ns=0) on the chosen wiki
-// during that calendar month, in UTC. Several edits to one article count once.
+// `threshold` DIFFERENT pages of the project's content type (articles on
+// Wikipedia, items on Wikidata, files on Commons) during that calendar month,
+// in UTC. Several edits to one page count once.
 
+// Each project: which namespaces count, what a page is called, and its own
+// default active threshold.
+//   kind "article" — Wikipedia-like text wikis (counted together as "articles")
 export const WIKIS = [
-  { id: "sw.wikipedia.org", label: "Swahili Wikipedia" },
-  { id: "en.wikipedia.org", label: "English Wikipedia" },
+  { id: "sw.wikipedia.org",      label: "Swahili Wikipedia",  short: "Wikipedia ya Kiswahili", kind: "article", namespaces: "0",       unit: "articles", one: "article", newUnit: "new articles", threshold: 30 },
+  { id: "en.wikipedia.org",      label: "English Wikipedia",  short: "Wikipedia ya Kiingereza", kind: "article", namespaces: "0",       unit: "articles", one: "article", newUnit: "new articles", threshold: 30 },
+  { id: "www.wikidata.org",      label: "Wikidata",           short: "Wikidata",               kind: "data",    namespaces: "0|120|146", unit: "items",  one: "item",    newUnit: "new items",    threshold: 100 },
+  { id: "commons.wikimedia.org", label: "Wikimedia Commons",  short: "Wikimedia Commons",      kind: "media",   namespaces: "6",       unit: "files",    one: "file",    newUnit: "uploads",      threshold: 20 },
+  { id: "sw.wiktionary.org",     label: "Swahili Wiktionary", short: "Wiktionary ya Kiswahili", kind: "article", namespaces: "0",      unit: "entries",  one: "entry",   newUnit: "new entries",  threshold: 30 },
 ];
 export const DEFAULT_WIKI = WIKIS[0].id;
-export const DEFAULT_THRESHOLD = 60;
+export const DEFAULT_THRESHOLD = 30;
+// Settings for a project (unknown hosts behave like a Wikipedia).
+export function wikiInfo(id) {
+  return WIKIS.find(w => w.id === id) || { id, label: id, short: id, kind: "article", namespaces: "0", unit: "articles", one: "article", newUnit: "new articles", threshold: DEFAULT_THRESHOLD };
+}
+export const thresholdFor = (id) => wikiInfo(id).threshold;
+// Wikipedia articles (and other text wikis) — what event seats and article totals use.
+export const isArticleWiki = (id) => wikiInfo(id || DEFAULT_WIKI).kind === "article";
 // "Still editing" = edited at least this many different articles in the month.
 // Used for retained members; independent of the (much higher) active threshold.
 export const STILL_EDITING_MIN = 1;
@@ -141,7 +155,7 @@ export async function fetchRangeContribs(usernames, start, end, wiki = DEFAULT_W
         action:      "query",
         list:        "usercontribs",
         ucuser:      batch.join("|"),
-        ucnamespace: "0",
+        ucnamespace: wikiInfo(wiki).namespaces,
         ucdir:       "newer",
         ucstart:     start,
         ucend:       end,
@@ -155,7 +169,8 @@ export async function fetchRangeContribs(usernames, start, end, wiki = DEFAULT_W
         const e = entry(normalizeUsername(c.user));
         e.pages.add(c.pageid);
         e.revs.set(c.revid ?? `${c.pageid}@${c.timestamp}#${e.revs.size}`, Number(c.sizediff) || 0);
-        if (c.new !== undefined && c.new !== false) e.created.set(c.pageid, c.title || String(c.pageid));   // they started this article
+        // They started this page: a new article / item, or (on Commons) an upload.
+        if (c.new !== undefined && c.new !== false) e.created.set(c.pageid, c.title || String(c.pageid));
       }
 
       if (!json.continue) break;
@@ -259,12 +274,48 @@ function csvCell(v) {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
 // Plain CSV text. The page adds a UTF-8 BOM when downloading so Excel reads it.
 export function rowsToCsv(rows, { month, wiki, threshold } = {}) {
-  const header = ["#", "Name", "Username", "Different articles", "Total edits", `Active (>= ${threshold})`, `Still editing (>= ${STILL_EDITING_MIN})`, "New articles", "Bytes added", "Month", "Wiki"];
+  const w = wikiInfo(wiki || DEFAULT_WIKI);
+  const header = ["#", "Name", "Username", `Different ${w.unit}`, "Total edits", `Active (>= ${threshold})`, `Still editing (>= ${STILL_EDITING_MIN})`, cap(w.newUnit), "Bytes added", "Month", "Wiki"];
   const lines = [header.map(csvCell).join(",")];
   (rows || []).forEach((r, i) => {
     lines.push([i + 1, r.name, r.username, r.articles, r.edits, r.active ? "Yes" : "No", isEditing(r) ? "Yes" : "No", r.created ?? "", r.bytes ?? "", month, wiki].map(csvCell).join(","));
   });
   return lines.join("\r\n");
+}
+
+// ── Projects a person edits (global account) ───────────────────────────────
+
+/**
+ * Every Wikimedia project a user has edited, from their global account on Meta.
+ * Returns Map<normalizedUsername, [{ host, label, edits }]> (most edits first;
+ * [] for a username with no global account). Edit counts are all-time totals.
+ */
+export async function fetchUserProjects(usernames, opts = {}) {
+  const { fetchImpl = fetch, onProgress, delayMs = PAUSE_MS } = opts;
+  const names = uniqueNormalized(usernames);
+  const out = new Map();
+  let done = 0;
+  for (const name of names) {
+    if (done && delayMs) await sleep(delayMs);
+    const json = await getJson(fetchImpl, apiUrl("meta.wikimedia.org", {
+      action: "query", meta: "globaluserinfo", guiuser: name, guiprop: "merged",
+    }));
+    const info = json.query?.globaluserinfo || {};
+    const list = (info.missing !== undefined && info.missing !== false) ? [] : (info.merged || [])
+      .filter(w => (Number(w.editcount) || 0) > 0 && w.url)
+      .map(w => {
+        const host = String(w.url).replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+        const known = WIKIS.find(x => x.id === host);
+        return { host, label: known ? known.label : host, edits: Number(w.editcount) || 0 };
+      })
+      .sort((a, b) => b.edits - a.edits || a.label.localeCompare(b.label));
+    out.set(name, list);
+    done += 1;
+    if (onProgress) onProgress(done, names.length);
+  }
+  return out;
 }

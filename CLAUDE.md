@@ -216,8 +216,23 @@ index — services usually skip `orderBy` and sort client-side instead.
 
 ### Active contributors (pages/ActiveContributors.js, utils/wikiContribs.js)
 - A community member (`communityMembers`) is **active** in a month if they
-  edited ≥ threshold (default 60) **different** main-namespace articles on the
-  chosen wiki in that UTC month. Repeat edits to one page count once.
+  edited ≥ threshold **different** pages on the chosen project in that UTC
+  month. Repeat edits to one page count once.
+- **Projects** (`WIKIS` in wikiContribs.js — each with `namespaces`, words
+  `unit`/`one`/`newUnit`, `kind` and its own default `threshold`; use
+  `wikiInfo()` / `thresholdFor()`, never hard-code "articles" or 60):
+  Swahili & English Wikipedia — articles, ns 0, **30**; Wikidata — items,
+  ns 0|120|146 (items, properties, lexemes), **100**; Wikimedia Commons —
+  files, ns 6, new = **uploads**, **20**; Swahili Wiktionary — entries, ns 0, 30.
+  The threshold box follows the chosen project. `isArticleWiki()` (kind
+  "article"; old reports without `wiki` count as Swahili Wikipedia) — event
+  seat ranking and Year summary "All wikis" article totals use only these, so
+  Wikidata items / Commons files don't inflate article counts (active / still
+  editing and edits count on every project).
+- **Projects column** on Community members ("🌍 Check projects"):
+  `fetchUserProjects()` reads each member's global account
+  (`meta=globaluserinfo&guiprop=merged` on meta.wikimedia.org) — every project
+  they edited, all-time edit counts. Kept in the page only, not saved.
 - Counts via `list=usercontribs`, 50 users per request, follows `continue`,
   excludes edits at exactly the end timestamp (ucend is inclusive).
 - **Still editing** = ≥ `STILL_EDITING_MIN` (1) different article that month —
@@ -264,7 +279,7 @@ index — services usually skip `orderBy` and sort client-side instead.
   events-only summaries say "in our community events".
 - **Year summary** tab (`utils/yearSummary.js`): per person across the grant
   year (or a quarter / custom range) from saved reports only. Labels: Active
-  contributor (60+ in any month) > Retained (still editing in
+  contributor (reached the active level on any project in any month) > Retained (still editing in
   `RETAINED_MIN_MONTHS` = 3+ months) > Participated. Quarters count from the
   grant's start month; wikis are combined per month; missing months are flagged.
 - **Best contributor of the month** = most different articles (ties share it,
@@ -276,6 +291,10 @@ index — services usually skip `orderBy` and sort client-side instead.
   (`bytes` = sum of `sizediff`), best contributor, and a ready paragraph in
   English or Kiswahili (`newsText()`). Reports saved before these fields show
   "—" until fetched and saved again. History shows different/new articles per month.
+  Wording follows the project (items / uploads…). **All projects** panel
+  (`projectsNews()` / `projectsText()`): the month across every project's
+  report (same month + scope; the one on screen even if unsaved), volunteers
+  counted once; "Fetch & save all projects" fetches and saves each project in turn.
 - **Printing** (`utils/contributorPrint.js`): monthly report and year/quarter
   summary. HTML opened in a new window with a Print / Save PDF button
   (`openPrintWindow`).

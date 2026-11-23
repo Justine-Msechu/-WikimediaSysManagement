@@ -28,3 +28,23 @@ test("newsletter text in English and Swahili", () => {
   expect(sw).toContain("makala 4 tofauti");
   expect(sw).toContain("makala mpya 2");
 });
+
+test("Wikidata and Commons wording, and all projects together", () => {
+  const { projectsNews, projectsText } = require("./monthlyNews");
+  const items = [{ name: "Amina", username: "Amina", articles: 120, edits: 300, created: 5, pageIds: [1], newArticles: [], editing: true, active: true }];
+  const files = [{ name: "Eli", username: "Eli", articles: 12, edits: 15, created: 10, pageIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], newArticles: ["File:Kibo.jpg"], editing: true }];
+  expect(newsText(monthlyNews(items), { monthName: "October 2026", wiki: "www.wikidata.org" }))
+    .toContain("contributed to 1 different item on Wikidata, including 5 new items");
+  expect(newsText(monthlyNews(files), { monthName: "October 2026", wiki: "commons.wikimedia.org" }))
+    .toContain("Some of the uploads: Kibo.jpg.");
+  const all = projectsNews([
+    { wiki: "sw.wikipedia.org", rows },
+    { wiki: "www.wikidata.org", rows: items },
+    { wiki: "commons.wikimedia.org", rows: files },
+  ]);
+  expect(all.volunteers).toBe(3);   // Amina, Baraka, Eli — Amina once
+  expect(all.missing).toEqual(["en.wikipedia.org", "sw.wiktionary.org"]);
+  const en = projectsText(all, { monthName: "October 2026" });
+  expect(en).toContain("4 articles on Swahili Wikipedia (2 new), 1 item on Wikidata (5 new) and 12 files on Wikimedia Commons (10 uploaded)");
+  expect(projectsText(all, { monthName: "Oktoba 2026", lang: "sw" })).toContain("faili 12 kwenye Wikimedia Commons");
+});

@@ -176,7 +176,7 @@ export function yearReportHtml({ summary, start, end, wikiLabel, quarterRows = [
       <td><span class="tag ${tag[r.label]}">${LABELS[r.label]}</span></td><td class="num">${r.monthsActive}</td><td class="num">${r.monthsEditing}</td>
       <td class="num"><strong>${r.totalArticles.toLocaleString()}</strong></td><td>${r.bestMonth.month ? `${esc(monthName(r.bestMonth.month, "short"))} (${r.bestMonth.articles})` : ""}</td></tr>`).join("")}
     </tbody></table>
-    <div class="note">Active contributor: 60+ different articles in at least one month. Retained: still editing (1+ article) in ${RETAINED_MIN_MONTHS}+ months.
+    <div class="note">Active contributor: reached the active level (e.g. 30+ different Wikipedia articles) in at least one month. Retained: still editing (1+ article) in ${RETAINED_MIN_MONTHS}+ months.
       ★ = best contributor of at least one month. Total articles adds the monthly counts, so an article edited in two months counts twice.</div>`;
   return page({ title: `Contributors ${start} to ${end}`, orgName, logoUrl, heading: `Contributor summary — ${periodName(start, end)}`, size: "A4 landscape", body });
 }

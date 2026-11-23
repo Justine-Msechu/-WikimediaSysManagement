@@ -2,7 +2,7 @@
 // Pure JS (no React / Firebase). Built from saved monthly contributor reports,
 // no extra Wikipedia requests.
 
-import { normalizeUsername, isEditing, shiftMonth, currentMonth } from "./wikiContribs";
+import { normalizeUsername, isEditing, shiftMonth, currentMonth, isArticleWiki } from "./wikiContribs";
 
 // Still editing in at least this many months → retained member.
 export const RETAINED_MIN_MONTHS = 3;
@@ -48,7 +48,9 @@ export function quarters(start, end) {
  * opts:    { start, end, wiki = "all", now }
  *
  * Per person and month, wikis are combined: articles/edits are added up,
- * active / still editing if true on any wiki. Partial (unfinished) months are skipped.
+ * active / still editing if true on any wiki (Wikidata, Commons too). With
+ * wiki = "all", article totals (and best month) count only Wikipedia-like
+ * wikis, so Wikidata items and Commons files don't inflate them; edits count everywhere. Partial (unfinished) months are skipped.
  */
 export function buildYearSummary(reports, members, { start, end, wiki = "all", now = new Date() } = {}) {
   const months = monthRange(start, end);
@@ -81,7 +83,7 @@ export function buildYearSummary(reports, members, { start, end, wiki = "all", n
       if (!u) continue;
       const p = person(u, row.name);
       const cell = p.byMonth[r.month] || (p.byMonth[r.month] = { articles: 0, edits: 0, active: false, editing: false });
-      cell.articles += Number(row.articles) || 0;
+      if (wiki !== "all" || isArticleWiki(r.wiki)) cell.articles += Number(row.articles) || 0;
       cell.edits    += Number(row.edits) || 0;
       cell.active    = cell.active || !!row.active;
       cell.editing   = cell.editing || isEditing(row);
@@ -139,7 +141,7 @@ function csvCell(v) {
 }
 
 export function yearSummaryToCsv(summary) {
-  const header = ["#", "Name", "Username", "Label", "Months active (60+)", `Months still editing (1+)`, "Total articles", "Total edits", "Best month", "Best month articles", ...summary.months];
+  const header = ["#", "Name", "Username", "Label", "Months active", `Months still editing (1+)`, "Total articles", "Total edits", "Best month", "Best month articles", ...summary.months];
   const lines = [header.map(csvCell).join(",")];
   summary.rows.forEach((r, i) => {
     lines.push([

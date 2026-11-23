@@ -18,9 +18,9 @@ import { listenSettings } from "../services/settingsService";
 import { monthReportHtml, yearReportHtml, certificatesHtml, openPrintWindow } from "../utils/contributorPrint";
 import logo from "../assets/logo.png";
 import { certificateArt } from "../utils/certificateArt";
-import { monthlyNews, newsText } from "../utils/monthlyNews";
+import { monthlyNews, newsText, projectsNews, projectsText } from "../utils/monthlyNews";
 import {
-  WIKIS, DEFAULT_WIKI, DEFAULT_THRESHOLD,
+  WIKIS, DEFAULT_WIKI, DEFAULT_THRESHOLD, wikiInfo, thresholdFor, fetchUserProjects,
   normalizeUsername, currentMonth, lastFullMonth, isPartialMonth, previousMonths,
   fetchMonthStats, checkUsernames, buildReportRows, rowsToCsv, isEditing, bestContributors, STILL_EDITING_MIN,
   SCOPES, DEFAULT_SCOPE, reportScope, scopeLabel,
@@ -67,6 +67,16 @@ function reportEditing(r) {
   return r.stillEditingCount ?? (r.rows || []).filter(isEditing).length;
 }
 
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+// What a project's report counts, in words.
+function countsText(wiki) {
+  const w = wikiInfo(wiki);
+  if (w.kind === "data") return "Counts Wikidata items, properties and lexemes";
+  if (w.kind === "media") return "Counts files (uploads and edits to file pages)";
+  return `Counts ${w.unit} only (main namespace)`;
+}
+
 function WikiSelect({ value, onChange }) {
   return (
     <select value={value} onChange={e => onChange(e.target.value)}>
@@ -85,8 +95,8 @@ function MonthlyNewsPanel({ rows, month, wiki, eventsOnly, orgName, threshold, p
   const [y, m] = month.split("-").map(Number);
   const monthName = lang === "sw" ? `${SW_MONTHS[m - 1]} ${y}`
     : new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
-  const wikiName = lang === "sw" && wiki === "sw.wikipedia.org" ? "Wikipedia ya Kiswahili" : wikiLabel(wiki);
-  const text = newsText(news, { monthName, wikiLabel: wikiName, orgName, eventsOnly, lang, threshold });
+  const w = wikiInfo(wiki);
+  const text = newsText(news, { monthName, wiki, orgName, eventsOnly, lang, threshold });
 
   const copy = async () => {
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }
@@ -103,13 +113,13 @@ function MonthlyNewsPanel({ rows, month, wiki, eventsOnly, orgName, threshold, p
         </div>
       </div>
       {!news.detailed && (
-        <div className="alert alert-warn">This report was saved before new-article counts existed. Click "Fetch from Wikipedia" and save again to get new articles and an exact total.</div>
+        <div className="alert alert-warn">This report was saved before new-article counts existed. Click "Fetch" and save again to get new articles and an exact total.</div>
       )}
       <div className="card-grid" style={{ marginBottom: 12 }}>
         {[
           ["Volunteers who edited", news.editing, "#2563eb"],
-          ["Different articles", news.articles, "#2d7a4f"],
-          ["New articles", news.detailed ? news.created : "—", "#7c3aed"],
+          [`Different ${w.unit}`, news.articles, "#2d7a4f"],
+          [cap(w.newUnit), news.detailed ? news.created : "—", "#7c3aed"],
           ["Edits", news.edits, "#1c2b1e"],
           ["Text added", news.detailed ? `${Math.round(Math.max(0, news.bytes) / 1000).toLocaleString()} KB` : "—", "#1c2b1e"],
         ].map(([label, value, color]) => (
@@ -126,7 +136,7 @@ function MonthlyNewsPanel({ rows, month, wiki, eventsOnly, orgName, threshold, p
       </div>
       {news.newArticles.length > 0 && (
         <details style={{ marginTop: 10, fontSize: 13 }}>
-          <summary style={{ cursor: "pointer", fontWeight: 600 }}>New articles ({news.newArticles.length})</summary>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>{cap(w.newUnit)} ({news.newArticles.length})</summary>
           <div style={{ columns: "260px", marginTop: 8 }}>
             {news.newArticles.map(a => (
               <div key={`${a.title}|${a.username}`} style={{ breakInside: "avoid", marginBottom: 2 }}>
@@ -138,9 +148,75 @@ function MonthlyNewsPanel({ rows, month, wiki, eventsOnly, orgName, threshold, p
         </details>
       )}
       <div style={{ fontSize: 12, color: "#888", marginTop: 8 }}>
-        Different articles counts each article once even if several volunteers edited it. New articles = articles a volunteer started this month.
+        Different {w.unit} counts each {w.one} once even if several volunteers edited it. {cap(w.newUnit)} = {w.kind === "media" ? "files a volunteer uploaded" : `${w.unit} a volunteer started`} this month.
         {eventsOnly ? " Only edits made in Kilimanjaro events." : " All edits on the wiki."} Volunteers = this grant's community members.
       </div>
+    </div>
+  );
+}
+
+// ── All projects — the month across Wikipedia, Wikidata, Commons… ────────────────
+function AllProjectsPanel({ reports, month, eventsOnly, orgName }) {
+  const [lang, setLang] = useState("en");
+  const [copied, setCopied] = useState(false);
+  const all = useMemo(() => projectsNews(reports), [reports]);
+  const [y, m] = month.split("-").map(Number);
+  const monthName = lang === "sw" ? `${SW_MONTHS[m - 1]} ${y}`
+    : new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+  const text = projectsText(all, { monthName, orgName, eventsOnly, lang });
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch { window.prompt("Copy the text:", text); }
+  };
+  return (
+    <div className="panel" style={{ border: "1px solid #bfd3f5", background: "#f5f8fe", marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+        <div className="panel-title" style={{ color: "#2563eb", margin: 0 }}>🌍 All projects — {monthLabel(month)}</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button className={`btn btn-sm ${lang === "en" ? "btn-primary" : ""}`} onClick={() => setLang("en")}>English</button>
+          <button className={`btn btn-sm ${lang === "sw" ? "btn-primary" : ""}`} onClick={() => setLang("sw")}>Kiswahili</button>
+        </div>
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table>
+          <thead><tr><th>Project</th><th>Volunteers who edited</th><th>Different pages</th><th>New / uploaded</th><th>Edits</th><th>Active</th></tr></thead>
+          <tbody>
+            {WIKIS.map(w => {
+              const r = reports.find(x => x.wiki === w.id);
+              if (!r) return (
+                <tr key={w.id}><td style={{ fontWeight: 500 }}>{w.label}</td><td colSpan={5} style={{ fontSize: 12, color: "#888" }}>Not fetched for this month</td></tr>
+              );
+              const nw = monthlyNews(r.rows);
+              return (
+                <tr key={w.id}>
+                  <td style={{ fontWeight: 500 }}>{w.label}</td>
+                  <td>{nw.editing}</td>
+                  <td>{nw.articles.toLocaleString()} {w.unit}</td>
+                  <td style={{ color: "#7c3aed" }}>{nw.detailed ? `${nw.created.toLocaleString()} ${w.newUnit}` : "—"}</td>
+                  <td>{nw.edits.toLocaleString()}</td>
+                  <td style={{ color: "#2d7a4f", fontWeight: 600 }}>{nw.active}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ fontSize: 13, margin: "10px 0 6px" }}>
+        <strong>{all.volunteers}</strong> different volunteer{all.volunteers === 1 ? "" : "s"} edited at least one project · <strong>{all.edits.toLocaleString()}</strong> edits in all
+      </div>
+      {text ? (
+        <>
+          <textarea readOnly value={text} rows={3} style={{ width: "100%", fontSize: 13, fontFamily: "inherit", background: "#fff" }} onFocus={e => e.target.select()} />
+          <div className="btn-row" style={{ marginTop: 6 }}>
+            <button className="btn btn-sm btn-primary" onClick={copy}>{copied ? "✓ Copied" : "Copy text"}</button>
+          </div>
+        </>
+      ) : <div style={{ fontSize: 13, color: "#888" }}>No edits on any fetched project yet.</div>}
+      {all.missing.length > 0 && (
+        <div style={{ fontSize: 12, color: "#888", marginTop: 8 }}>
+          Not fetched yet: {all.missing.map(id => wikiInfo(id).label).join(", ")}. Use "Fetch & save all projects" to include every project.
+        </div>
+      )}
     </div>
   );
 }
@@ -228,8 +304,12 @@ function Report({ members, community = [], reports, allReports = [], events, sco
   const minMonth = monthRange ? monthRange.start : "";
   const clampMonth = (m) => (minMonth && m < minMonth ? minMonth : m > maxMonth ? maxMonth : m);
   const [month,     setMonth]     = useState(() => clampMonth(lastFullMonth()));
-  const [wiki,      setWiki]      = useState(DEFAULT_WIKI);
+  const [wiki,      setWikiRaw]   = useState(DEFAULT_WIKI);
   const [threshold, setThreshold] = useState(DEFAULT_THRESHOLD);
+  // Each project has its own active threshold.
+  const setWiki = (w) => { setWikiRaw(w); setThreshold(thresholdFor(w)); };
+  const unit = wikiInfo(wiki).unit;
+  const [allBusy,   setAllBusy]   = useState("");     // project being fetched by "Fetch all projects"
   const [fresh,     setFresh]     = useState(null);   // { wiki, month, members, stats }
   const [progress,  setProgress]  = useState(null);   // { done, total }
   const [error,     setError]     = useState("");
@@ -260,6 +340,17 @@ function Report({ members, community = [], reports, allReports = [], events, sco
   const memberCount = view ? view.rows.length : 0;
   const busy = progress !== null;
 
+  // Count one project for the month → a "fresh" result.
+  const fetchFor = async (w, usernames, onProgress) => {
+    if (eventsOnly) {
+      const inMonth = await withFormUsernames(eventWindowsInMonth(events, month).map(x => x.event));
+      const res = await fetchEventMonthStats(usernames, inMonth, month, w, { onProgress });
+      return { wiki: w, month, scope, members: eligible, stats: res.stats, formOnly: res.formOnly, notMembers: res.notMembers, events: res.events };
+    }
+    const stats = await fetchMonthStats(usernames, month, w, { onProgress });
+    return { wiki: w, month, scope, members: eligible, stats, events: [] };
+  };
+
   const runFetch = async () => {
     if (eligible.length === 0) { setError("No community members took part in this grant yet (participant list, registration forms or events), or none is marked \"In reports\". Add this grant's events or participants first."); return; }
     if (eventsOnly && events.length === 0) { setError("No Kilimanjaro events added yet. Add them on the Events tab first."); return; }
@@ -268,14 +359,7 @@ function Report({ members, community = [], reports, allReports = [], events, sco
     const onProgress = (done, total) => setProgress({ done, total });
     const usernames = eligible.map(m => m.wikimediaUsername);
     try {
-      if (eventsOnly) {
-        const inMonth = await withFormUsernames(eventWindowsInMonth(events, month).map(w => w.event));
-        const res = await fetchEventMonthStats(usernames, inMonth, month, wiki, { onProgress });
-        setFresh({ wiki, month, scope, members: eligible, stats: res.stats, formOnly: res.formOnly, notMembers: res.notMembers, events: res.events });
-      } else {
-        const stats = await fetchMonthStats(usernames, month, wiki, { onProgress });
-        setFresh({ wiki, month, scope, members: eligible, stats, events: [] });
-      }
+      setFresh(await fetchFor(wiki, usernames, onProgress));
     } catch (e) {
       setError(`Could not fetch ${eventsOnly ? "Kilimanjaro event contributions" : `from ${wikiLabel(wiki)}`}: ${e.message}`);
     } finally {
@@ -283,32 +367,39 @@ function Report({ members, community = [], reports, allReports = [], events, sco
     }
   };
 
+  // Save one project's report. One saved report per wiki + month is shared by
+  // all grants: keep the rows of other grants' members, replace only this grant's.
+  const saveView = async (wiki, view) => {
+    const mine = new Set(view.rows.map(r => r.username));
+    const original = allReports.find(r => r.id === reportId(wiki, month, scope));
+    const rows = [...view.rows, ...((original?.rows || []).filter(r => !mine.has(r.username)))];
+    const activeCount = view.rows.filter(r => r.active).length;
+    const editingCount = view.rows.filter(isEditing).length;
+    const scopeName = eventsOnly ? `${wikiLabel(wiki)} — Kilimanjaro events only` : wikiLabel(wiki);
+    await saveContributorReport({
+      wiki, month, scope,
+      threshold:   view.threshold,
+      memberCount: rows.length,
+      activeCount: rows.filter(r => r.active).length,
+      stillEditingCount: rows.filter(isEditing).length,
+      partial:     view.partial,
+      rows,
+      events:      view.events || [],
+      notMembers:  view.notMembers || [],
+      generatedBy: profile?.name || "",
+      generatedAt: new Date().toISOString(),
+    });
+    await addAudit(profile, AUDIT_ACTIONS.CREATE, "contributors", {
+      targetId: reportId(wiki, month, scope), recordTitle: `${scopeName} ${month}`,
+      details: `Saved active contributors report (${scopeLabel(scope)}): ${activeCount} of ${view.rows.length} active (≥${view.threshold} ${wikiInfo(wiki).unit}), ${editingCount} still editing`,
+    });
+  };
+
   const save = async () => {
     if (!view || view.isSaved) return;
     setSaving(true);
     try {
-      // One saved report per wiki + month is shared by all grants: keep the rows
-      // of other grants' members, replace only this grant's members.
-      const mine = new Set(view.rows.map(r => r.username));
-      const original = allReports.find(r => r.id === reportId(wiki, month, scope));
-      const rows = [...view.rows, ...((original?.rows || []).filter(r => !mine.has(r.username)))];
-      await saveContributorReport({
-        wiki, month, scope,
-        threshold:   view.threshold,
-        memberCount: rows.length,
-        activeCount: rows.filter(r => r.active).length,
-        stillEditingCount: rows.filter(isEditing).length,
-        partial:     view.partial,
-        rows,
-        events:      view.events || [],
-        notMembers:  view.notMembers || [],
-        generatedBy: profile?.name || "",
-        generatedAt: new Date().toISOString(),
-      });
-      await addAudit(profile, AUDIT_ACTIONS.CREATE, "contributors", {
-        targetId: reportId(wiki, month, scope), recordTitle: `${scopeName} ${month}`,
-        details: `Saved active contributors report (${scopeLabel(scope)}): ${activeCount} of ${memberCount} active (≥${view.threshold} articles), ${editingCount} still editing`,
-      });
+      await saveView(wiki, view);
       setFresh(null);
       showToast("Report saved.");
     } catch (e) {
@@ -319,6 +410,44 @@ function Report({ members, community = [], reports, allReports = [], events, sco
   };
 
   const best = view ? bestContributors(view.rows) : [];
+
+  // Fetch and save every project for this month (for the "All projects" news).
+  const fetchAllProjects = async () => {
+    if (eligible.length === 0) { setError("No community members took part in this grant yet, or none is marked \"In reports\"."); return; }
+    if (eventsOnly && events.length === 0) { setError("No Kilimanjaro events added yet. Add them on the Events tab first."); return; }
+    setError("");
+    const usernames = eligible.map(m => m.wikimediaUsername);
+    const failed = [];
+    try {
+      for (const w of WIKIS) {
+        setAllBusy(w.label);
+        try {
+          const f = await fetchFor(w.id, usernames);
+          const rows = buildReportRows(f.members, f.stats, w.threshold)
+            .map(r => (f.formOnly?.has(r.username) ? { ...r, formOnly: true } : r));
+          await saveView(w.id, { rows, threshold: w.threshold, partial: isPartialMonth(month), events: f.events, notMembers: f.notMembers || [] });
+        } catch (e) {
+          failed.push(`${w.label} (${e.message})`);
+        }
+      }
+      setFresh(null);
+      if (failed.length) setError(`Could not fetch: ${failed.join("; ")}`);
+      else showToast(`All projects fetched and saved for ${monthLabel(month)}.`);
+    } finally {
+      setAllBusy("");
+    }
+  };
+
+  // Every project's report for this month (this grant's members only); the
+  // project on screen uses what is shown, even if not saved yet.
+  const monthProjects = useMemo(() => {
+    const list = WIKIS.map(w => {
+      if (w.id === wiki && view) return { wiki: w.id, rows: view.rows };
+      const r = reports.find(x => x.id === reportId(w.id, month, scope));
+      return r ? { wiki: w.id, rows: r.rows || [] } : null;
+    }).filter(Boolean);
+    return list;
+  }, [reports, wiki, view, month, scope]);
 
   const printReport = async () => {
     if (!view) return;
@@ -347,13 +476,14 @@ function Report({ members, community = [], reports, allReports = [], events, sco
             <input type="month" value={month} min={minMonth || undefined} max={maxMonth} onChange={e => e.target.value && setMonth(clampMonth(e.target.value))} />
           </div>
           <div className="field"><label>Wiki</label><WikiSelect value={wiki} onChange={setWiki} /></div>
-          <div className="field"><label>Active if different articles ≥</label>
+          <div className="field"><label>Active if different {unit} ≥</label>
             <input type="number" min="1" value={threshold} disabled={!canEdit}
               onChange={e => setThreshold(Math.max(1, Number(e.target.value) || 1))} />
           </div>
         </div>
         <div className="btn-row">
-          <button className="btn btn-primary" onClick={runFetch} disabled={busy}>{busy ? "Fetching…" : "Fetch from Wikipedia"}</button>
+          <button className="btn btn-primary" onClick={runFetch} disabled={busy || !!allBusy}>{busy ? "Fetching…" : `Fetch from ${wikiLabel(wiki)}`}</button>
+          {canEdit && <button className="btn" onClick={fetchAllProjects} disabled={busy || !!allBusy} title="Fetch and save every project for this month, for the All projects news">{allBusy ? `Fetching ${allBusy}…` : "Fetch & save all projects"}</button>}
           {view && <button className="btn" onClick={exportCsv} disabled={busy}>Export CSV</button>}
           {view && <button className="btn" onClick={printReport} disabled={busy}>🖨 Print report</button>}
           {view && !view.isSaved && canEdit && (
@@ -362,8 +492,8 @@ function Report({ members, community = [], reports, allReports = [], events, sco
         </div>
         {busy && <div style={{ fontSize: 13, color: "#2563eb", marginTop: 10 }}>Checked {progress.done} of {progress.total} members…</div>}
         <div style={{ fontSize: 12, color: "#888", marginTop: 10 }}>
-          {eligible.length} member{eligible.length === 1 ? "" : "s"} will be checked. Counts articles only (main namespace), using UTC calendar months.
-          Edits to pages that were later deleted are not counted.
+          {eligible.length} member{eligible.length === 1 ? "" : "s"} will be checked. {countsText(wiki)}, using UTC calendar months.
+          Edits to pages that were later deleted are not counted. Each project has its own threshold ({WIKIS.map(w => `${w.label} ${w.threshold} ${w.unit}`).join(", ")}).
           {eventsOnly && <> <strong>Kilimanjaro events only:</strong> a member's edit counts only if they joined the event on the Outreach Dashboard and made it between the event's start and end.
             {" "}{monthEvents.length === 0 ? `No Kilimanjaro events in ${monthLabel(month)} — everyone will have 0.` : `${monthEvents.length} event${monthEvents.length === 1 ? "" : "s"} in ${monthLabel(month)}: ${monthEvents.map(w => w.event.title).join(", ")}.`}</>}
         </div>
@@ -375,7 +505,7 @@ function Report({ members, community = [], reports, allReports = [], events, sco
       )}
 
       {!view ? (
-        <div className="panel"><div className="empty">No report for {scopeName}, {monthLabel(month)} yet. Click "Fetch from Wikipedia" to count contributions.</div></div>
+        <div className="panel"><div className="empty">No report for {scopeName}, {monthLabel(month)} yet. Click "Fetch from {wikiLabel(wiki)}" to count contributions.</div></div>
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 13, flexWrap: "wrap" }}>
@@ -385,7 +515,7 @@ function Report({ members, community = [], reports, allReports = [], events, sco
               <span className="badge badge-amber">Not saved yet</span>
             )}
             <span className={`badge ${eventsOnly ? "badge-blue" : "badge-gray"}`}>{scopeLabel(scope)}</span>
-            <span style={{ color: "#666" }}>Rule: active if ≥ {view.threshold} different articles in {monthLabel(month)}{eventsOnly ? " (in Kilimanjaro events)" : ""}; still editing if ≥ {STILL_EDITING_MIN}</span>
+            <span style={{ color: "#666" }}>Rule: active if ≥ {view.threshold} different {unit} in {monthLabel(month)}{eventsOnly ? " (in Kilimanjaro events)" : ""}; still editing if ≥ {STILL_EDITING_MIN}</span>
           </div>
 
           {eventsOnly && (
@@ -409,14 +539,14 @@ function Report({ members, community = [], reports, allReports = [], events, sco
           {eventsOnly && (
             <NotMembersPanel people={view.notMembers} members={community} nameFor={nameFor} canEdit={canEdit} profile={profile} showToast={showToast} wiki={wiki} addMembers={addMembers} earlier={earlier}
               title="Joined our events but not in the members list"
-              note={`These people joined ${monthLabel(month)}'s Kilimanjaro events but aren't community members, so they are not in the report above. Counts are their edits during the events. Add them, then click "Fetch from Wikipedia" again to include them.`} />
+              note={`These people joined ${monthLabel(month)}'s Kilimanjaro events but aren't community members, so they are not in the report above. Counts are their edits during the events. Add them, then click "Fetch" again to include them.`} />
           )}
 
           {best.length > 0 && (
             <div className="panel" style={{ border: "2px solid #d97706", background: "#fffaf0", marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#b45309", letterSpacing: 1, textTransform: "uppercase" }}>★ Best contributor of the month{best.length > 1 ? " (shared)" : ""}</div>
               <div style={{ fontSize: 20, fontWeight: 700, color: "#1c2b1e", marginTop: 4 }}>{best.map(b => b.name).join(" & ")}</div>
-              <div style={{ fontSize: 13, color: "#666" }}>{best[0].articles} different articles in {monthLabel(month)}{view.partial ? " so far" : ""} · {best.map(b => b.username).join(", ")}</div>
+              <div style={{ fontSize: 13, color: "#666" }}>{best[0].articles} different {unit} in {monthLabel(month)}{view.partial ? " so far" : ""} · {best.map(b => b.username).join(", ")}</div>
             </div>
           )}
 
@@ -436,12 +566,13 @@ function Report({ members, community = [], reports, allReports = [], events, sco
           </div>
 
           <MonthlyNewsPanel rows={view.rows} month={month} wiki={wiki} eventsOnly={eventsOnly} orgName={org.orgName} threshold={view.threshold} partial={view.partial} />
+          <AllProjectsPanel reports={monthProjects} month={month} eventsOnly={eventsOnly} orgName={org.orgName} />
 
           <div className="panel" style={{ padding: 0 }}>
             {view.rows.length === 0 ? <div className="empty">No members in this report.</div> : (
               <div style={{ overflowX: "auto" }}>
                 <table>
-                  <thead><tr><th>#</th><th>Name</th><th>Username</th><th>Different articles</th><th>Total edits</th><th>Progress to {view.threshold}</th><th>Status</th></tr></thead>
+                  <thead><tr><th>#</th><th>Name</th><th>Username</th><th>Different {unit}</th><th>Total edits</th><th>Progress to {view.threshold}</th><th>Status</th></tr></thead>
                   <tbody>
                     {view.rows.map((r, i) => (
                       <tr key={r.memberId || r.username}>
@@ -522,7 +653,7 @@ function History({ reports }) {
         {sorted.length === 0 ? <div className="empty">No saved reports for {wikiLabel(wiki)} yet. Save one from the Report tab.</div> : (
           <div style={{ overflowX: "auto" }}>
             <table>
-              <thead><tr><th>Month</th><th>Members</th><th>Still editing</th><th>Active</th><th>Different articles</th><th>New articles</th><th>Rate</th><th>Best contributor</th><th>Rule</th><th>Saved by</th></tr></thead>
+              <thead><tr><th>Month</th><th>Members</th><th>Still editing</th><th>Active</th><th>Different {wikiInfo(wiki).unit}</th><th>{cap(wikiInfo(wiki).newUnit)}</th><th>Rate</th><th>Best contributor</th><th>Rule</th><th>Saved by</th></tr></thead>
               <tbody>
                 {sorted.map(r => (
                   <tr key={r.id}>
@@ -536,7 +667,7 @@ function History({ reports }) {
                     </>); })()}
                     <td>{pctText(r.activeCount, r.memberCount)}</td>
                     <td style={{ fontSize: 12 }}>{(() => { const b = bestContributors(r.rows || []); return b.length ? <>★ {b.map(x => x.name).join(" & ")} <span style={{ color: "#888" }}>({b[0].articles})</span></> : ""; })()}</td>
-                    <td style={{ fontSize: 12 }}>≥ {r.threshold} articles</td>
+                    <td style={{ fontSize: 12 }}>≥ {r.threshold} {wikiInfo(wiki).unit}</td>
                     <td style={{ fontSize: 12 }}>{r.generatedBy || ""}{r.generatedAt ? `, ${r.generatedAt.slice(0, 10)}` : ""}</td>
                   </tr>
                 ))}
@@ -787,7 +918,7 @@ function YearSummary({ members, reports, scope, currentGrant, profile, org, sign
       </div>
 
       <div style={{ fontSize: 12, color: "#888", marginTop: 10 }}>
-        <strong>Active contributor</strong>: {DEFAULT_THRESHOLD}+ different articles in at least one month (the threshold saved with each report).
+        <strong>Active contributor</strong>: reached the active level on any project in at least one month ({WIKIS.map(w => `${w.label} ${w.threshold}+ ${w.unit}`).join(", ")}; the threshold saved with each report counts).
         {" "}<strong>Retained</strong>: still editing (1+ article) in {RETAINED_MIN_MONTHS} or more months.
         {" "}Total articles adds the monthly counts, so an article edited in two different months counts twice.
         {" "}Strip: <span style={{ color: "#2d7a4f" }}>■</span> active, <span style={{ color: "#2563eb" }}>■</span> still editing, <span style={{ color: "#bbb" }}>■</span> no edits, dashed = no saved report.
@@ -1091,6 +1222,8 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
   const [search,   setSearch]   = useState("");
   const [busy,     setBusy]     = useState(false);
   const [missing,  setMissing]  = useState([]);
+  const [projects, setProjects] = useState(null);   // Map<username, [{ host, label, edits }]> — this session only
+  const [projBusy, setProjBusy] = useState(null);   // { done, total }
 
   const existing = useMemo(
     () => new Set(members.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean)),
@@ -1195,6 +1328,21 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
     !q || m.name?.toLowerCase().includes(q) || m.wikimediaUsername?.toLowerCase().includes(q)
   );
 
+  // Which Wikimedia projects each member edits (global account on Meta).
+  const checkProjects = async () => {
+    const names = filtered.map(m => m.wikimediaUsername).filter(u => normalizeUsername(u));
+    if (!names.length) return;
+    setProjBusy({ done: 0, total: names.length });
+    try {
+      const res = await fetchUserProjects(names, { onProgress: (done, total) => setProjBusy({ done, total }) });
+      setProjects(prev => new Map([...(prev || []), ...res]));
+    } catch (e) {
+      alert(`Could not check projects: ${e.message}`);
+    } finally {
+      setProjBusy(null);
+    }
+  };
+
   return (
     <div>
       <div className="alert alert-info">
@@ -1253,6 +1401,10 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
         <span style={{ fontSize: 12, color: "#888" }}>{members.length} member{members.length === 1 ? "" : "s"}, {members.filter(m => m.isActive !== false).length} in reports
           {grantPeople && <>, <strong>{members.filter(m => grantPeople.has(normalizeUsername(m.wikimediaUsername))).length} took part in {grantTitle || "this grant"}</strong></>}
           {returning.size > 0 && <>, <strong style={{ color: "#2563eb" }}>{members.filter(m => returning.has(normalizeUsername(m.wikimediaUsername))).length} returning from earlier grants</strong> (retention)</>}</span>
+        <button className="btn btn-sm" onClick={checkProjects} disabled={!!projBusy || filtered.length === 0}
+          title="Look up each member's global account to see every Wikimedia project they edit (all-time edit counts)">
+          {projBusy ? `Checking ${projBusy.done} of ${projBusy.total}…` : `🌍 Check projects${q ? ` (${filtered.length} shown)` : ""}`}
+        </button>
       </div>
 
       <div className="panel" style={{ padding: 0 }}>
@@ -1261,7 +1413,7 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table>
-              <thead><tr><th>Name</th><th>Username</th><th>Took part in</th><th>Source</th><th>In reports</th>{isAdmin && <th>Actions</th>}</tr></thead>
+              <thead><tr><th>Name</th><th>Username</th><th>Took part in</th>{projects && <th>Projects (all-time edits)</th>}<th>Source</th><th>In reports</th>{isAdmin && <th>Actions</th>}</tr></thead>
               <tbody>
                 {filtered.map(m => (
                   <tr key={m.id}>
@@ -1273,6 +1425,20 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
                       {grantsOf(m).length ? grantsOf(m).join(", ") : <span style={{ color: "#aaa" }}>no grant activity recorded</span>}
                       {grantPeople && grantPeople.has(normalizeUsername(m.wikimediaUsername)) && <span className="badge badge-green" style={{ marginLeft: 6, fontSize: 10 }}>this grant</span>}
                     </td>
+                    {projects && (
+                      <td style={{ fontSize: 12, maxWidth: 320 }}>
+                        {(() => {
+                          const list = projects.get(normalizeUsername(m.wikimediaUsername));
+                          if (!list) return <span style={{ color: "#aaa" }}>not checked</span>;
+                          if (!list.length) return <span style={{ color: "#c0392b" }}>no edits / no global account</span>;
+                          return list.slice(0, 6).map(p => (
+                            <span key={p.host} className={`badge ${WIKIS.some(w => w.id === p.host) ? "badge-green" : "badge-gray"}`} style={{ marginRight: 4, marginBottom: 2, fontSize: 10, display: "inline-block" }}>
+                              {p.label} {p.edits.toLocaleString()}
+                            </span>
+                          )).concat(list.length > 6 ? [<span key="more" style={{ color: "#888" }}>+{list.length - 6} more</span>] : []);
+                        })()}
+                      </td>
+                    )}
                     <td style={{ fontSize: 12, color: "#666" }}>{m.source || "manual"}</td>
                     <td><input type="checkbox" checked={m.isActive !== false} disabled={!canEdit} onChange={() => toggleActive(m)} /></td>
                     {isAdmin && <td><button className="btn btn-sm btn-danger" onClick={() => del(m)}>✕</button></td>}

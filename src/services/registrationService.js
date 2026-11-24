@@ -34,18 +34,23 @@ export function listenForms(callback) {
 
 // ── Registrations (responses) ──────────────────────────────────────────────────
 
+// Newest first. Sorted here, not in the query: where(formId) + orderBy(registeredAt)
+// needs a composite index the project doesn't have, and without it Firestore
+// returns nothing (every form showed 0 registrations).
+const newestFirst = (list) => [...list].sort((a, b) => String(b.registeredAt || "").localeCompare(String(a.registeredAt || "")));
+
 export async function getRegistrations(formId) {
-  return getCollection("registrations", where("formId", "==", formId), orderBy("registeredAt", "desc"));
+  return newestFirst(await getCollection("registrations", where("formId", "==", formId)));
 }
 
+// No orderBy: it would silently drop registrations without registeredAt.
 export async function getAllRegistrations() {
-  return getCollection("registrations", orderBy("registeredAt", "desc"));
+  return newestFirst(await getCollection("registrations"));
 }
 
 export function listenRegistrations(formId, callback) {
-  return listenCollection("registrations", callback,
-    where("formId", "==", formId),
-    orderBy("registeredAt", "desc")
+  return listenCollection("registrations", (list) => callback(newestFirst(list)),
+    where("formId", "==", formId)
   );
 }
 

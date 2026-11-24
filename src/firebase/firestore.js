@@ -63,7 +63,7 @@ export function listenCollection(path, callback, ...constraints) {
   const q = constraints.length ? query(col(path), ...constraints) : col(path);
   return onSnapshot(q, snap => {
     callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-  });
+  }, err => console.warn(`Listening to ${path} failed:`, err?.message || err));   // e.g. a missing index
 }
 
 export async function batchWrite(operations) {

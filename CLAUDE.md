@@ -52,6 +52,33 @@ npm test -- --watchAll=false        # Jest (react-scripts test)
 CI=true npm run build               # same as the deploy workflow
 ```
 
+### Docker (local development, safe test data)
+
+```bash
+docker compose up --watch        # app :3000 + Firebase emulators (UI :4000)
+docker compose run --rm seed     # test accounts (one per role) + sample grant/program/open form
+docker compose down              # stop; emulator data stays in the emulator_data volume
+docker compose down -v           # stop and wipe the local test data
+```
+
+- Files: `docker-compose.yml`, `docker/app.Dockerfile` (Node 20, `npm ci`,
+  CRA dev server), `docker/emulators.Dockerfile` (Java 21 + Node 20 +
+  firebase-tools 15.37.0, Auth + Firestore + UI), `docker/emulators-start.sh`,
+  `scripts/seed-emulators.mjs`, `firebase.json` → `emulators`.
+- In Docker the app runs with `REACT_APP_USE_EMULATORS=true`
+  (`src/firebase/config.js`): a fixed **`demo-wikikilimanjaro`** project id
+  (demo- projects can only use emulators), Auth + Firestore connected to the
+  emulators (also the secondary app in `createAuthUser`), App Check off. It
+  can't reach live data. Without that variable (`npm start`) nothing changes.
+- The Firestore emulator enforces the real `firestore.rules` (synced on save).
+- Test logins: see `TEST_USERS` / `LOCAL_PASSWORD` in `scripts/seed-emulators.mjs`
+  (emulator only). Password-reset emails aren't sent — the link is in the
+  emulator logs / Emulator UI.
+- **No bind mounts:** Docker Desktop can't reliably read this iCloud-synced
+  folder (EIO errors on many files), so source is copied into the image and
+  kept in sync by `--watch` (`src/`, `public/`; `package-lock.json` rebuilds).
+  Run with `--watch`, or edits won't reach the container.
+
 Environment variables: copy `.env.example` → `.env` (Firebase config, Google
 client/Drive folder, EmailJS, reCAPTCHA). CI reads them from GitHub secrets.
 

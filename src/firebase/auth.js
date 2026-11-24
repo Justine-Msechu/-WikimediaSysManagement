@@ -12,7 +12,7 @@ import {
   EmailAuthProvider,
 } from "firebase/auth";
 import { initializeApp, getApps } from "firebase/app";
-import { auth, firebaseConfig } from "./config";
+import { auth, firebaseConfig, connectToAuthEmulator } from "./config";
 
 export async function login(email, password, rememberMe = false) {
   const persistence = rememberMe ? browserLocalPersistence : browserSessionPersistence;
@@ -33,6 +33,7 @@ export async function sendReset(email) {
 export async function createAuthUser(email, password) {
   const secondaryApp  = initializeApp(firebaseConfig, `reg-${Date.now()}`);
   const secondaryAuth = getAuth(secondaryApp);
+  connectToAuthEmulator(secondaryAuth);   // local Docker emulators only
   try {
     const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
     await signOut(secondaryAuth);

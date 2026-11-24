@@ -1,0 +1,77 @@
+# Local development with Docker — see "Docker (local development)" in CLAUDE.md.
+#
+#   docker compose up --watch      app + local Firebase emulators (safe: no live data);
+#                                  edits in src/ and public/ reload the app
+#   docker compose run --rm seed   create test accounts and a sample grant
+#   docker compose down            stop (emulator data is kept in a Docker volume)
+#
+# The app talks ONLY to the emulators here (project "demo-wikikilimanjaro"),
+# never to the live Firebase project. Files are synced with `--watch`, not
+# bind-mounted, because Docker can't reliably read an iCloud-synced folder.
+services:
+  emulators:
+    build:
+      context: .
+      dockerfile: docker/emulators.Dockerfile
+    volumes:
+      - emulator_data:/workspace/.emulator-data
+    ports:
+      - "4000:4000"   # Emulator UI
+      - "4400:4400"   # Emulator hub
+      - "4500:4500"   # Emulator logging
+      - "8080:8080"   # Firestore
+      - "9150:9150"   # Firestore websocket (Emulator UI)
+      - "9099:9099"   # Auth
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4400/emulators').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    develop:
+      watch:
+        - action: sync           # the emulator reloads rules when they change
+          path: ./firestore.rules
+          target: /workspace/firestore.rules
+        - action: rebuild
+          path: ./firebase.json
+
+  app:
+    image: wikikilimanjaro-gsf-app-dev
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_USE_EMULATORS: "true"
+      REACT_APP_EMULATOR_HOST: "localhost"   # your browser reaches the emulators via the mapped ports
+    depends_on:
+      emulators:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync
+          path: ./src
+          target: /app/src
+        - action: sync
+          path: ./public
+          target: /app/public
+        - action: rebuild
+          path: ./package-lock.json
+
+  # One-off: test accounts (one per role) + a sample grant, program and open form.
+  seed:
+    image: wikikilimanjaro-gsf-app-dev     # same image as app (built by `docker compose up`)
+    pull_policy: never
+    profiles: ["tools"]
+    environment:
+      EMULATOR_HOST: emulators
+    command: ["node", "scripts/seed-emulators.mjs"]
+    depends_on:
+      emulators:
+        condition: service_healthy
+
+volumes:
+  emulator_data:

@@ -193,7 +193,8 @@ service cloud.firestore {
                     && request.resource.data.name.size() <= 300
                     && request.resource.data.formId is string
                     && (isCoordinator()
-                        || (request.resource.data.keys().hasOnly(["name", "wikimediaUsername", "email", "phone", "age", "skills", "isNew", "programId", "grantId", "formId", "registeredAt", "attendance", "createdAt", "updatedAt"])
+                        || (request.resource.data.keys().hasOnly(["name", "wikimediaUsername", "email", "phone", "age", "skills", "isNew", "gender", "programId", "grantId", "formId", "registeredAt", "attendance", "createdAt", "updatedAt"])
+                            && request.resource.data.get("gender", "") in ["", "Female", "Male", "Non-binary", "Prefer not to say"]
                             && request.resource.data.get("attendance", "") == ""
                             && str("wikimediaUsername", 255) && str("email", 254) && str("phone", 40)
                             && str("skills", 2000) && str("programId", 128) && str("grantId", 128)

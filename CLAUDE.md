@@ -314,6 +314,11 @@ index — services usually skip `orderBy` and sort client-side instead.
   program's, to avoid double-counting.
 - **Budget entries** are grouped into personnel / operational / programmatic
   (`BUDGET_GROUPS` in budgetService). Excel import via `ImportBudgetModal`.
+- **Required on the public form:** name, "Have you edited Wikipedia before?"
+  (→ `isNew`), **gender** (Female / Male / Non-binary / Prefer not to say —
+  same list as Participants; saved on the registration and the participant),
+  email, phone. The registrations rule allows `gender` only with one of those
+  values (or empty, for old cached pages).
 - **Username check on the public form** (`PublicRegister.js`,
   `utils/accountCheck.js` → `checkWikiAccount()`): on leaving the username
   field and on submit, asks sw.wikipedia (`list=users`), then the global

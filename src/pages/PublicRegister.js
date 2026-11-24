@@ -53,6 +53,9 @@ function validateName(v) {
   return null;
 }
 
+// Same options as the Participants page (Metrics count women from these).
+const GENDERS = ["Female", "Male", "Non-binary", "Prefer not to say"];
+
 function validateWikiUsername(v) {
   if (!v) return null; // optional
   if (v.length > 255) return "Username is too long.";
@@ -97,7 +100,7 @@ export default function PublicRegister({ formId }) {
   const [acct,      setAcct]      = useState(null);   // { status, username, checkedFor } — Wikipedia account check
 
   const [vals, setVals] = useState({
-    name: "", wikimediaUsername: "", email: "", phone: "", age: "", skills: "", wikistatus: "",
+    name: "", wikimediaUsername: "", email: "", phone: "", age: "", skills: "", wikistatus: "", gender: "",
   });
 
   useEffect(() => {
@@ -121,7 +124,7 @@ export default function PublicRegister({ formId }) {
   // setV: apply sanitizer. For wikimediaUsername we skip sanitization on onChange
   // (so typing "Justine Msechu" keeps the space); sanitization happens only on blur/submit.
   const setV = (key, raw, { sanitize = true } = {}) => {
-    const sanitizers = { name: sanitizeName, wikimediaUsername: sanitizeWikiUsername, email: sanitizeEmail, phone: sanitizePhone, age: v => v.replace(/\D/g, ""), skills: sanitizeText, wikistatus: v => v };
+    const sanitizers = { name: sanitizeName, wikimediaUsername: sanitizeWikiUsername, email: sanitizeEmail, phone: sanitizePhone, age: v => v.replace(/\D/g, ""), skills: sanitizeText, wikistatus: v => v, gender: v => (GENDERS.includes(v) ? v : "") };
     const val = sanitize ? (sanitizers[key] || (v => v))(raw) : raw;
     setVals(v => ({ ...v, [key]: val }));
     setErrors(e => ({ ...e, [key]: null }));
@@ -164,6 +167,7 @@ export default function PublicRegister({ formId }) {
         || (vals.wikistatus === "yes" && !cleanUsername ? "You said you have edited Wikipedia before — please enter your Wikipedia username." : null)
         || accountError(account, vals.wikistatus),
       wikistatus:        vals.wikistatus ? null : "Please select one.",
+      gender:            vals.gender ? null : "Please select one.",
       email:             validateEmail(vals.email),
       phone:             validatePhone(vals.phone),
       age:               validateAge(vals.age),
@@ -186,6 +190,7 @@ export default function PublicRegister({ formId }) {
         age:               vals.age ? Number(vals.age) : null,
         skills:            vals.skills.trim(),
         isNew:             vals.wikistatus === "no",
+        gender:            vals.gender,
         programId:         form?.programId || "",
         grantId:           form?.grantId || "",
       });
@@ -333,6 +338,19 @@ export default function PublicRegister({ formId }) {
               ))}
             </div>
             {errors.wikistatus && <FieldError msg={errors.wikistatus} />}
+          </div>
+
+          <div style={fieldStyle}>
+            <label style={labelStyle}>Gender <span style={reqStyle}>*</span></label>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, marginTop: 6 }}>
+              {GENDERS.map(g => (
+                <label key={g} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14, padding: "10px 12px", border: `1.5px solid ${vals.gender === g ? "#2d7a4f" : "#d0d0c8"}`, borderRadius: 8, background: vals.gender === g ? "#f0f8f3" : "#fff" }}>
+                  <input type="radio" name="gender" value={g} checked={vals.gender === g} onChange={e => setV("gender", e.target.value)} style={{ accentColor: "#2d7a4f" }} />
+                  {g}
+                </label>
+              ))}
+            </div>
+            {errors.gender && <FieldError msg={errors.gender} />}
           </div>
 
           <div style={fieldStyle}>

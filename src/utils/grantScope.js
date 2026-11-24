@@ -28,8 +28,9 @@ export function participantsForGrant(participants, programs, grantId, { forms = 
   const programGrant = new Map((programs || []).filter(p => p.grantId).map(p => [p.id, p.grantId]));
   const formById = new Map((forms || []).map(f => [f.id, f]));
   return (participants || []).filter(p => {
-    if (p.grantId) return p.grantId === grantId;
+    // Their program's grant wins — a tag copied from a wrongly tagged form is ignored.
     if (p.programId && programGrant.has(p.programId)) return ids.has(p.programId);
+    if (p.grantId) return p.grantId === grantId;
     const f = formById.get(p.formId || p.registeredViaForm);
     return !!f && belongsToGrant(f, grantId, { firstGrantId, programs });
   });
@@ -76,12 +77,34 @@ export function reportAnswersFor(settings, grantId, firstGrantId) {
 export function belongsToGrant(rec, grantId, { firstGrantId = "", programs = [] } = {}) {
   if (!grantId) return true;
   if (Array.isArray(rec?.grantIds) && rec.grantIds.length) return rec.grantIds.includes(grantId);
+  const owner = programGrantOf(rec, programs);   // the program's grant wins over a stored tag
+  if (owner) return owner === grantId;
   if (rec?.grantId) return rec.grantId === grantId;
-  if (rec?.programId) {
-    const p = (programs || []).find(x => x.id === rec.programId);
-    if (p?.grantId) return p.grantId === grantId;
-  }
   return grantId === firstGrantId;
+}
+
+// The grant of a record's program ("" when it has no program, or the program has no grant).
+export function programGrantOf(rec, programs) {
+  if (!rec?.programId) return "";
+  return (programs || []).find(x => x.id === rec.programId)?.grantId || "";
+}
+
+/**
+ * Registration forms take their program's grant. Returns
+ *  fixes:     [{ id, title, grantId }] — forms whose stored grantId is missing or
+ *             differs from their program's grant (save grantId on them)
+ *  noGrant:   forms whose program has no grant (fix the program on Programs)
+ */
+export function formGrantFixes(forms, programs) {
+  const fixes = [];
+  const noGrant = [];
+  for (const f of forms || []) {
+    if (!f.programId) continue;
+    const owner = programGrantOf(f, programs);
+    if (!owner) { if ((programs || []).some(p => p.id === f.programId)) noGrant.push(f); continue; }
+    if (f.grantId !== owner) fixes.push({ id: f.id, title: f.title || "", grantId: owner });
+  }
+  return { fixes, noGrant };
 }
 
 // grantIds for a volunteer joining another grant (old volunteers keep the first grant).

@@ -256,8 +256,15 @@ index — services usually skip `orderBy` and sort client-side instead.
   - Budget never offers another grant's entries: `budgetEntryFixes()` moves
     untagged/wrongly tagged entries to their program's grant; only entries with
     no grant and no program can be assigned to the current grant.
-  - registration forms belong to the grant of their program (new forms also
-    get `grantId`); volunteer tasks likewise. Volunteers have `grantIds[]` —
+  - registration forms belong to the grant of their program; volunteer tasks
+    likewise. **The program's grant wins over a stored `grantId`**
+    (`belongsToGrant()`, `participantsForGrant()` via `programGrantOf()`), so a
+    form or sign-up tagged with whichever grant was selected still counts in
+    its program's grant. Creating/editing a form saves its program's grant;
+    opening Reg. forms (coordinators) fixes forms with a missing or wrong
+    `grantId` (`formGrantFixes()`, audited) so the public page tags new
+    sign-ups correctly, and warns about forms whose program has no grant
+    (those count only in the first grant — assign the program on Programs). Volunteers have `grantIds[]` —
     new ones join the current grant; the Registry offers "Bring volunteers from
     earlier grants" (adds the grant, never copies). `belongsToGrant()`:
     records with no grant at all (from before grants) belong to the first grant.

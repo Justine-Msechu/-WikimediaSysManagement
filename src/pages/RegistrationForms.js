@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { belongsToGrant } from "../utils/grantScope";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { belongsToGrant, formGrantFixes, programGrantOf } from "../utils/grantScope";
 import RichTextEditor, { renderHtml } from "../components/RichTextEditor";
 import EventSelection from "../components/EventSelection";
 import {
@@ -57,6 +57,8 @@ export default function RegistrationForms({ profile, grantId = "", firstGrantId 
   const programs = grantId ? allPrograms.filter(p => p.grantId === grantId) : allPrograms;
   const forms    = allForms.filter(f => belongsToGrant(f, grantId, { firstGrantId, programs: allPrograms }));
   const approvedPrograms = programs.filter(p => p.status === "approved");
+  const grantFixes = useMemo(() => formGrantFixes(allForms, allPrograms), [allForms, allPrograms]);
+  const noGrantHere = grantFixes.noGrant.filter(f => forms.some(x => x.id === f.id));
   const hasApproved      = approvedPrograms.length > 0;
 
   useEffect(() => {
@@ -72,6 +74,27 @@ export default function RegistrationForms({ profile, grantId = "", firstGrantId 
   }, [selectedForm?.id]);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
+
+  // Forms take their program's grant: fix forms saved without it (or with the
+  // grant that happened to be selected) so new sign-ups get the right grant.
+  const fixing = useRef(new Set());
+  useEffect(() => {
+    if (!canEdit || !allPrograms.length) return;
+    const todo = grantFixes.fixes.filter(f => !fixing.current.has(`${f.id}:${f.grantId}`));
+    if (!todo.length) return;
+    todo.forEach(f => fixing.current.add(`${f.id}:${f.grantId}`));
+    (async () => {
+      let done = 0;
+      for (const f of todo) {
+        try {
+          await updateForm(f.id, { grantId: f.grantId });
+          await addAudit(profile, AUDIT_ACTIONS.UPDATE, "registrationForms", { targetId: f.id, recordTitle: f.title, details: "Grant set from its program" });
+          done++;
+        } catch (e) { console.warn("Form grant fix failed", f.id, e); }
+      }
+      if (done) showToast(`${done} form${done === 1 ? "" : "s"} linked to their program's grant.`);
+    })();
+  }, [canEdit, allPrograms.length, grantFixes, profile]);
   const setF = (k, v) => setFormData(f => ({ ...f, [k]: v }));
 
   const openCreate = () => { setFormData(emptyForm()); setEditId(null); setShowBuilder(true); };
@@ -81,11 +104,12 @@ export default function RegistrationForms({ profile, grantId = "", firstGrantId 
     if (!formData.title.trim()) { alert("Form title is required."); return; }
     if (!formData.programId)    { alert("Please select an approved program for this form."); return; }
     if (!editId) {
-      const id = await addForm({ ...formData, grantId: grantId || "" });
+      const id = await addForm({ ...formData, grantId: programGrantOf(formData, allPrograms) || grantId || "" });
       await addAudit(profile, AUDIT_ACTIONS.CREATE, "registrationForms", { targetId: id, recordTitle: formData.title });
       showToast("Form created.");
     } else {
-      await updateForm(editId, formData);
+      const old = allForms.find(f => f.id === editId);
+      await updateForm(editId, { ...formData, grantId: programGrantOf(formData, allPrograms) || old?.grantId || grantId || "" });
       await addAudit(profile, AUDIT_ACTIONS.UPDATE, "registrationForms", { targetId: editId, recordTitle: formData.title });
       showToast("Form updated.");
     }
@@ -265,6 +289,13 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
       {canEdit && !hasApproved && (
         <div className="alert alert-warn" style={{ marginBottom: 16 }}>
           No approved programs yet. Registration forms must be linked to an approved program. Go to <strong>Programs</strong>, submit a program for review, and get it approved before creating forms.
+        </div>
+      )}
+
+      {canEdit && noGrantHere.length > 0 && (
+        <div className="alert alert-warn" style={{ marginBottom: 16 }}>
+          {noGrantHere.length} form{noGrantHere.length === 1 ? "'s program has" : "s' programs have"} no grant ({noGrantHere.map(f => f.title).join(", ")}).
+          Their sign-ups count only in the first grant. Open <strong>Programs</strong> with the right grant selected and click "Assign … to this grant" — the forms and their sign-ups follow automatically.
         </div>
       )}
 

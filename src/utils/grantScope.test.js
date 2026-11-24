@@ -164,3 +164,24 @@ test("grantParticipation uses the member's spelling when capitals differ", () =>
   });
   expect([...map.get("g")]).toEqual(["Amina Juma"]);
 });
+
+test("the program's grant wins over a stored form / participant tag", () => {
+  const { belongsToGrant, formGrantFixes } = require("./grantScope");
+  const programs = [{ id: "p1", grantId: "g1" }, { id: "p2", grantId: "g2" }, { id: "p3" }];
+  // A form created while another grant was selected
+  expect(belongsToGrant({ programId: "p1", grantId: "g2" }, "g1", { programs })).toBe(true);
+  expect(belongsToGrant({ programId: "p1", grantId: "g2" }, "g2", { programs })).toBe(false);
+  // Program without a grant: the stored tag still counts
+  expect(belongsToGrant({ programId: "p3", grantId: "g2" }, "g2", { programs })).toBe(true);
+  expect(participantsForGrant([{ id: "a", programId: "p1", grantId: "g2" }], programs, "g1").map(p => p.id)).toEqual(["a"]);
+  const forms = [
+    { id: "f1", programId: "p1" },                 // no tag → g1
+    { id: "f2", programId: "p1", grantId: "g2" },  // wrong tag → g1
+    { id: "f3", programId: "p2", grantId: "g2" },  // fine
+    { id: "f4", programId: "p3" },                 // program has no grant
+    { id: "f5" },                                  // no program
+  ];
+  const { fixes, noGrant } = formGrantFixes(forms, programs);
+  expect(fixes.map(f => [f.id, f.grantId])).toEqual([["f1", "g1"], ["f2", "g1"]]);
+  expect(noGrant.map(f => f.id)).toEqual(["f4"]);
+});

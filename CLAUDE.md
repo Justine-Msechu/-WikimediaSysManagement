@@ -56,7 +56,7 @@ CI=true npm run build               # same as the deploy workflow
 
 ```bash
 docker compose up --watch        # app :3000 + Firebase emulators (UI :4000)
-docker compose run --rm --build seed   # test accounts (one per role) + sample grant, forms, participants
+docker compose run --rm --build seed   # test accounts (one per role) + sample data (below)
 docker compose down              # stop; emulator data stays in the emulator_data volume
 docker compose down -v           # stop and wipe the local test data
 ```
@@ -71,6 +71,13 @@ docker compose down -v           # stop and wipe the local test data
   emulators (also the secondary app in `createAuthUser`), App Check off. It
   can't reach live data. Without that variable (`npm start`) nothing changes.
 - The Firestore emulator enforces the real `firestore.rules` (synced on save).
+- Seed data (`scripts/seed-emulators.mjs`, fixed ids, safe to re-run): a
+  grant (2026-27), a program, 2 open registration forms, 5 participants (one
+  person typed 3 ways across two events, one entered twice in the same event —
+  for the People & returning tab), 4 community members (one entered twice with
+  different capitals, one real public account `AlvinDulle`, one wrong username —
+  for Check usernames), a volunteer and settings. The seed runs from the app
+  image, so `--build` picks up edits to the script (it isn't synced by `--watch`).
 - Test logins: see `TEST_USERS` / `LOCAL_PASSWORD` in `scripts/seed-emulators.mjs`
   (emulator only). Password-reset emails aren't sent — the link is in the
   emulator logs / Emulator UI.
@@ -307,6 +314,15 @@ index — services usually skip `orderBy` and sort client-side instead.
   program's, to avoid double-counting.
 - **Budget entries** are grouped into personnel / operational / programmatic
   (`BUDGET_GROUPS` in budgetService). Excel import via `ImportBudgetModal`.
+- **Username check on the public form** (`PublicRegister.js`,
+  `utils/accountCheck.js` → `checkWikiAccount()`): on leaving the username
+  field and on submit, asks sw.wikipedia (`list=users`), then the global
+  account (`meta=globaluserinfo`). "Yes, I've edited before" requires a
+  username; a username with no Wikimedia account at all blocks the sign-up
+  with a message about spelling and capitals (for "first time" people it
+  suggests leaving it empty). A global account without a Swahili one is fine
+  (created on first visit). If Wikipedia can't be reached, registration is
+  never blocked. The saved username is Wikipedia's exact spelling.
 - **Registration:** `submitRegistration()` saves the registration, bumps
   `registrationCount` on the form (enforces `maxRegistrations` without auth) and
   auto-adds a participant. `isNew` = "never edited Wikipedia before".
@@ -349,6 +365,11 @@ index — services usually skip `orderBy` and sort client-side instead.
   maps typed spellings to the member's), and event counts
   (`fetchEventMonthStats`: a form name matches the member; contributions are
   fetched with the dashboard's spelling when there is one).
+- **Cleaning up real data** (after importing old lists): Participants → People &
+  returning → "Only people to fix" → Fix / Fix all spellings / Remove
+  duplicate; Active contributors → Community members → Check usernames →
+  Keep this one / save the correct username; then fetch and save the monthly
+  reports again and click "Apply counts to results" on Metrics.
 - **Check usernames** (Community members, coordinators): lists members entered
   twice with different capitals (admins "Keep this one" — removes the others)
   and members whose username doesn't exist on Swahili Wikipedia

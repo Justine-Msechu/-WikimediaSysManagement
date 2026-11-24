@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { getForm, submitRegistration } from "../services/registrationService";
+import { checkWikiAccount } from "../utils/accountCheck";
 import { renderHtml } from "../components/RichTextEditor";
 import logo from "../assets/logo.png";
 
@@ -93,6 +94,7 @@ export default function PublicRegister({ formId }) {
   const [submitted, setSubmitted] = useState(false);
   const [busy,      setBusy]      = useState(false);
   const [errors,    setErrors]    = useState({});
+  const [acct,      setAcct]      = useState(null);   // { status, username, checkedFor } — Wikipedia account check
 
   const [vals, setVals] = useState({
     name: "", wikimediaUsername: "", email: "", phone: "", age: "", skills: "", wikistatus: "",
@@ -125,15 +127,42 @@ export default function PublicRegister({ formId }) {
     setErrors(e => ({ ...e, [key]: null }));
   };
 
+  // Ask Wikipedia whether the username exists (sw, or a global account).
+  const runCheck = async (raw) => {
+    const clean = sanitizeWikiUsername(raw || "").trim();
+    if (!clean) { setAcct(null); return null; }
+    if (acct && acct.checkedFor === clean && acct.status !== "checking") return acct;
+    setAcct({ status: "checking", checkedFor: clean });
+    const r = { ...(await checkWikiAccount(clean)), checkedFor: clean };
+    setAcct(r);
+    return r;
+  };
+
+  const accountError = (r, said) => {
+    if (!r || r.status !== "missing") return null;
+    return said === "yes"
+      ? `No Wikipedia account called "${r.username}" exists. Check the spelling and capital letters — Wikipedia treats "Amina juma" and "Amina Juma" as different names. Tip: copy it from your Wikipedia user page.`
+      : `No Wikipedia account called "${r.username}" exists. Check the spelling, or leave this empty if you don't have an account yet — we'll help you create one at the event.`;
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     // Re-sanitize at submit time (catches autofill) and fully trim
     const cleanUsername = sanitizeWikiUsername(vals.wikimediaUsername).trim();
     setVals(v => ({ ...v, wikimediaUsername: cleanUsername }));
 
+    // Someone who has edited before must give their username, and it must exist.
+    let account = null;
+    if (cleanUsername && !validateWikiUsername(cleanUsername)) {
+      setBusy(true);
+      account = await runCheck(cleanUsername);
+      setBusy(false);
+    }
     const newErrors = {
       name:              validateName(vals.name),
-      wikimediaUsername: validateWikiUsername(cleanUsername),
+      wikimediaUsername: validateWikiUsername(cleanUsername)
+        || (vals.wikistatus === "yes" && !cleanUsername ? "You said you have edited Wikipedia before — please enter your Wikipedia username." : null)
+        || accountError(account, vals.wikistatus),
       wikistatus:        vals.wikistatus ? null : "Please select one.",
       email:             validateEmail(vals.email),
       phone:             validatePhone(vals.phone),
@@ -150,7 +179,8 @@ export default function PublicRegister({ formId }) {
     try {
       await submitRegistration(formId, {
         name:              vals.name.trim(),
-        wikimediaUsername: cleanUsername,
+        // the exact spelling Wikipedia uses (e.g. first letter capital)
+        wikimediaUsername: account && (account.status === "sw" || account.status === "global") ? account.username : cleanUsername,
         email:             vals.email.trim().toLowerCase(),
         phone:             vals.phone.trim(),
         age:               vals.age ? Number(vals.age) : null,
@@ -266,7 +296,8 @@ export default function PublicRegister({ formId }) {
             <input
               style={{ ...inputStyle, borderColor: errors.wikimediaUsername ? "#c0392b" : undefined }}
               value={vals.wikimediaUsername}
-              onChange={e => { const val = e.target.value; setVals(v => ({ ...v, wikimediaUsername: val })); }}
+              onChange={e => { const val = e.target.value; setVals(v => ({ ...v, wikimediaUsername: val })); setErrors(er => ({ ...er, wikimediaUsername: null })); }}
+              onBlur={e => { runCheck(e.target.value); }}
               placeholder="e.g. Justine Msechu"
               autoComplete="off"
               autoCorrect="off"
@@ -274,6 +305,15 @@ export default function PublicRegister({ formId }) {
               spellCheck={false}
             />
             <FieldError msg={errors.wikimediaUsername} />
+            {!errors.wikimediaUsername && acct && acct.checkedFor === sanitizeWikiUsername(vals.wikimediaUsername).trim() && (
+              <div style={{ fontSize: 12, marginTop: 4, color: acct.status === "missing" ? "#c0392b" : acct.status === "checking" || acct.status === "error" ? "#888" : "#2d7a4f" }}>
+                {acct.status === "checking" && "Checking on Wikipedia…"}
+                {acct.status === "sw" && <>✓ Found on Swahili Wikipedia: <strong>{acct.username}</strong></>}
+                {acct.status === "global" && <>✓ Wikipedia account found: <strong>{acct.username}</strong> (it will open on Swahili Wikipedia the first time you visit)</>}
+                {acct.status === "missing" && accountError(acct, vals.wikistatus)}
+                {acct.status === "error" && "Couldn't check the username right now — that's fine, you can still register."}
+              </div>
+            )}
             <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>
               Enter your Wikipedia username only, without "User:" prefix. You can paste your full Wikipedia profile URL and it will be cleaned automatically. Leave blank if you don't have an account yet.
             </div>

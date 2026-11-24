@@ -1,4 +1,5 @@
 // ── Grant scoping — what belongs to which grant ───────────────────────────────
+import { personKey } from "./participantPeople";
 // Pure JS (no React / Firebase). Every grant-data page should show only the
 // selected grant's records, so a new grant starts empty.
 
@@ -203,7 +204,7 @@ export function participantStats(list) {
   return {
     total:       people.length,
     women:       people.filter(p => WOMAN.test(String(p.gender || "").trim())).length,
-    newEditors:  people.filter(p => p.isNew).length,
+    newEditors:  new Set(people.filter(p => p.isNew).map(personKey)).size,   // each person once
     genderKnown: people.filter(p => String(p.gender || "").trim()).length,
   };
 }

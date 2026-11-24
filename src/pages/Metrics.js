@@ -8,6 +8,7 @@ import { listenPrograms } from "../services/programService";
 import { listenContributorReports, listenCommunityMembers, listenContributorEvents } from "../services/contributorService";
 import { listenForms, getAllRegistrations } from "../services/registrationService";
 import { SCOPES, reportScope, normalizeUsername, isEditing } from "../utils/wikiContribs";
+import { peopleCounts } from "../utils/participantPeople";
 import { participantsForGrant, grantMonthRange, reportForMembers, grantParticipation, returningPeople } from "../utils/grantScope";
 import { rankingMonth, activeSummary, activeAtLeastOnce } from "../utils/eventSelection";
 
@@ -89,11 +90,16 @@ export default function Metrics({ profile, grantId, currentGrant, firstGrantId =
   const grantActivities  = grantId ? activities.filter(a => a.grantId === grantId) : activities;
   const grantParticipants = participantsForGrant(participants, programs, grantId, { forms, firstGrantId });
 
+  // Editors are counted as people: records with the same Wikipedia username
+  // (however it was typed) are one person — utils/participantPeople.js.
+  const people = peopleCounts(grantParticipants);
   const registryCounts = {
     participants:    grantParticipants.length,
-    allEditors:      grantParticipants.filter(p => p.wikimediaUsername).length,
-    newEditors:      grantParticipants.filter(p => p.isNew).length,
-    retainedEditors: grantParticipants.filter(p => !p.isNew && p.wikimediaUsername).length,
+    allEditors:      people.editors,
+    newEditors:      people.newEditors,
+    retainedEditors: people.retained,
+    people:          people.people,
+    returning:       people.returning,
   };
 
   const sum = (field) => grantActivities.reduce((acc, a) => acc + (Number(a[field]) || 0), 0);
@@ -447,12 +453,15 @@ export default function Metrics({ profile, grantId, currentGrant, firstGrantId =
           <div className="panel-title" style={{ color: "#2563eb", marginBottom: 8 }}>Registry summary — from your participants list</div>
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, marginBottom: 12 }}>
             <div><span style={{ color: "#888" }}>Total registered:</span> <strong>{registryCounts.participants}</strong></div>
+            <div><span style={{ color: "#888" }}>Different people:</span> <strong>{registryCounts.people}</strong></div>
+            <div><span style={{ color: "#888" }}>Returning (2+ events):</span> <strong style={{ color: "#2563eb" }}>{registryCounts.returning}</strong></div>
             <div><span style={{ color: "#888" }}>Have Wikipedia username:</span> <strong>{registryCounts.allEditors}</strong></div>
             <div><span style={{ color: "#888" }}>New editors (first time):</span> <strong style={{ color: "#2563eb" }}>{registryCounts.newEditors}</strong></div>
             <div><span style={{ color: "#888" }}>Retained editors (edited before):</span> <strong style={{ color: "#7c3aed" }}>{registryCounts.retainedEditors}</strong></div>
           </div>
           <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
-            New/retained counts come from the "Have you edited Wikipedia before?" answer on registration forms. Participants added manually use the "New editor" checkbox.
+            Editors are counted once per person (the same Wikipedia username, however it was typed). New = had never edited at their first event; retained = had edited before, or came back to another event.
+            New/retained come from the "Have you edited Wikipedia before?" answer on registration forms; manual entries use the "New editor" checkbox.
           </div>
           {canEdit && <button className="btn btn-sm btn-primary" style={{ background: "#2563eb" }} onClick={applyRegistryCounts}>Apply counts to results</button>}
         </div>

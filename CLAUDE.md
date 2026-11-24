@@ -56,7 +56,7 @@ CI=true npm run build               # same as the deploy workflow
 
 ```bash
 docker compose up --watch        # app :3000 + Firebase emulators (UI :4000)
-docker compose run --rm seed     # test accounts (one per role) + sample grant/program/open form
+docker compose run --rm --build seed   # test accounts (one per role) + sample grant, forms, participants
 docker compose down              # stop; emulator data stays in the emulator_data volume
 docker compose down -v           # stop and wipe the local test data
 ```
@@ -110,6 +110,7 @@ src/
   utils/              Pure helpers (no React/Firebase) — testable:
                       wikiContribs.js, eventContribs.js, eventSelection.js, yearSummary.js,
                       grantScope.js, monthlyNews.js, names.js, grantSpending.js, sanitizeHtml.js,
+                      participantPeople.js,
                       contributorPrint.js, certificateArt.js, budgetImport.js,
                       timelineImport.js, wikiImport.js, spendingReport.js,
                       timelineReport.js
@@ -285,6 +286,20 @@ index — services usually skip `orderBy` and sort client-side instead.
   notes program sessions and activities not linked to any grant (click → Activities).
   Donor report notes when activity-typed counts differ; articles
   created/improved still come from activities.
+- **Participants → people** (`utils/participantPeople.js`, Participants page
+  tab "People & returning", `components/ParticipantPeople.js`): the registry
+  has one record per sign-up; records are one person when their Wikipedia
+  username matches ignoring capitals, spaces/underscores and "User:"
+  (`personKey()`; else email, else tidy name). A person in 2+ events (forms /
+  programs) is **Returning**; new = new at their first record. "Fix" / "Fix all
+  spellings" writes one name (`bestName()`, tidy full name) and username to all
+  their records; "Remove duplicate" deletes extra records in the same event
+  (confirm). Wikipedia usernames are case-sensitive after the first letter, so
+  when spellings differ the page asks sw.wikipedia (`checkUsernames()`) and
+  only rewrites the username if exactly one spelling exists. Metrics registry
+  counts editors as people (`peopleCounts()`: editors, new, retained = edited
+  before or came back, returning); `participantStats().newEditors` counts each
+  person once.
 - **Approval flow:** programs and sessions go `draft → submitted → approved /
   rejected`. Approved programs are locked (only admins edit; coordinators may
   still touch `subPrograms`). Approving creates approved `budgetEntries` for

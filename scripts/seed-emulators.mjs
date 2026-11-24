@@ -78,8 +78,26 @@ await setDoc("registrationForms/form-demo", {
 await setDoc("volunteers/vol-demo", {
   name: "Test Volunteer", email: "volunteer@wikikilimanjaro.test", grantIds: ["grant-demo"], createdAt: now,
 });
+await setDoc("registrationForms/form-demo-2", {
+  title: "Demo health edit-a-thon", date: "2027-01-15", location: "Arusha", status: "open",
+  programId: "program-demo", grantId: "grant-demo", registrationCount: 0, createdAt: now,
+});
+// Sample participants: the same person typed differently in two events (People view).
+const people = [
+  ["p-1", "amina juma",   "Amina_Juma", "form-demo",   true,  "Female"],
+  ["p-2", "AMINA JUMA",   "amina juma", "form-demo-2", false, "Female"],
+  ["p-3", "Baraka Mushi", "Baraka M",   "form-demo",   false, "Male"],
+  ["p-4", "Baraka mushi", "Baraka M",   "form-demo",   false, "Male"],   // same event twice
+  ["p-5", "Neema Lyimo",  "",           "form-demo-2", true,  "Female"],
+];
+for (const [id, name, wikimediaUsername, formId, isNew, gender] of people) {
+  await setDoc(`participants/${id}`, {
+    name, wikimediaUsername, email: "", phone: "", gender, region: "Kilimanjaro", isNew,
+    programId: "program-demo", grantId: "grant-demo", source: "self-registered", formId, registeredViaForm: formId, createdAt: now,
+  });
+}
 await setDoc("settings/main", { org: { name: "Wikimedia Community Kilimanjaro (local)" } });
 
-console.log("✔ sample grant, program, open registration form, volunteer and settings");
+console.log("✔ sample grant, program, 2 open registration forms, 5 participants, volunteer and settings");
 console.log(`\nApp: http://localhost:3000/-WikimediaSysManagement/   Emulator UI: http://localhost:4000`);
 console.log("Logins and password: see TEST_USERS and LOCAL_PASSWORD in scripts/seed-emulators.mjs");

@@ -9,6 +9,7 @@ import { listenPrograms } from "../services/programService";
 import { getForms, getAllRegistrations, listenForms } from "../services/registrationService";
 import { participantsForGrant } from "../utils/grantScope";
 import logo from "../assets/logo.png";
+import ParticipantPeople from "../components/ParticipantPeople";
 
 const GENDERS  = ["Female", "Male", "Non-binary", "Prefer not to say"];
 const REGIONS  = ["Kilimanjaro", "Arusha", "Dar es Salaam", "Mwanza", "Dodoma", "Other"];
@@ -38,6 +39,7 @@ export default function Participants({ profile, grantId, firstGrantId = "" }) {
   const [forms,         setForms]         = useState([]);
   const [allRegs,       setAllRegs]       = useState([]);
   const [expenseType,   setExpenseType]   = useState("Transport");
+  const [view,          setView]          = useState("records");   // "records" | "people"
   const csvRef = useRef();
   const EXPENSE_TYPES = ["Transport", "Food & refreshments", "Stipend / allowance", "Venue hire", "Merchandise & prizes", "Other"];
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
@@ -380,6 +382,11 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
     <div>
       {toast && <div style={{ position: "fixed", bottom: 24, right: 24, background: "#2d7a4f", color: "#fff", padding: "10px 18px", borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 9999 }}>✓ {toast}</div>}
       <div className="page-title">Participants registry</div>
+      <div className="tab-bar" style={{ marginBottom: 12 }}>
+        <button className={`tab-btn ${view === "records" ? "active" : ""}`} onClick={() => setView("records")}>Records</button>
+        <button className={`tab-btn ${view === "people" ? "active" : ""}`} onClick={() => setView("people")}
+          title="One row per person — the same Wikipedia username counts once, however it was typed">People &amp; returning</button>
+      </div>
 
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <select value={programFilter} onChange={e => setProgramFilter(e.target.value)} style={{ fontSize: 13, minWidth: 180 }}>
@@ -532,6 +539,10 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
       )}
 
 
+      {view === "people" ? (
+        <ParticipantPeople participants={visibleParticipants} programs={programs} forms={forms} search={search}
+          canEdit={canEdit} profile={profile} showToast={showToast} />
+      ) : (
       <div className="panel" style={{ padding: 0 }}>
         {filtered.length === 0
           ? <div className="empty">
@@ -636,6 +647,7 @@ table.att tr:nth-child(even) td.c{background:#ededeb}
           </div>
         )}
       </div>
+      )}
 
     </div>
   );

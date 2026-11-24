@@ -2,7 +2,7 @@
 #
 #   docker compose up --watch      app + local Firebase emulators (safe: no live data);
 #                                  edits in src/ and public/ reload the app
-#   docker compose run --rm seed   create test accounts and a sample grant
+#   docker compose run --rm --build seed   test accounts + sample grant, forms, participants
 #   docker compose down            stop (emulator data is kept in a Docker volume)
 #
 # The app talks ONLY to the emulators here (project "demo-wikikilimanjaro"),
@@ -63,8 +63,10 @@ services:
 
   # One-off: test accounts (one per role) + a sample grant, program and open form.
   seed:
-    image: wikikilimanjaro-gsf-app-dev     # same image as app (built by `docker compose up`)
-    pull_policy: never
+    image: wikikilimanjaro-gsf-app-dev     # same image as app
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
     profiles: ["tools"]
     environment:
       EMULATOR_HOST: emulators

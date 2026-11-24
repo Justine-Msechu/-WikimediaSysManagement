@@ -152,7 +152,7 @@ export default function Metrics({ profile, grantId, currentGrant, firstGrantId =
   const grantMonths = grantMonthRange(currentGrant);
   // ...and only this grant's community members (saved reports list everyone).
   // Grant members = community members who took part in this grant's activities.
-  const participation = grantParticipation({ grants, participants, programs, forms, registrations, events, firstGrantId });
+  const participation = grantParticipation({ grants, participants, programs, forms, registrations, events, firstGrantId, members: community });
   const tookPart = participation.get(grantId) || new Set();
   const grantMembers = community.filter(m => tookPart.has(normalizeUsername(m.wikimediaUsername)));
   const grantMemberSet = new Set(grantMembers.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean));

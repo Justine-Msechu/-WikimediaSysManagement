@@ -341,6 +341,19 @@ index — services usually skip `orderBy` and sort client-side instead.
   new event registrants. **All community members are volunteers**: at the end of
   the grant they receive certificates, and the reports are the evidence of who
   stayed active/retained.
+- **Capital letters don't split a person** (`userKey()` in wikiContribs =
+  normalized + lower case, for matching only; Wikipedia requests always use
+  the real spelling via `normalizeUsername()`): member lists / imports / bulk
+  add (`addCommunityMembersBulk`, `notYetMembers`), "not members" panels
+  (`joinedNotMembers`), grant participation (`grantParticipation({ members })`
+  maps typed spellings to the member's), and event counts
+  (`fetchEventMonthStats`: a form name matches the member; contributions are
+  fetched with the dashboard's spelling when there is one).
+- **Check usernames** (Community members, coordinators): lists members entered
+  twice with different capitals (admins "Keep this one" — removes the others)
+  and members whose username doesn't exist on Swahili Wikipedia
+  (`checkUsernames()` — they'd show 0 in every report), with a box to save the
+  correct username (audited).
 - **Two ways to count** (page-level switch, applies to Report / History / Year
   summary; `SCOPES` + `reportScope()` in wikiContribs.js):
   - **Whole wiki** (`scope: "all"`) — every article edit that month, including

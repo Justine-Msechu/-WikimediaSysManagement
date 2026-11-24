@@ -130,7 +130,7 @@ export function sortGrants(grants) {
   return first;
 }
 
-const uname = (u) => {
+const unameRaw = (u) => {
   let s = String(u || "").trim().replace(/^(user|mtumiaji)\s*:\s*/i, "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
 };
@@ -143,8 +143,11 @@ const uname = (u) => {
  *  - joined one of our events inside the grant's dates (dashboard or linked form)
  * Returns Map<grantId, Set<username>>.
  */
-export function grantParticipation({ grants, participants, programs, forms, registrations, events, firstGrantId = "" }) {
+export function grantParticipation({ grants, participants, programs, forms, registrations, events, firstGrantId = "", members = [] }) {
   const out = new Map();
+  // Usernames typed with other capitals count as the community member's spelling.
+  const memberSpelling = new Map((members || []).map(m => unameRaw(m.wikimediaUsername)).filter(Boolean).map(u => [u.toLowerCase(), u]));
+  const uname = (u) => { const n = unameRaw(u); return memberSpelling.get(n.toLowerCase()) || n; };
   const regsByForm = new Map();
   for (const r of registrations || []) {
     if (r.attendance === "absent") continue;

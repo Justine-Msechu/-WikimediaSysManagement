@@ -96,8 +96,19 @@ for (const [id, name, wikimediaUsername, formId, isNew, gender] of people) {
     programId: "program-demo", grantId: "grant-demo", source: "self-registered", formId, registeredViaForm: formId, createdAt: now,
   });
 }
+// Community members (Active contributors): one entered twice with other capitals,
+// one real public Swahili Wikipedia account, one username that doesn't exist.
+const members = [
+  ["m-1", "Amina Juma", "Amina Juma"],
+  ["m-2", "amina juma", "amina juma"],
+  ["m-3", "Alvin Dulle", "AlvinDulle"],
+  ["m-4", "Baraka Mushi", "Baraka M"],
+];
+for (const [id, name, wikimediaUsername] of members) {
+  await setDoc(`communityMembers/${id}`, { name, wikimediaUsername, isActive: true, source: "manual", grantIds: ["grant-demo"], createdAt: now });
+}
 await setDoc("settings/main", { org: { name: "Wikimedia Community Kilimanjaro (local)" } });
 
-console.log("✔ sample grant, program, 2 open registration forms, 5 participants, volunteer and settings");
+console.log("✔ sample grant, program, 2 open registration forms, 5 participants, 4 community members, volunteer and settings");
 console.log(`\nApp: http://localhost:3000/-WikimediaSysManagement/   Emulator UI: http://localhost:4000`);
 console.log("Logins and password: see TEST_USERS and LOCAL_PASSWORD in scripts/seed-emulators.mjs");

@@ -21,7 +21,7 @@ import { certificateArt } from "../utils/certificateArt";
 import { tidyName, nameProblem } from "../utils/names";
 import { monthlyNews, newsText, projectsNews, projectsText, pointsBreakdown } from "../utils/monthlyNews";
 import {
-  WIKIS, DEFAULT_WIKI, DEFAULT_THRESHOLD, wikiInfo, thresholdFor, fetchUserProjects, POINTS_WIKIS, POINTS_PER_LEVEL,
+  WIKIS, DEFAULT_WIKI, DEFAULT_THRESHOLD, userKey, wikiInfo, thresholdFor, fetchUserProjects, POINTS_WIKIS, POINTS_PER_LEVEL,
   normalizeUsername, currentMonth, lastFullMonth, isPartialMonth, previousMonths,
   fetchMonthStats, checkUsernames, buildReportRows, rowsToCsv, isEditing, bestContributors, STILL_EDITING_MIN,
   SCOPES, DEFAULT_SCOPE, reportScope, scopeLabel,
@@ -248,8 +248,8 @@ function AllProjectsPanel({ reports, month, eventsOnly, orgName }) {
 function NotMembersPanel({ people, members, nameFor, canEdit, profile, showToast, title, note, wiki = DEFAULT_WIKI, addMembers, earlier = new Set() }) {
   const [picked, setPicked] = useState({});
   const [busy, setBusy] = useState(false);
-  const existing = useMemo(() => new Set(members.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean)), [members]);
-  const list = (people || []).filter(p => !existing.has(p.username));
+  const existing = useMemo(() => new Set(members.map(m => userKey(m.wikimediaUsername)).filter(Boolean)), [members]);
+  const list = (people || []).filter(p => !existing.has(userKey(p.username)));   // capitals ignored
   const hasCounts = list.some(p => p.articles !== undefined);
   const chosen = list.filter(p => picked[p.username] ?? true);
   const returningCount = list.filter(p => earlier.has(p.username)).length;
@@ -710,12 +710,12 @@ function History({ reports }) {
 // People from another list (volunteers / event participants) whose Wikipedia
 // username isn't in the community list yet — one entry per username.
 function notYetMembers(list, existing, source) {
-  const seen = new Set(existing);
+  const seen = new Set([...existing].map(u => u.toLowerCase()));   // capitals ignored
   const out = [];
   for (const v of list) {
     const u = normalizeUsername(v.wikimediaUsername);
-    if (!u || seen.has(u)) continue;
-    seen.add(u);
+    if (!u || seen.has(u.toLowerCase())) continue;
+    seen.add(u.toLowerCase());
     out.push({ name: (v.name || "").trim() || u, wikimediaUsername: u, isActive: true, source });
   }
   return out;
@@ -1261,6 +1261,8 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
   const [projBusy, setProjBusy] = useState(null);   // { done, total }
   const [editing,  setEditing]  = useState(null);   // { id, value } — name being edited
   const [onlyCheck, setOnlyCheck] = useState(false); // show only names to check
+  const [userCheck, setUserCheck] = useState(null);   // { busy, notFound: Set(username) }
+  const [fixUser,  setFixUser]  = useState({});       // memberId → typed username
 
   const existing = useMemo(
     () => new Set(members.map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean)),
@@ -1284,7 +1286,8 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
   const addOne = async () => {
     const u = normalizeUsername(username);
     if (!u) { alert("Wikipedia username is required."); return; }
-    if (existing.has(u)) { alert(`${u} is already in the list.`); return; }
+    const same = members.find(m => userKey(m.wikimediaUsername) === u.toLowerCase());
+    if (same) { alert(`${u} is already in the list${same.wikimediaUsername !== u ? ` as ${same.wikimediaUsername}` : ""}.`); return; }
     setBusy(true);
     try {
       const fullName = name.trim() || u;
@@ -1347,6 +1350,53 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
     if (!window.confirm(`Add ${n} past event participant${n === 1 ? "" : "s"} to the community list? They will be included in monthly reports.`)) return;
     if (!(await addMany(importableParticipants, "Import from Participants", "participants"))) return;
     showToast(`Imported ${n} from Participants.`);
+  };
+
+  // Same person entered twice with different capitals ("amina juma" / "Amina Juma").
+  const duplicates = useMemo(() => {
+    const groups = new Map();
+    members.forEach(m => {
+      const k = userKey(m.wikimediaUsername);
+      if (!k) return;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(m);
+    });
+    return [...groups.values()].filter(g => g.length > 1);
+  }, [members]);
+
+  // Which usernames don't exist on Swahili Wikipedia (typos → their reports show 0).
+  const checkAllUsernames = async () => {
+    setUserCheck({ busy: true, notFound: new Set() });
+    try {
+      const res = await checkUsernames(members.map(m => m.wikimediaUsername).filter(Boolean), WIKIS[0].id);
+      setUserCheck({ busy: false, notFound: new Set(res.missing) });
+    } catch (e) {
+      setUserCheck(null);
+      alert(`Could not check usernames: ${e.message}`);
+    }
+  };
+
+  const saveUsername = async (m) => {
+    const u = normalizeUsername(fixUser[m.id]);
+    if (!u) return;
+    const same = members.find(x => x.id !== m.id && userKey(x.wikimediaUsername) === u.toLowerCase());
+    if (same) { alert(`${u} is already a member (${same.name}). Remove one of them instead.`); return; }
+    await updateCommunityMember(m.id, { wikimediaUsername: u });
+    await addAudit(profile, AUDIT_ACTIONS.UPDATE, "contributors", { targetId: m.id, recordTitle: m.name, details: `Changed username ${m.wikimediaUsername} → ${u}` });
+    setFixUser(f => ({ ...f, [m.id]: undefined }));
+    setUserCheck(c => c && { ...c, notFound: new Set([...c.notFound].filter(x => x !== normalizeUsername(m.wikimediaUsername))) });
+    showToast("Username saved. Fetch the reports again to count their edits.");
+  };
+
+  // Keep one member of a duplicate group, remove the others (admins).
+  const keepOnly = async (group, keep) => {
+    const others = group.filter(m => m.id !== keep.id);
+    if (!window.confirm(`Keep ${keep.name} (${keep.wikimediaUsername}) and remove ${others.map(m => `${m.name} (${m.wikimediaUsername})`).join(", ")}? Saved reports keep their old rows.`)) return;
+    for (const m of others) {
+      await deleteCommunityMember(m.id);
+      await addAudit(profile, AUDIT_ACTIONS.DELETE, "contributors", { targetId: m.id, recordTitle: m.name, details: `Removed duplicate member ${m.wikimediaUsername} (kept ${keep.wikimediaUsername})` });
+    }
+    showToast("Duplicate removed.");
   };
 
   // Fix a member's name (used on reports and certificates).
@@ -1442,6 +1492,63 @@ function Members({ members, volunteers, participants, profile, canEdit, isAdmin,
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {canEdit && members.length > 0 && (
+        <div className="panel" style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div>
+              <div className="panel-title" style={{ margin: 0 }}>Check usernames</div>
+              <div style={{ fontSize: 12, color: "#888" }}>
+                A wrong username means 0 articles in every report. Capital letters matter on Wikipedia after the first letter.
+              </div>
+            </div>
+            <button className="btn btn-sm btn-primary" onClick={checkAllUsernames} disabled={userCheck?.busy}>
+              {userCheck?.busy ? "Checking…" : "🔎 Check all on Swahili Wikipedia"}
+            </button>
+          </div>
+
+          {duplicates.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#c0392b", marginBottom: 6 }}>Same person entered more than once ({duplicates.length})</div>
+              {duplicates.map(g => (
+                <div key={g[0].id} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 13, padding: "6px 0", borderBottom: "1px solid #f0efe9" }}>
+                  {g.map(m => (
+                    <span key={m.id} style={{ display: "inline-flex", gap: 6, alignItems: "center", border: "1px solid #e4e2da", borderRadius: 6, padding: "3px 8px" }}>
+                      {m.name} · <code>{m.wikimediaUsername}</code>
+                      {userCheck && !userCheck.busy && (userCheck.notFound.has(normalizeUsername(m.wikimediaUsername))
+                        ? <span className="badge badge-red" style={{ fontSize: 10 }}>not on Wikipedia</span>
+                        : <span className="badge badge-green" style={{ fontSize: 10 }}>exists</span>)}
+                      {isAdmin && <button className="btn btn-sm" style={{ padding: "0 6px", fontSize: 11 }} onClick={() => keepOnly(g, m)}>Keep this one</button>}
+                    </span>
+                  ))}
+                  {!isAdmin && <span style={{ fontSize: 11, color: "#888" }}>An admin can remove the extra copy.</span>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {userCheck && !userCheck.busy && (
+            userCheck.notFound.size === 0
+              ? <div className="alert alert-success" style={{ marginTop: 12, marginBottom: 0 }}>Every username exists on Swahili Wikipedia.</div>
+              : (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#d97706", marginBottom: 6 }}>Not found on Swahili Wikipedia ({userCheck.notFound.size})</div>
+                  <div style={{ fontSize: 12, color: "#888", marginBottom: 6 }}>Usually a typo or wrong capitals. Type the exact username from their Wikipedia page and save.</div>
+                  {members.filter(m => userCheck.notFound.has(normalizeUsername(m.wikimediaUsername))).map(m => (
+                    <div key={m.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 13, padding: "4px 0" }}>
+                      <span style={{ minWidth: 160 }}>{m.name}</span>
+                      <code style={{ color: "#c0392b" }}>{m.wikimediaUsername}</code>
+                      <span>→</span>
+                      <input value={fixUser[m.id] ?? ""} onChange={e => setFixUser(f => ({ ...f, [m.id]: e.target.value }))} placeholder="Correct username"
+                        style={{ fontSize: 13, width: 200 }} autoComplete="off" autoCapitalize="none" spellCheck={false} />
+                      <button className="btn btn-sm" disabled={!normalizeUsername(fixUser[m.id])} onClick={() => saveUsername(m)}>Save</button>
+                    </div>
+                  ))}
+                </div>
+              )
+          )}
         </div>
       )}
 
@@ -1593,8 +1700,8 @@ export default function ActiveContributors({ profile, currentGrant, grantId = ""
   const monthRange = grantMonthRange(currentGrant);
   const noDates    = !!currentGrant && !monthRange;
   const participation = useMemo(
-    () => grantParticipation({ grants, participants, programs, forms, registrations, events: allEvents, firstGrantId }),
-    [grants, participants, programs, forms, registrations, allEvents, firstGrantId],
+    () => grantParticipation({ grants, participants, programs, forms, registrations, events: allEvents, firstGrantId, members: allMembers }),
+    [grants, participants, programs, forms, registrations, allEvents, firstGrantId, allMembers],
   );
   const grantPeople = currentGrant ? (participation.get(grantId) || new Set()) : null;
   const members    = useMemo(

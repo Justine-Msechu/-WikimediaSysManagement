@@ -71,6 +71,11 @@ export function normalizeUsername(raw) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// Matching key for "is this the same person?" — ignores capital letters too
+// ("amina juma" typed on a form = member "Amina Juma"). Use normalizeUsername()
+// for the spelling sent to Wikipedia; it is case-sensitive after the first letter.
+export const userKey = (raw) => normalizeUsername(raw).toLowerCase();
+
 // ── Months (all UTC) ─────────────────────────────────────────────────────────
 
 function parseMonth(month) {

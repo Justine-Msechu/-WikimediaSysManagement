@@ -153,3 +153,14 @@ test("participantStats and participantMonth", () => {
   expect(participantMonth({ registeredAt: "2026-10-02T00:00:00Z" })).toBe("2026-10");
   expect(participantMonth({})).toBe("");
 });
+
+test("grantParticipation uses the member's spelling when capitals differ", () => {
+  const { grantParticipation } = require("./grantScope");
+  const map = grantParticipation({
+    grants: [{ id: "g", startDate: "2026-07-01", endDate: "2027-06-30" }],
+    participants: [{ wikimediaUsername: "amina JUMA", grantId: "g" }],
+    programs: [], forms: [], registrations: [], events: [],
+    members: [{ wikimediaUsername: "Amina Juma" }],
+  });
+  expect([...map.get("g")]).toEqual(["Amina Juma"]);
+});

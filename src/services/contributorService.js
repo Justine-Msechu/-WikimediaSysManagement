@@ -33,14 +33,15 @@ export async function deleteCommunityMember(id) {
 //   existing: all community members; grantId / firstGrantId: see utils/grantScope.
 // Firestore batches allow 500 writes — stay safely below that.
 export async function addCommunityMembersBulk(members, { grantId = "", firstGrantId = "", existing = [] } = {}) {
-  const byUser = new Map(existing.map(m => [normalizeUsername(m.wikimediaUsername), m]));
+  // Same person = same username ignoring capitals, so "amina juma" doesn't add a second member.
+  const byUser = new Map(existing.map(m => [normalizeUsername(m.wikimediaUsername).toLowerCase(), m]));
   const seen = new Set();
   const ops = [];
   for (const m of members) {
     const u = normalizeUsername(m.wikimediaUsername);
-    if (!u || seen.has(u)) continue;
-    seen.add(u);
-    const old = byUser.get(u);
+    if (!u || seen.has(u.toLowerCase())) continue;
+    seen.add(u.toLowerCase());
+    const old = byUser.get(u.toLowerCase());
     if (old) {
       if (grantId && !belongsToGrant(old, grantId, { firstGrantId })) {
         ops.push({ type: "update", path: MEMBERS, id: old.id, data: { grantIds: grantIdsWith(old, grantId, firstGrantId) } });

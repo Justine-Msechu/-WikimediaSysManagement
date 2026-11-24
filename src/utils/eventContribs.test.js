@@ -186,3 +186,26 @@ test("joinedNotMembers lists people from the dashboard and linked forms who aren
     { username: "Walk in", events: ["Two"] },
   ]);
 });
+
+describe("capital letters don't split one person", () => {
+  test("a form name typed in small letters counts for the member, fetched with the dashboard's spelling", async () => {
+    const events = [{ slug: "S/E", title: "E", start: "2026-03-10T00:00:00Z", end: "2026-03-12T00:00:00Z", formUsernames: ["amina JUMA", "neema lyimo"] }];
+    const asked = [];
+    const fetchImpl = (url) => {
+      if (url.includes("outreachdashboard")) return ok({ course: { users: [{ username: "Amina JUMA" }] } });
+      const people = new URL(url).searchParams.get("ucuser").split("|");
+      asked.push(...people);
+      return ok({ query: { usercontribs: people.includes("Amina JUMA")
+        ? [{ user: "Amina JUMA", pageid: 1, revid: 1, timestamp: "2026-03-11T00:00:00Z" }] : [] } });
+    };
+    const res = await fetchEventMonthStats(["Amina Juma"], events, "2026-03", "sw.wikipedia.org", { fetchImpl, delayMs: 0 });
+    expect(res.stats.get("Amina Juma").articles).toBe(1);        // counted for the member
+    expect(asked).toContain("Amina JUMA");                       // real account spelling
+    expect(res.notMembers.map(p => p.username)).toEqual(["Neema lyimo"]);
+    expect(res.events[0]).toMatchObject({ members: 1, notMembers: 1 });
+  });
+
+  test("joinedNotMembers ignores capitals", () => {
+    expect(joinedNotMembers([{ title: "E", participants: ["amina juma", "Baraka"] }], ["Amina Juma"]).map(p => p.username)).toEqual(["Baraka"]);
+  });
+});

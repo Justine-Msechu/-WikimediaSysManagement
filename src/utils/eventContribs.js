@@ -127,6 +127,9 @@ export async function fetchEventMonthStats(usernames, events, month, wiki = DEFA
   const { fetchImpl = fetch, onProgress, delayMs } = opts;
   const members = [...new Set((usernames || []).map(normalizeUsername).filter(Boolean))];
   const memberSet = new Set(members);
+  // Names typed on forms may differ in capitals from the member's username.
+  const memberByKey = new Map(members.map(u => [u.toLowerCase(), u]));
+  const keyOf = (u) => memberByKey.get(u.toLowerCase()) || u;
   const windows = eventWindowsInMonth(events, month);
 
   const blank = () => ({ pages: new Set(), revs: new Map(), created: new Map(), events: new Set() });
@@ -137,14 +140,21 @@ export async function fetchEventMonthStats(usernames, events, month, wiki = DEFA
   const onDashboard = new Set();
   const onForm = new Set();
   for (const w of windows) {
-    const dash = new Set(await fetchCourseUsers(w.event.slug, { fetchImpl }));
-    const form = new Set((w.event.formUsernames || []).map(normalizeUsername).filter(Boolean));
+    const dashNames = (await fetchCourseUsers(w.event.slug, { fetchImpl })).map(normalizeUsername).filter(Boolean);
+    const formNames = (w.event.formUsernames || []).map(normalizeUsername).filter(Boolean);
+    // person (member spelling when they're a member) → spelling to ask Wikipedia
+    // for: the dashboard's (a real account) wins over what was typed on a form.
+    const fetchName = new Map();
+    formNames.forEach(u => fetchName.set(keyOf(u), memberSet.has(keyOf(u)) ? keyOf(u) : u));
+    dashNames.forEach(u => fetchName.set(keyOf(u), u));
+    const dash = new Set(dashNames.map(keyOf));
+    const form = new Set(formNames.map(keyOf));
     dash.forEach(u => onDashboard.add(u));
     form.forEach(u => onForm.add(u));
-    const joined = [...new Set([...dash, ...form])];
+    const joined = [...fetchName.keys()];
     const mem = joined.filter(u => memberSet.has(u));
     plan.push({
-      w, joined,
+      w, joined, fetchName,
       members: mem.length,
       viaDashboard: mem.filter(u => dash.has(u)).length,
       viaForm: mem.filter(u => !dash.has(u)).length,
@@ -155,11 +165,11 @@ export async function fetchEventMonthStats(usernames, events, month, wiki = DEFA
   let done = 0;
   if (onProgress) onProgress(0, total);
 
-  for (const { w, joined, ...counts } of plan) {
+  for (const { w, joined, fetchName, ...counts } of plan) {
     const title = w.event.title || w.event.slug;
     used.push({ slug: w.event.slug, title, start: w.start, end: w.end, ...counts });
     if (joined.length === 0) continue;
-    const contribs = await fetchRangeContribs(joined, w.start, w.end, wiki, {
+    const contribs = await fetchRangeContribs([...new Set(fetchName.values())], w.start, w.end, wiki, {
       fetchImpl, delayMs,
       onProgress: (d) => onProgress && onProgress(done + d, total),
     });
@@ -168,7 +178,7 @@ export async function fetchEventMonthStats(usernames, events, month, wiki = DEFA
       if (!target.has(u)) target.set(u, blank());
       const m = target.get(u);
       m.events.add(title);
-      const e = contribs.get(u);
+      const e = contribs.get(fetchName.get(u));
       if (e) {
         e.pages.forEach(p => m.pages.add(p));
         e.revs.forEach((v, k) => m.revs.set(k, v));
@@ -188,12 +198,12 @@ export async function fetchEventMonthStats(usernames, events, month, wiki = DEFA
 // community list. events[].participants = dashboard usernames from the last refresh.
 // Returns [{ username, events: [titles] }].
 export function joinedNotMembers(events, memberUsernames, formUsernamesById = {}) {
-  const memberSet = new Set((memberUsernames || []).map(normalizeUsername).filter(Boolean));
+  const memberSet = new Set((memberUsernames || []).map(u => normalizeUsername(u).toLowerCase()).filter(Boolean));
   const out = new Map();
   for (const ev of events || []) {
     const people = [...(ev.participants || []), ...(formUsernamesById[ev.id] || [])].map(normalizeUsername).filter(Boolean);
     for (const u of new Set(people)) {
-      if (memberSet.has(u)) continue;
+      if (memberSet.has(u.toLowerCase())) continue;   // capitals ignored
       if (!out.has(u)) out.set(u, new Set());
       out.get(u).add(ev.title || ev.slug);
     }

@@ -19,6 +19,7 @@ import Budget        from "./pages/Budget";
 import Invoices      from "./pages/Invoices";
 import Metrics       from "./pages/Metrics";
 import { oldestGrantId } from "./utils/grantScope";
+import { installResponsiveTables } from "./utils/responsiveTables";
 import ActiveContributors from "./pages/ActiveContributors";
 import Participants  from "./pages/Participants";
 import RegistrationForms from "./pages/RegistrationForms";
@@ -416,6 +417,8 @@ function AppShell() {
 }
 
 export default function App() {
+  // Wide tables turn into cards when they don't fit (phones, laptops).
+  React.useEffect(() => installResponsiveTables(), []);
   return (
     <AuthProvider>
       <AppShell />

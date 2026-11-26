@@ -341,13 +341,13 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: selectedForm ? "280px 1fr" : "1fr", gap: 20 }}>
-        {/* Form list */}
-        <div>
+      <div className={selectedForm ? "split-layout" : ""} style={selectedForm ? undefined : { display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 20 }}>
+        {/* Form list (hidden on narrow screens while a form is open) */}
+        <div className="split-list">
           {forms.length === 0 ? <div className="panel"><div className="empty">No registration forms for this grant yet.</div></div> : forms.map(f => {
             const badge = STATUS_BADGE[f.status] || STATUS_BADGE.draft;
             return (
-              <div key={f.id} onClick={() => setSelectedForm(f)} className="panel" style={{ cursor: "pointer", borderLeft: selectedForm?.id === f.id ? "4px solid #4a9e6b" : "4px solid transparent", marginBottom: 10 }}>
+              <div key={f.id} onClick={() => { setSelectedForm(f); if (window.innerWidth <= 1000) window.scrollTo({ top: 0 }); document.querySelector(".main-content")?.scrollTo?.({ top: 0 }); }} className="panel" style={{ cursor: "pointer", borderLeft: selectedForm?.id === f.id ? "4px solid #4a9e6b" : "4px solid transparent", marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{f.title}</div>
@@ -383,7 +383,7 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
                   <div className="panel-title">{selectedForm.title}</div>
                   {selectedForm.description && <div style={{ fontSize: 13, color: "#555", marginBottom: 8 }} dangerouslySetInnerHTML={{ __html: renderHtml(selectedForm.description) }} />}
                 </div>
-                <button className="btn btn-sm" onClick={() => setSelectedForm(null)}>✕ Close</button>
+                <button className="btn btn-sm" onClick={() => setSelectedForm(null)}>✕ Close<span className="split-back-label"> — back to all forms</span></button>
               </div>
 
               {/* Stats */}

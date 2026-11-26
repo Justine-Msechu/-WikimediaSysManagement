@@ -23,8 +23,8 @@ body {
   height: 100vh;
 }
 
-.main-content { flex: 1; overflow-y: auto; }
-.page-wrap { padding: 28px 32px; max-width: 960px; }
+.main-content { flex: 1; min-width: 0; overflow-y: auto; }
+.page-wrap { padding: 28px 32px; max-width: 1180px; }
 
 /* ─── Sidebar brand ───────────────────────────────── */
 .sidebar-brand {
@@ -613,3 +613,62 @@ table input, table select { padding: 5px 7px; font-size: 12px; }
 @media screen and (min-width: 2200px) {
   .page-wrap { max-width: 1440px; }
 }
+
+/* ─── Responsive tables ──────────────────────────────
+   utils/responsiveTables.js adds .table-cards to a table that is wider than
+   its space (phones, laptops with many columns): one card per row, each value
+   with its column name (data-label). Opt out with class "no-cards". */
+table.table-cards { width: 100%; }
+table.table-cards thead { display: none; }
+table.table-cards tbody, table.table-cards tfoot, table.table-cards tr, table.table-cards td { display: block; width: 100%; }
+table.table-cards tr {
+  background: #fff; border: 1px solid #e8e8e4; border-radius: 8px;
+  padding: 6px 12px; margin-bottom: 10px;
+}
+table.table-cards tr:hover td { background: transparent; }
+table.table-cards td {
+  position: relative; border: none; padding: 5px 0 5px 38%;
+  min-height: 26px; text-align: left !important; white-space: normal; overflow-wrap: anywhere;
+}
+table.table-cards td::before {
+  content: attr(data-label);
+  position: absolute; left: 0; top: 6px; width: 35%;
+  font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.3px;
+  overflow-wrap: anywhere;
+}
+/* Cells without a column name (headings across the table, empty labels) */
+table.table-cards td[data-label=""], table.table-cards td:not([data-label]) { padding-left: 0; }
+table.table-cards td[data-label=""]::before, table.table-cards td:not([data-label])::before { display: none; }
+/* A row that is only a heading (one cell spanning the table) */
+table.table-cards tr:has(> td[colspan]:only-child) { background: #f5f4f0; border: none; padding: 4px 8px; }
+table.table-cards td:empty { display: none; }
+table.table-cards input, table.table-cards select, table.table-cards textarea { max-width: 100%; }
+@media (max-width: 400px) {
+  table.table-cards td { padding-left: 0; }
+  table.table-cards td::before { position: static; display: block; width: auto; margin-bottom: 2px; }
+}
+/* Printing the page keeps normal tables */
+@media print {
+  table.table-cards { display: table; }
+  table.table-cards thead { display: table-header-group; }
+  table.table-cards tbody { display: table-row-group; }
+  table.table-cards tfoot { display: table-footer-group; }
+  table.table-cards tr { display: table-row; border: none; padding: 0; margin: 0; }
+  table.table-cards td { display: table-cell; width: auto; padding: 6px 8px; border-bottom: 1px solid #ddd; }
+  table.table-cards td::before { display: none; }
+}
+
+/* ─── List + detail layout (e.g. Reg. forms) ─────────
+   minmax(0, 1fr) lets the detail column shrink to the screen instead of
+   being pushed wider by long links or tables; stacks on narrow screens. */
+.split-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 20px; align-items: start; }
+.split-layout > * { min-width: 0; }
+.split-back-label { display: none; }
+@media (max-width: 1000px) {
+  .split-layout { grid-template-columns: minmax(0, 1fr); }
+  .split-layout > .split-list { display: none; }   /* show the open item only; Close goes back */
+  .split-back-label { display: inline; }
+}
+/* Long links (event pages, form links) wrap instead of widening the page */
+.panel a { overflow-wrap: anywhere; }
+.panel input { max-width: 100%; min-width: 0; }

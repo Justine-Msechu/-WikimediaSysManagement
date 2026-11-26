@@ -80,6 +80,38 @@ describe("planEventSeats", () => {
     expect(plan.existing.filter(p => p.username === "Amina")).toHaveLength(1);
   });
 
+  test("a coordinator can give a waiting-list member a seat; the lowest-ranked automatic one waits", () => {
+    const picked = registrations.map(r => r.id === "r3" ? { ...r, seat: "in" } : r);   // Dora (0 articles)
+    const plan = planEventSeats({ registrations: picked, members, reports, seats: 4, newPct: 25, eventMonth: "2026-11" });
+    expect(plan.existing.map(p => [p.reg.name, p.status, p.choice])).toEqual([
+      ["Amina", "recommended", ""],
+      ["Baraka", "recommended", ""],
+      ["Chausiku", "waitlist", ""],
+      ["Dora", "recommended", "in"],
+    ]);
+    expect(plan.recommended).toBe(4);
+    expect(plan.overBooked).toBe(0);
+  });
+
+  test("moving someone to the waiting list frees their seat for the next in line", () => {
+    const out = registrations.map(r => r.id === "r1" ? { ...r, seat: "out" } : r);       // Amina
+    const plan = planEventSeats({ registrations: out, members, reports, seats: 4, newPct: 25, eventMonth: "2026-11" });
+    expect(plan.existing.map(p => [p.reg.name, p.status])).toEqual([
+      ["Amina", "waitlist"], ["Baraka", "recommended"], ["Chausiku", "recommended"], ["Dora", "recommended"],
+    ]);
+    // A new member moved out: their seat goes to the next new one.
+    const outNew = registrations.map(r => r.id === "r4" ? { ...r, seat: "out" } : r);
+    const plan2 = planEventSeats({ registrations: outNew, members, reports, seats: 4, newPct: 25, eventMonth: "2026-11" });
+    expect(plan2.newcomers.map(p => [p.reg.name, p.status])).toEqual([["Esther", "waitlist"], ["Faraja", "recommended"]]);
+  });
+
+  test("more hand-picked people than seats → all seated, overBooked says by how many", () => {
+    const all = registrations.map(r => ({ ...r, seat: "in" }));
+    const plan = planEventSeats({ registrations: all, members, reports, seats: 4, newPct: 25 });
+    expect(plan.recommended).toBe(6);
+    expect(plan.overBooked).toBe(2);
+  });
+
   test("without saved reports, members keep registration order", () => {
     const plan = planEventSeats({ registrations, members, reports: [], seats: 2, newPct: 0 });
     expect(plan.month).toBe("");

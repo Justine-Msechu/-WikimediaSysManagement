@@ -82,7 +82,8 @@ export function activeAtLeastOnce(reports) {
  *
  * Existing members are ranked by different articles in the ranking month
  * (ties → who registered first). New members are taken in registration order.
- * Seats one group can't fill go to the other group.
+ * Seats one group can't fill go to the other group. A registration's `seat`
+ * ("in" / "out", set by a coordinator) overrides the ranking.
  */
 export function planEventSeats({ registrations, members, reports, seats, newPct = DEFAULT_NEW_MEMBER_PCT, eventMonth = "" }) {
   // Capitals don't matter when matching members or spotting repeat sign-ups.
@@ -115,14 +116,32 @@ export function planEventSeats({ registrations, members, reports, seats, newPct 
   const newSeats = Math.min(total, Math.round(total * pct / 100));
   const memberSeats = total - newSeats;
 
-  let takeMembers = Math.min(memberSeats, existing.length);
-  let takeNew     = Math.min(newSeats, newcomers.length);
-  let spare = total - takeMembers - takeNew;
-  const extraMembers = Math.min(spare, existing.length - takeMembers);
-  takeMembers += extraMembers; spare -= extraMembers;
-  takeNew += Math.min(spare, newcomers.length - takeNew);
+  // Coordinators can decide a seat by hand (registration `seat`): "in" = give
+  // them a seat, "out" = waiting list. Everyone else fills the remaining seats
+  // in rank order, so giving someone a seat moves the lowest-ranked automatic
+  // person to the waiting list.
+  const choiceOf = (p) => (p.reg.seat === "in" || p.reg.seat === "out" ? p.reg.seat : "");
+  const forced   = (list) => list.filter(p => choiceOf(p) === "in").length;
+  const eligible = (list) => list.filter(p => choiceOf(p) !== "out").length;
 
-  const mark = (list, take) => list.map((p, i) => ({ ...p, rank: i + 1, status: i < take ? "recommended" : "waitlist" }));
+  let takeMembers = Math.max(forced(existing),  Math.min(memberSeats, eligible(existing)));
+  let takeNew     = Math.max(forced(newcomers), Math.min(newSeats,    eligible(newcomers)));
+  let spare = Math.max(0, total - takeMembers - takeNew);
+  const extraMembers = Math.min(spare, eligible(existing) - takeMembers);
+  takeMembers += Math.max(0, extraMembers); spare -= Math.max(0, extraMembers);
+  takeNew += Math.max(0, Math.min(spare, eligible(newcomers) - takeNew));
+
+  const mark = (list, take) => {
+    let auto = take - forced(list);   // seats left after the hand-picked ones
+    return list.map((p, i) => {
+      const choice = choiceOf(p);
+      let status;
+      if (choice === "in") status = "recommended";
+      else if (choice === "out") status = "waitlist";
+      else status = auto-- > 0 ? "recommended" : "waitlist";
+      return { ...p, rank: i + 1, status, choice };
+    });
+  };
 
   return {
     month,
@@ -133,5 +152,6 @@ export function planEventSeats({ registrations, members, reports, seats, newPct 
     existing:  mark(existing, takeMembers),
     newcomers: mark(newcomers, takeNew),
     recommended: takeMembers + takeNew,
+    overBooked: Math.max(0, takeMembers + takeNew - total),   // hand-picked seats beyond the seat count
   };
 }

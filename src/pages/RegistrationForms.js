@@ -471,7 +471,9 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
                           <td>{(() => {
                             const sp = seatPlan[r.id];
                             if (!sp || sp.repeat) return "";
-                            return sp.status === "recommended" ? <span className="badge badge-green">Recommended</span> : <span className="badge badge-amber">Waiting list</span>;
+                            return sp.status === "recommended"
+                              ? <span className="badge badge-green">{sp.choice ? "Seat given" : "Recommended"}</span>
+                              : <span className="badge badge-amber">Waiting list</span>;
                           })()}</td>
                           <td style={{ fontSize: 12 }}>{r.email || ""}</td>
                           <td style={{ fontSize: 12 }}>{r.phone || ""}</td>

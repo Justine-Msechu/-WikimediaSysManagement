@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { reportScope } from "../utils/wikiContribs";
 import { listenCommunityMembers, listenContributorReports, addCommunityMembersBulk } from "../services/contributorService";
 import { addAudit, AUDIT_ACTIONS } from "../services/auditService";
+import { setSeatChoice } from "../services/registrationService";
 import { planEventSeats, DEFAULT_NEW_MEMBER_PCT } from "../utils/eventSelection";
 
 function monthLabel(month) {
@@ -10,10 +11,11 @@ function monthLabel(month) {
   return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 }
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, choice }) {
+  const byHand = choice ? <span style={{ fontSize: 11, color: "#888", marginLeft: 4 }}>(chosen)</span> : null;
   return status === "recommended"
-    ? <span className="badge badge-green">Recommended</span>
-    : <span className="badge badge-amber">Waiting list</span>;
+    ? <><span className="badge badge-green">{choice ? "Seat given" : "Recommended"}</span>{byHand}</>
+    : <><span className="badge badge-amber">Waiting list</span>{byHand}</>;
 }
 
 // "Who should join" panel for one registration form (event).
@@ -21,6 +23,7 @@ export default function EventSelection({ form, registrations, profile, canEdit, 
   const [members, setMembers] = useState([]);
   const [reports, setReports] = useState([]);
   const [busy,    setBusy]    = useState(false);
+  const [saving,  setSaving]  = useState("");   // registration id whose seat is being saved
 
   useEffect(() => {
     const u1 = listenCommunityMembers(setMembers);
@@ -41,7 +44,7 @@ export default function EventSelection({ form, registrations, profile, canEdit, 
   useEffect(() => {
     if (!onPlan) return;
     const byReg = {};
-    [...plan.existing, ...plan.newcomers].forEach(p => { byReg[p.reg.id] = { isMember: p.isMember, status: p.status }; });
+    [...plan.existing, ...plan.newcomers].forEach(p => { byReg[p.reg.id] = { isMember: p.isMember, status: p.status, choice: p.choice }; });
     plan.repeats.forEach(reg => { byReg[reg.id] = { repeat: true }; });
     onPlan(byReg);
   }, [plan, onPlan]);
@@ -70,6 +73,24 @@ export default function EventSelection({ form, registrations, profile, canEdit, 
       alert(`Could not add members: ${e.message}`);
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Coordinator decides a seat by hand: "in", "out" or "" (back to automatic).
+  const chooseSeat = async (p, seat) => {
+    setSaving(p.reg.id);
+    try {
+      await setSeatChoice(p.reg.id, seat);
+      const what = seat === "in" ? "Gave a seat to" : seat === "out" ? "Moved to the waiting list:" : "Seat back to automatic for";
+      await addAudit(profile, AUDIT_ACTIONS.UPDATE, "registrations", {
+        targetId: p.reg.id, recordTitle: form.title,
+        details: `${what} ${p.reg.name || p.username} ("${form.title}")`,
+      });
+      showToast(`${what} ${p.reg.name || p.username}.`);
+    } catch (e) {
+      alert(`Could not save the seat: ${e.message}`);
+    } finally {
+      setSaving("");
     }
   };
 
@@ -120,6 +141,16 @@ export default function EventSelection({ form, registrations, profile, canEdit, 
         <div className="alert alert-warn">No saved Active contributors report yet, so existing members are listed in the order they registered. Save a monthly report on the Active contributors page to rank them by contributions.</div>
       )}
 
+      {canEdit && (
+        <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
+          To choose someone yourself, click <strong>Give seat</strong>: the lowest-ranked person who wasn't chosen moves to the waiting list. <strong>Move to waiting list</strong> frees a seat for the next in line. <strong>Undo</strong> lets the ranking decide again.
+        </div>
+      )}
+
+      {plan.overBooked > 0 && (
+        <div className="alert alert-warn">More people were given a seat by hand than there are seats: <strong>{plan.overBooked}</strong> over the {plan.seats} seats. Move someone to the waiting list, or raise the seats on the form.</div>
+      )}
+
       {canEdit && plan.newcomers.length > 0 && (
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
           <button className="btn btn-sm btn-primary" onClick={addNewMembers} disabled={busy || addable.length === 0}>
@@ -131,11 +162,11 @@ export default function EventSelection({ form, registrations, profile, canEdit, 
 
       <div style={{ overflowX: "auto" }}>
         <table>
-          <thead><tr><th>#</th><th>Name</th><th>Wikipedia username</th><th>Type</th><th>Articles ({plan.month ? monthLabel(plan.month) : "last month"})</th><th>Status</th></tr></thead>
+          <thead><tr><th>#</th><th>Name</th><th>Wikipedia username</th><th>Type</th><th>Articles ({plan.month ? monthLabel(plan.month) : "last month"})</th><th>Status</th>{canEdit && <th>Change seat</th>}</tr></thead>
           <tbody>
             {groups.map(g => (
               <React.Fragment key={g.key}>
-              <tr><td colSpan={6} style={{ background: "#f5f4f0", fontWeight: 600, fontSize: 13 }}>{g.title} <span style={{ fontWeight: 400, color: "#888" }}>— {g.note}</span></td></tr>
+              <tr><td colSpan={canEdit ? 7 : 6} style={{ background: "#f5f4f0", fontWeight: 600, fontSize: 13 }}>{g.title} <span style={{ fontWeight: 400, color: "#888" }}>— {g.note}</span></td></tr>
             {g.list.map(p => (
               <tr key={p.reg.id}>
                 <td style={{ fontSize: 12, color: "#888" }}>{p.rank}</td>
@@ -143,7 +174,17 @@ export default function EventSelection({ form, registrations, profile, canEdit, 
                 <td style={{ fontSize: 12 }}>{p.username || <span style={{ color: "#aaa" }}>none</span>}</td>
                 <td>{p.isMember ? <span className="badge badge-green">Member</span> : <span className="badge badge-blue">New</span>}</td>
                 <td>{p.isMember ? p.articles : ""}</td>
-                <td><StatusBadge status={p.status} /></td>
+                <td><StatusBadge status={p.status} choice={p.choice} /></td>
+                {canEdit && (
+                  <td>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {p.status === "recommended"
+                        ? <button className="btn btn-sm" disabled={saving === p.reg.id} onClick={() => chooseSeat(p, "out")}>Move to waiting list</button>
+                        : <button className="btn btn-sm btn-primary" disabled={saving === p.reg.id} onClick={() => chooseSeat(p, "in")}>Give seat</button>}
+                      {p.choice && <button className="btn btn-sm" disabled={saving === p.reg.id} onClick={() => chooseSeat(p, "")} title="Let the ranking decide again">Undo</button>}
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
               </React.Fragment>

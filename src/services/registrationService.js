@@ -86,6 +86,11 @@ export async function submitRegistration(formId, regData) {
   return regId;
 }
 
+// Coordinator's seat decision: "in" (give a seat), "out" (waiting list), "" (automatic).
+export async function setSeatChoice(regId, seat) {
+  return updateDocument("registrations", regId, { seat });
+}
+
 export async function updateAttendance(regId, status) {
   return updateDocument("registrations", regId, { attendance: status });
 }

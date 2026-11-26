@@ -506,6 +506,13 @@ index — services usually skip `orderBy` and sort client-side instead.
   match members ignoring capitals; a later sign-up with the same username is
   listed in `plan.repeats` ("Registered twice", counted once). The
   registrations table below shows each person's Type and Seat (via `onPlan`).
+- Coordinators can decide seats by hand in that panel: **Give seat** /
+  **Move to waiting list** / **Undo** save `seat: "in" | "out" | ""` on the
+  registration (`setSeatChoice()`, audited; coordinators may update
+  registrations, so no rule change). Hand-picked people keep their status;
+  the remaining seats are filled in rank order, so giving a seat bumps the
+  lowest-ranked automatic person. More "in" than seats → `plan.overBooked`
+  warning. `seat` isn't in the public create key list (only staff set it).
 - Coordinators add new registrants (with a username) to the community list —
   the public form never writes to `communityMembers`.
 

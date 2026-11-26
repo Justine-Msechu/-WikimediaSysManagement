@@ -532,11 +532,16 @@ index — services usually skip `orderBy` and sort client-side instead.
 - **Responsive on every screen.** Tables: `utils/responsiveTables.js`
   (installed in App.js) labels every body cell with its column name and adds
   `.table-cards` when a table is wider than its container — on phones and
-  laptops it becomes one card per row; when it fits it stays a table (opt out:
+  laptops it becomes one card per row (wide screens: first column as the card
+  title, other fields side by side with the label above; ≤600px: one field per
+  line, label on the left); when it fits it stays a table (opt out:
   `className="no-cards"`; printing keeps tables). List + detail pages use
   `.split-layout` (280px + `minmax(0, 1fr)`, stacked below 1000px) — never a
   plain `1fr` next to wide content. Below 1000px the list column
-  (`.split-list`) hides while an item is open; its Close button goes back. `.page-wrap` max 1180px; links in panels wrap.
+  (`.split-list`) hides while an item is open; its Close button goes back. `.page-wrap` max 1180px; links in panels wrap. On touch screens ≤1000px
+  inputs/selects are 16px (`!important`) — smaller text makes iPhones zoom in on
+  tap and stay zoomed, which looks like the page is cut off on the right.
+  Check layout changes at 360–400px (phone), ~768px and ~1280px.
 - Pure logic goes in `src/utils/` with a Jest test next to it
   (`*.test.js`, fake `fetch` for API code).
 

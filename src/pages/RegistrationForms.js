@@ -187,9 +187,14 @@ export default function RegistrationForms({ profile, grantId = "", firstGrantId 
 
   const withWiki = registrations.filter(r => r.wikimediaUsername).length;
 
+  // Attendance sheet lists only people with a seat ("Who should join"):
+  // the waiting list and second sign-ups of the same person are left out.
+  const seated = registrations.filter(r => seatPlan[r.id]?.status === "recommended");
+  const sheetPeople = Object.keys(seatPlan).length ? seated : registrations;
+
   const printSheet = () => {
-    const MIN_ROWS = Math.max(30, registrations.length);
-    const rows = [...registrations];
+    const MIN_ROWS = Math.max(30, sheetPeople.length);
+    const rows = [...sheetPeople];
     while (rows.length < MIN_ROWS) rows.push(null);
     const logoUrl = window.location.origin + logo;
 
@@ -440,7 +445,7 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
                 <select value={expenseType} onChange={e => setExpenseType(e.target.value)} style={{ fontSize: 12 }}>
                   {EXPENSE_TYPES.map(t => <option key={t}>{t}</option>)}
                 </select>
-                <button className="btn btn-sm btn-primary" onClick={printSheet}>🖨 Print attendance sheet</button>
+                <button className="btn btn-sm btn-primary" onClick={printSheet} title="Only people with a seat; the waiting list is left out">🖨 Print attendance sheet ({sheetPeople.length})</button>
                 {canEdit && registrations.some(r => r.attendance === "present") && (
                   <button className="btn btn-sm btn-primary" style={{ background: "#2563eb" }} onClick={importAttendedAsParticipants}>
                     ↑ Import attended as participants

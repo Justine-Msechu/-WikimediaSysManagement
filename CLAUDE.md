@@ -513,6 +513,9 @@ index — services usually skip `orderBy` and sort client-side instead.
   the remaining seats are filled in rank order, so giving a seat bumps the
   lowest-ranked automatic person. More "in" than seats → `plan.overBooked`
   warning. `seat` isn't in the public create key list (only staff set it).
+- The printed attendance sheet lists only people with a seat (status
+  recommended / seat given) — not the waiting list or repeat sign-ups. Export
+  CSV still has every registration.
 - Coordinators add new registrants (with a username) to the community list —
   the public form never writes to `communityMembers`.
 

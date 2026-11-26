@@ -3,7 +3,7 @@
 // registrants who are already community members, and keeps a share of the seats
 // for new members.
 
-import { normalizeUsername, isEditing, isArticleWiki } from "./wikiContribs";
+import { normalizeUsername, userKey, isEditing, isArticleWiki } from "./wikiContribs";
 
 export const DEFAULT_NEW_MEMBER_PCT = 30;
 
@@ -85,22 +85,26 @@ export function activeAtLeastOnce(reports) {
  * Seats one group can't fill go to the other group.
  */
 export function planEventSeats({ registrations, members, reports, seats, newPct = DEFAULT_NEW_MEMBER_PCT, eventMonth = "" }) {
-  const memberSet = new Set((members || []).map(m => normalizeUsername(m.wikimediaUsername)).filter(Boolean));
+  // Capitals don't matter when matching members or spotting repeat sign-ups.
+  const memberSet = new Set((members || []).map(m => userKey(m.wikimediaUsername)).filter(Boolean));
   const month = rankingMonth(reports, eventMonth);
-  const articles = month ? articlesForMonth(reports, month) : new Map();
+  const articles = new Map();
+  if (month) for (const [u, n] of articlesForMonth(reports, month)) articles.set(userKey(u), Math.max(articles.get(userKey(u)) || 0, n));
 
   // One entry per person: same username registered twice → keep the earliest.
   const byTime = [...(registrations || [])].sort((a, b) => String(a.registeredAt || "").localeCompare(String(b.registeredAt || "")));
   const seen = new Set();
   const people = [];
+  const repeats = [];   // later sign-ups of someone already listed
   for (const reg of byTime) {
     const username = normalizeUsername(reg.wikimediaUsername);
-    if (username) {
-      if (seen.has(username)) continue;
-      seen.add(username);
+    const key = userKey(username);
+    if (key) {
+      if (seen.has(key)) { repeats.push(reg); continue; }
+      seen.add(key);
     }
-    const isMember = !!username && memberSet.has(username);
-    people.push({ reg, username, isMember, articles: isMember ? (articles.get(username) || 0) : 0 });
+    const isMember = !!key && memberSet.has(key);
+    people.push({ reg, username, isMember, articles: isMember ? (articles.get(key) || 0) : 0 });
   }
 
   const existing  = people.filter(p => p.isMember).sort((a, b) => b.articles - a.articles);   // stable: ties keep registration order
@@ -125,6 +129,7 @@ export function planEventSeats({ registrations, members, reports, seats, newPct 
     seats: total,
     newSeats,
     memberSeats,
+    repeats,
     existing:  mark(existing, takeMembers),
     newcomers: mark(newcomers, takeNew),
     recommended: takeMembers + takeNew,

@@ -500,6 +500,12 @@ index — services usually skip `orderBy` and sort client-side instead.
   **before the event's month** (Wikipedia-like wikis only — `isArticleWiki()`,
   so Wikidata items / Commons files don't count); new members go in registration order. Seats one
   group can't fill go to the other; the rest are "Waiting list".
+- The panel opens with a summary (registrations = existing members + new, each
+  with recommended / waiting, without a username, registered twice) and the
+  table is split into the two groups (numbers restart per group). Usernames
+  match members ignoring capitals; a later sign-up with the same username is
+  listed in `plan.repeats` ("Registered twice", counted once). The
+  registrations table below shows each person's Type and Seat (via `onPlan`).
 - Coordinators add new registrants (with a username) to the community list —
   the public form never writes to `communityMembers`.
 

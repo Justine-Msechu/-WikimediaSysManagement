@@ -51,6 +51,7 @@ export default function RegistrationForms({ profile, grantId = "", firstGrantId 
   const [showQR,       setShowQR]       = useState(false);
   const [expenseType,  setExpenseType]  = useState(EXPENSE_TYPES[0]);
   const [toast,        setToast]        = useState("");
+  const [seatPlan,     setSeatPlan]     = useState({});   // registration id → { isMember, status } from "Who should join"
   const canEdit = ["admin", "coordinator"].includes(profile?.role);
 
   // Only this grant's programs and forms — a new grant starts with no forms.
@@ -69,6 +70,7 @@ export default function RegistrationForms({ profile, grantId = "", firstGrantId 
   }, []);
 
   useEffect(() => {
+    setSeatPlan({});
     if (!selectedForm) { setRegistrations([]); return; }
     return listenRegistrations(selectedForm.id, setRegistrations);
   }, [selectedForm?.id]);
@@ -447,19 +449,30 @@ table.att tr:nth-child(even) td.c{background:#f0f0ee}
               </div>
             </div>
 
-            <EventSelection form={selectedForm} registrations={registrations} profile={profile} canEdit={canEdit} showToast={showToast} grantId={grantId} firstGrantId={firstGrantId} />
+            <EventSelection form={selectedForm} registrations={registrations} profile={profile} canEdit={canEdit} showToast={showToast} grantId={grantId} firstGrantId={firstGrantId} onPlan={setSeatPlan} />
 
             {/* Registrations table */}
             <div className="panel" style={{ padding: 0 }}>
               {registrations.length === 0 ? <div className="empty">No registrations yet. Share the link with participants.</div> : (
                 <div style={{ overflowX: "auto" }}>
                   <table>
-                    <thead><tr><th>Name</th><th>Wikipedia username</th><th>Email</th><th>Phone</th><th>Age</th><th>Attendance</th></tr></thead>
+                    <thead><tr><th>Name</th><th>Wikipedia username</th><th>Type</th><th>Seat</th><th>Email</th><th>Phone</th><th>Age</th><th>Attendance</th></tr></thead>
                     <tbody>
                       {registrations.map(r => (
                         <tr key={r.id}>
                           <td style={{ fontWeight: 500 }}>{r.name}</td>
-                          <td>{r.wikimediaUsername ? <a href={`https://en.wikipedia.org/wiki/User:${encodeURIComponent(r.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{r.wikimediaUsername}</a> : ""}</td>
+                          <td>{r.wikimediaUsername ? <a href={`https://sw.wikipedia.org/wiki/User:${encodeURIComponent(r.wikimediaUsername)}`} target="_blank" rel="noreferrer" style={{ color: "#4a9e6b" }}>{r.wikimediaUsername}</a> : ""}</td>
+                          <td>{(() => {
+                            const sp = seatPlan[r.id];
+                            if (!sp) return "";
+                            if (sp.repeat) return <span className="badge badge-gray" title="Same username registered earlier — counted once">Registered twice</span>;
+                            return sp.isMember ? <span className="badge badge-green">Member</span> : <span className="badge badge-blue">New</span>;
+                          })()}</td>
+                          <td>{(() => {
+                            const sp = seatPlan[r.id];
+                            if (!sp || sp.repeat) return "";
+                            return sp.status === "recommended" ? <span className="badge badge-green">Recommended</span> : <span className="badge badge-amber">Waiting list</span>;
+                          })()}</td>
                           <td style={{ fontSize: 12 }}>{r.email || ""}</td>
                           <td style={{ fontSize: 12 }}>{r.phone || ""}</td>
                           <td style={{ fontSize: 12, textAlign: "center" }}>{r.age || ""}</td>

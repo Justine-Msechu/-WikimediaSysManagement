@@ -86,3 +86,20 @@ describe("planEventSeats", () => {
     expect(plan.existing.map(p => p.reg.name)).toEqual(["Amina", "Baraka", "Dora", "Chausiku"]);
   });
 });
+
+test("planEventSeats ignores capitals and lists repeat sign-ups", () => {
+  const { planEventSeats } = require("./eventSelection");
+  const plan = planEventSeats({
+    registrations: [
+      { id: "a", name: "Tony", wikimediaUsername: "tony", registeredAt: "2026-11-01" },
+      { id: "b", name: "Tony again", wikimediaUsername: "Tony", registeredAt: "2026-11-02" },
+      { id: "c", name: "Amina", wikimediaUsername: "AMINA juma", registeredAt: "2026-11-03" },
+    ],
+    members: [{ wikimediaUsername: "Amina Juma" }],
+    reports: [{ month: "2026-10", wiki: "sw.wikipedia.org", rows: [{ username: "Amina Juma", articles: 12 }] }],
+    seats: 10, eventMonth: "2026-11",
+  });
+  expect(plan.repeats.map(r => r.id)).toEqual(["b"]);
+  expect(plan.existing.map(p => [p.reg.id, p.articles])).toEqual([["c", 12]]);
+  expect(plan.newcomers.map(p => p.reg.id)).toEqual(["a"]);
+});

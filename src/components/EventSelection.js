@@ -17,7 +17,7 @@ function StatusBadge({ status }) {
 }
 
 // "Who should join" panel for one registration form (event).
-export default function EventSelection({ form, registrations, profile, canEdit, showToast, grantId = "", firstGrantId = "" }) {
+export default function EventSelection({ form, registrations, profile, canEdit, showToast, grantId = "", firstGrantId = "", onPlan }) {
   const [members, setMembers] = useState([]);
   const [reports, setReports] = useState([]);
   const [busy,    setBusy]    = useState(false);
@@ -36,6 +36,15 @@ export default function EventSelection({ form, registrations, profile, canEdit, 
     newPct,
     eventMonth: (form.date || "").slice(0, 7),
   }), [registrations, members, reports, form.seats, form.maxRegistrations, form.date, newPct]);
+
+  // Share each registration's type and seat with the registrations table.
+  useEffect(() => {
+    if (!onPlan) return;
+    const byReg = {};
+    [...plan.existing, ...plan.newcomers].forEach(p => { byReg[p.reg.id] = { isMember: p.isMember, status: p.status }; });
+    plan.repeats.forEach(reg => { byReg[reg.id] = { repeat: true }; });
+    onPlan(byReg);
+  }, [plan, onPlan]);
 
   // New registrants who gave a Wikipedia username can join the community list.
   const addable = plan.newcomers.filter(p => p.username);
@@ -67,6 +76,12 @@ export default function EventSelection({ form, registrations, profile, canEdit, 
   if (registrations.length === 0) return null;
 
   const rows = [...plan.existing, ...plan.newcomers];
+  const noUser = plan.newcomers.filter(p => !p.username).length;
+  const wait = (list) => list.filter(p => p.status !== "recommended").length;
+  const groups = [
+    { key: "m", list: plan.existing,  title: `Existing community members (${plan.existing.length})`, note: "ranked by articles edited" },
+    { key: "n", list: plan.newcomers, title: `New — not on the community list yet (${plan.newcomers.length})`, note: "in the order they registered" },
+  ].filter(g => g.list.length);
 
   return (
     <div className="panel" style={{ marginBottom: 16 }}>
@@ -84,6 +99,16 @@ export default function EventSelection({ form, registrations, profile, canEdit, 
             <div className="stat-value" style={{ color }}>{value}</div>
           </div>
         ))}
+      </div>
+
+      <div className="alert alert-info" style={{ marginBottom: 10 }}>
+        <strong>{registrations.length}</strong> registration{registrations.length === 1 ? "" : "s"}:{" "}
+        <strong>{plan.existing.length}</strong> existing member{plan.existing.length === 1 ? "" : "s"}
+        {plan.existing.length > 0 && ` (${plan.existing.length - wait(plan.existing)} recommended${wait(plan.existing) ? `, ${wait(plan.existing)} waiting` : ""})`}
+        {" · "}<strong>{plan.newcomers.length}</strong> new
+        {plan.newcomers.length > 0 && ` (${plan.newcomers.length - wait(plan.newcomers)} recommended${wait(plan.newcomers) ? `, ${wait(plan.newcomers)} waiting` : ""}${noUser ? `; ${noUser} without a username` : ""})`}
+        {plan.repeats.length > 0 && <>{" · "}<strong>{plan.repeats.length}</strong> registered twice, counted once ({plan.repeats.map(r => r.name || r.wikimediaUsername).join(", ")})</>}.
+        {" "}Numbers restart in each group below.
       </div>
 
       {plan.month ? (
@@ -108,7 +133,10 @@ export default function EventSelection({ form, registrations, profile, canEdit, 
         <table>
           <thead><tr><th>#</th><th>Name</th><th>Wikipedia username</th><th>Type</th><th>Articles ({plan.month ? monthLabel(plan.month) : "last month"})</th><th>Status</th></tr></thead>
           <tbody>
-            {rows.map(p => (
+            {groups.map(g => (
+              <React.Fragment key={g.key}>
+              <tr><td colSpan={6} style={{ background: "#f5f4f0", fontWeight: 600, fontSize: 13 }}>{g.title} <span style={{ fontWeight: 400, color: "#888" }}>— {g.note}</span></td></tr>
+            {g.list.map(p => (
               <tr key={p.reg.id}>
                 <td style={{ fontSize: 12, color: "#888" }}>{p.rank}</td>
                 <td style={{ fontWeight: 500 }}>{p.reg.name}</td>
@@ -117,6 +145,8 @@ export default function EventSelection({ form, registrations, profile, canEdit, 
                 <td>{p.isMember ? p.articles : ""}</td>
                 <td><StatusBadge status={p.status} /></td>
               </tr>
+            ))}
+              </React.Fragment>
             ))}
           </tbody>
         </table>

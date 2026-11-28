@@ -91,67 +91,122 @@ export default function Timeline({ profile, goPage, grantId, currentGrant }) {
     w.document.close();
   };
 
+  // Month-cell state in Planned vs actual.
+  const thisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const shownMonth = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const cellState = (planned, actual, m) => {
+    if (planned && actual) return "done";
+    if (planned && m < thisMonth) return "overdue";
+    if (planned) return m === thisMonth ? "due" : "planned";
+    if (actual) return "extra";
+    return "";
+  };
+  const CELL = {
+    done:    { label: "Done",                   title: (m) => `Planned and done in ${monthLabel(m)}` },
+    overdue: { label: "Planned, not logged",    title: (m) => `Planned for ${monthLabel(m)} — no activity logged` },
+    due:     { label: "Planned this month",     title: (m) => `Planned for ${monthLabel(m)} (this month)` },
+    planned: { label: "Planned",                title: (m) => `Planned for ${monthLabel(m)}` },
+    extra:   { label: "Not in the plan",        title: (m) => `Logged in ${monthLabel(m)} but not in the plan` },
+  };
+  const totals = comparisonRows.reduce((t, r) => {
+    t.planned += r.months.length;
+    t.done    += r.done;
+    t.overdue += r.months.filter(m => m < thisMonth && !r.actualMonths.has(m)).length;
+    t.extra   += r.extra.length;
+    return t;
+  }, { planned: 0, done: 0, overdue: 0, extra: 0 });
+  const goMonth = (m) => { const [y, mo] = m.split("-").map(Number); setYear(y); setMonth(mo - 1); };
+  const fmtDay = (iso) => { const d = new Date(iso); return { day: d.getDate(), dow: WEEKDAYS[(d.getDay() + 6) % 7] }; };
+
   return (
     <div>
       <div className="page-title">Activity timeline</div>
+      <div className="page-sub">The grant's plan month by month, what has been done, and the calendar of activities.</div>
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 20, flexWrap: "wrap" }}>
-        <button className="btn" onClick={prev}>Prev</button>
-        <div style={{ fontWeight: 700, fontSize: 18, minWidth: 180, textAlign: "center" }}>{MONTHS[month]} {year}</div>
-        <button className="btn" onClick={next}>Next</button>
-        <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth()); }}>Today</button>
-      </div>
+      {comparisonRows.length > 0 && (
+        <div className="card-grid" style={{ marginBottom: 16 }}>
+          {[
+            ["Planned months",   totals.planned, "#1c2b1e"],
+            ["Done",             totals.done,    "#2d7a4f"],
+            ["Overdue",          totals.overdue, totals.overdue ? "#c0392b" : "#1c2b1e"],
+            ["Not in the plan",  totals.extra,   "#2563eb"],
+          ].map(([label, value, color]) => (
+            <div key={label} className="stat-card">
+              <div className="stat-label">{label}</div>
+              <div className="stat-value" style={{ color }}>{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Planned vs actual — imported schedule (or the official 2026-2027 document) vs logged activities */}
-      <div className="panel" style={{ marginBottom: 20, overflowX: "auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-          <div className="panel-title">Planned vs actual</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="panel" style={{ marginBottom: 20 }}>
+        <div className="tl-head">
+          <div>
+            <div className="panel-title" style={{ marginBottom: 2 }}>Planned vs actual</div>
+            <div style={{ fontSize: 12, color: "#888" }}>Each program's planned months against the activities logged. Click a month to see it in the calendar.</div>
+          </div>
+          <div className="tl-actions">
             <button className="btn btn-sm" onClick={printTimelineReport}>Print timeline report</button>
             {canImport && (
               <>
-                <a className="btn btn-sm" href={`${process.env.PUBLIC_URL}/templates/wkk-timeline-template.xlsx`} download>Download timeline template</a>
+                <a className="btn btn-sm" href={`${process.env.PUBLIC_URL}/templates/wkk-timeline-template.xlsx`} download>Download template</a>
                 <button className="btn btn-sm" onClick={() => setShowImport(true)}>Import timeline (Excel)</button>
               </>
             )}
           </div>
         </div>
-        <div style={{ fontSize: 11, color: "#888", margin: "6px 0 10px" }}>
-          A filled green dot means a planned month has a matching logged activity; an empty amber ring means it's still pending; a blue dot marks an activity logged in a month that wasn't part of the plan.
-        </div>
+
         {comparisonRows.length === 0 ? (
           <div className="empty">No planned schedule yet — import the timeline template above, or create programs that match the official 2026-2027 document.</div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid #e8e8e4" }}>Program</th>
-                {timelineColumns.map(m => (
-                  <th key={m} style={{ textAlign: "center", padding: "6px 4px", borderBottom: "1px solid #e8e8e4", fontSize: 10, color: "#888" }}>{monthLabel(m)}</th>
-                ))}
-                <th style={{ textAlign: "center", padding: "6px 8px", borderBottom: "1px solid #e8e8e4", fontSize: 10, color: "#888" }}>On track</th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparisonRows.map(({ program, months, actualMonths, done, extra }) => (
-                <tr key={program.id}>
-                  <td style={{ padding: "6px 8px", borderBottom: "1px solid #f5f4f0", whiteSpace: "nowrap" }}>{program.name}</td>
-                  {timelineColumns.map(m => {
-                    const planned = months.includes(m);
-                    const actual  = actualMonths.has(m);
-                    let dot = null;
-                    if (planned && actual)      dot = <span title={`Planned and done in ${monthLabel(m)}`} style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#2d7a4f" }} />;
-                    else if (planned && !actual) dot = <span title={`Planned for ${monthLabel(m)}, not yet logged`} style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", border: "2px solid #d68a1a" }} />;
-                    else if (!planned && actual) dot = <span title={`Logged in ${monthLabel(m)} but not in the original plan`} style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#3a7bd5" }} />;
-                    return <td key={m} style={{ textAlign: "center", padding: "6px 4px", borderBottom: "1px solid #f5f4f0" }}>{dot}</td>;
-                  })}
-                  <td style={{ textAlign: "center", padding: "6px 8px", borderBottom: "1px solid #f5f4f0", whiteSpace: "nowrap" }}>
-                    {done}/{months.length}{extra.length > 0 && <span style={{ color: "#3a7bd5" }}> +{extra.length}</span>}
-                  </td>
-                </tr>
+          <>
+            <div className="tl-legend">
+              {["done", "due", "planned", "overdue", "extra"].map(k => (
+                <span key={k}><span className={`tl-dot tl-${k}`} />{CELL[k].label}</span>
               ))}
-            </tbody>
-          </table>
+            </div>
+            <div className="tl-scroll">
+              <table className="no-cards tl-table">
+                <thead>
+                  <tr>
+                    <th className="tl-prog">Program</th>
+                    {timelineColumns.map(m => (
+                      <th key={m} className={`tl-month${m === thisMonth ? " is-now" : ""}${m === shownMonth ? " is-shown" : ""}`}>
+                        <button onClick={() => goMonth(m)} title={`Show ${monthLabel(m)} in the calendar`}>{monthLabel(m)}</button>
+                      </th>
+                    ))}
+                    <th className="tl-progress-col">Progress</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {comparisonRows.map(({ program, months, actualMonths, done, extra }) => {
+                    const pct = months.length ? Math.round((done / months.length) * 100) : 0;
+                    return (
+                      <tr key={program.id}>
+                        <td className="tl-prog">
+                          <span className="tl-swatch" style={{ background: program.color || "#4a9e6b" }} />
+                          {program.name}
+                        </td>
+                        {timelineColumns.map(m => {
+                          const st = cellState(months.includes(m), actualMonths.has(m), m);
+                          return (
+                            <td key={m} className={`tl-cell${m === thisMonth ? " is-now" : ""}`}>
+                              {st && <span className={`tl-dot tl-${st}`} title={CELL[st].title(m)} />}
+                            </td>
+                          );
+                        })}
+                        <td className="tl-progress-col">
+                          <div className="tl-bar"><div style={{ width: `${pct}%` }} /></div>
+                          <div className="tl-bar-label">{done} of {months.length}{extra.length > 0 && <span style={{ color: "#2563eb" }}> · +{extra.length} extra</span>}</div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
@@ -165,22 +220,32 @@ export default function Timeline({ profile, goPage, grantId, currentGrant }) {
         />
       )}
 
-      {/* Calendar grid */}
+      {/* Calendar */}
       <div className="panel" style={{ marginBottom: 20 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 6 }}>
-          {WEEKDAYS.map(d => <div key={d} style={{ fontSize: 11, fontWeight: 700, textAlign: "center", color: "#888", letterSpacing: "0.06em", textTransform: "uppercase" }}>{d}</div>)}
+        <div className="tl-cal-head">
+          <div className="tl-cal-nav">
+            <button className="btn btn-sm" onClick={prev} aria-label="Previous month">‹</button>
+            <div className="tl-cal-title">{MONTHS[month]} {year}</div>
+            <button className="btn btn-sm" onClick={next} aria-label="Next month">›</button>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: "#888" }}>{monthActivities.length} activit{monthActivities.length === 1 ? "y" : "ies"}</span>
+            {shownMonth !== thisMonth && <button className="btn btn-sm" onClick={() => { setYear(now.getFullYear()); setMonth(now.getMonth()); }}>This month</button>}
+          </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
-          {Array.from({ length: startPad }).map((_, i) => <div key={`pad-${i}`} />)}
+        <div className="tl-cal">
+          {WEEKDAYS.map(d => <div key={d} className="tl-cal-dow">{d}</div>)}
+          {Array.from({ length: startPad }).map((_, i) => <div key={`pad-${i}`} className="tl-cal-pad" />)}
           {Array.from({ length: days }, (_, i) => {
-            const day   = i + 1;
-            const acts  = actsByDay[day] || [];
+            const day  = i + 1;
+            const acts = actsByDay[day] || [];
             return (
-              <div key={day} style={{ minHeight: 72, background: isToday(day) ? "#e6f4ec" : "#fafaf7", borderRadius: 8, padding: 6, border: isToday(day) ? "2px solid #4a9e6b" : "1px solid #e8e8e4" }}>
-                <div style={{ fontSize: 12, fontWeight: isToday(day) ? 700 : 400, color: isToday(day) ? "#2d7a4f" : "#888", marginBottom: 4 }}>{day}</div>
+              <div key={day} className={`tl-cal-day${isToday(day) ? " is-today" : ""}${acts.length ? " has-acts" : ""}`}>
+                <div className="tl-cal-num">{day}</div>
                 {acts.map(a => (
-                  <div key={a.id} onClick={() => goPage("activity-detail", a.id)} style={{ fontSize: 10, background: programColor(a.programId), color: "#fff", borderRadius: 4, padding: "2px 5px", marginBottom: 3, cursor: "pointer", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-                    {a.name}
+                  <div key={a.id} className="tl-cal-act" onClick={() => goPage("activity-detail", a.id)} title={a.name}
+                    style={{ background: programColor(a.programId) }}>
+                    <span>{a.name}</span>
                   </div>
                 ))}
               </div>
@@ -189,30 +254,31 @@ export default function Timeline({ profile, goPage, grantId, currentGrant }) {
         </div>
       </div>
 
-      {/* Month activity list */}
-      {monthActivities.length > 0 && (
-        <div className="panel">
-          <div className="panel-title">{MONTHS[month]} activities ({monthActivities.length})</div>
-          {monthActivities.map(a => (
-            <div key={a.id} style={{ display: "flex", gap: 14, alignItems: "flex-start", padding: "10px 0", borderBottom: "1px solid #f5f4f0" }}>
-              <div style={{ minWidth: 60, fontSize: 12, color: "#888", paddingTop: 2 }}>{a.date?.slice(8)}</div>
-              <div style={{ width: 4, borderRadius: 2, alignSelf: "stretch", flexShrink: 0, background: programColor(a.programId) }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 500, fontSize: 14 }}>{a.name}</div>
-                <div style={{ fontSize: 11, color: "#888" }}>
-                  {a.type} · {a.participants || 0} participants
-                  {programName(a.programId) && <span> · <span style={{ color: programColor(a.programId) }}>{programName(a.programId)}</span></span>}
+      {/* Activities in the month */}
+      <div className="panel">
+        <div className="panel-title">Activities in {MONTHS[month]} {year}</div>
+        {monthActivities.length === 0 ? (
+          <div className="empty">No activities logged in {MONTHS[month]} {year}.</div>
+        ) : monthActivities.map(a => {
+          const d = fmtDay(a.date);
+          return (
+            <div key={a.id} className="tl-item">
+              <div className="tl-date" style={{ borderColor: programColor(a.programId) }}>
+                <div className="tl-date-day">{d.day}</div>
+                <div className="tl-date-dow">{d.dow}</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: "#1c2b1e" }}>{a.name}</div>
+                <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>
+                  {[a.type, `${a.participants || 0} participants`].filter(Boolean).join(" · ")}
+                  {programName(a.programId) && <> · <span style={{ color: programColor(a.programId), fontWeight: 600 }}>{programName(a.programId)}</span></>}
                 </div>
               </div>
               <button className="btn btn-sm" onClick={() => goPage("activity-detail", a.id)}>View</button>
             </div>
-          ))}
-        </div>
-      )}
-
-      {monthActivities.length === 0 && (
-        <div className="panel"><div className="empty">No activities in {MONTHS[month]} {year}.</div></div>
-      )}
+          );
+        })}
+      </div>
     </div>
   );
 }

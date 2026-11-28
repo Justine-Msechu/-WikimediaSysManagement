@@ -554,6 +554,13 @@ index — services usually skip `orderBy` and sort client-side instead.
   inputs/selects are 16px (`!important`) — smaller text makes iPhones zoom in on
   tap and stay zoomed, which looks like the page is cut off on the right.
   Check layout changes at 360–400px (phone), ~768px and ~1280px.
+- **Timeline page** (`.tl-*` in App.css): summary tiles (planned months, done,
+  overdue = planned month already past with nothing logged, not in the plan);
+  Planned vs actual grid with a legend (done / planned this month / planned /
+  planned-not-logged / not in the plan), this month highlighted, month headers
+  jump the calendar, sticky program column, progress bar (`no-cards`, scrolls
+  sideways on phones); calendar with its own ‹ › nav (activity names become
+  colour bars on phones); dated list of the month's activities.
 - **Program cards** (Programs page, `.program-*` in App.css): name + status badge
   (`PROGRAM_STATUS`: Draft / Pending approval / Approved / Returned), category
   and "Approved by … on …" underneath, actions on the right; descriptions over

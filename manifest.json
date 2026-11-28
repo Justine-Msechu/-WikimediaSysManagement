@@ -1,0 +1,16 @@
+{
+  "short_name": "GSF Manager",
+  "name": "Wiki Kilimanjaro GSF Manager",
+  "description": "Wikimedia General Support Fund project management for Wikimedians of Kilimanjaro",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#1c2b1e",
+  "background_color": "#f5f4f0",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

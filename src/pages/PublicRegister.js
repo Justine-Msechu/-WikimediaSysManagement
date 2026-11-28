@@ -224,7 +224,10 @@ export default function PublicRegister({ formId }) {
       <img src={logo} alt="logo" style={{ width: 48, marginBottom: 16 }} />
       <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>{form?.title}</div>
       {form?.maxRegistrations
-        ? <div style={{ fontSize: 14, color: "#c0392b", fontWeight: 600 }}>This event has reached its maximum number of registrations ({form.maxRegistrations} spots). Registration is now closed.</div>
+        ? <div style={{ fontSize: 14, color: "#555", lineHeight: 1.6 }}>
+            <div style={{ fontWeight: 600, color: "#1c2b1e", marginBottom: 6 }}>Registration for this event is now full.</div>
+            Thank you for your interest. Please look out for our next events — we would be glad to see you there.
+          </div>
         : <div style={{ fontSize: 14, color: "#888" }}>Registration for this event is now closed.</div>
       }
     </div></div>

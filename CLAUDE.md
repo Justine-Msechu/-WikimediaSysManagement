@@ -335,6 +335,8 @@ index — services usually skip `orderBy` and sort client-side instead.
   suggests leaving it empty). A global account without a Swahili one is fine
   (created on first visit). If Wikipedia can't be reached, registration is
   never blocked. The saved username is Wikipedia's exact spelling.
+- **Full form:** the public page says registration is full and invites people to
+  the next events — it never shows the number of places.
 - **Registration:** `submitRegistration()` saves the registration, bumps
   `registrationCount` on the form (enforces `maxRegistrations` without auth) and
   auto-adds a participant. `isNew` = "never edited Wikipedia before".

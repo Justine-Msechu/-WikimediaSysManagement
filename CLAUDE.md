@@ -554,6 +554,11 @@ index — services usually skip `orderBy` and sort client-side instead.
   inputs/selects are 16px (`!important`) — smaller text makes iPhones zoom in on
   tap and stay zoomed, which looks like the page is cut off on the right.
   Check layout changes at 360–400px (phone), ~768px and ~1280px.
+- **Program cards** (Programs page, `.program-*` in App.css): name + status badge
+  (`PROGRAM_STATUS`: Draft / Pending approval / Approved / Returned), category
+  and "Approved by … on …" underneath, actions on the right; descriptions over
+  ~260 characters are shortened with "Show more"; notes as `alert`s; figures
+  as small tiles (2 per row on phones).
 - Pure logic goes in `src/utils/` with a Jest test next to it
   (`*.test.js`, fake `fetch` for API code).
 

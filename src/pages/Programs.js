@@ -17,6 +17,17 @@ const STATUS_BADGE = {
   approved:  { label: "Approved (Locked)", color: "#2d7a4f", bg: "#f0f7f3" },
 };
 
+// Status badge on program cards (shared .badge colours).
+const PROGRAM_STATUS = {
+  draft:     { label: "Draft",            cls: "badge-gray" },
+  submitted: { label: "Pending approval", cls: "badge-amber" },
+  approved:  { label: "Approved",         cls: "badge-green" },
+  rejected:  { label: "Returned",         cls: "badge-red" },
+};
+
+// Length of rich text without its tags (to decide whether to shorten it).
+const plainLength = (html) => String(html || "").replace(/<[^>]*>/g, " ").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ").trim().length;
+
 const PROGRAM_COLORS = ["#2d7a4f", "#2563eb", "#9333ea", "#d97706", "#0891b2", "#c0392b", "#059669", "#7c3aed", "#db2777"];
 
 const EXPENSE_TYPES = [
@@ -67,6 +78,7 @@ export default function Programs({ profile, grantId, currentGrant }) {
   const [editId,      setEditId]      = useState(null);
   const [form,        setForm]        = useState(emptyProgram(0.000438));
   const [expanded,    setExpanded]    = useState(null); // program id showing budget detail
+  const [openDesc,    setOpenDesc]    = useState(() => new Set()); // programs whose full description is shown
   const [toast,       setToast]       = useState("");
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -450,45 +462,25 @@ export default function Programs({ profile, grantId, currentGrant }) {
             const pRate    = p.exchangeRate || rate;
             const plannedSess = effectivePlannedSessions(p);
             return (
-              <div key={p.id} className="panel" style={{ borderTop: `4px solid ${p.color || "#4a9e6b"}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2, flexWrap: "wrap" }}>
-                      <span style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</span>
+              <div key={p.id} className="panel program-card" style={{ borderLeft: `4px solid ${p.color || "#4a9e6b"}` }}>
+                {/* Header: name, status, category — actions on the right */}
+                <div className="program-head">
+                  <div style={{ minWidth: 0 }}>
+                    <div className="program-title">
+                      <span>{p.name}</span>
                       {(() => {
-                        const s = STATUS_BADGE[p.status] || STATUS_BADGE.draft;
-                        if (p.status === "approved") return <span style={{ fontSize: 10, fontWeight: 700, color: s.color, background: s.bg, border: `1px solid ${s.color}33`, borderRadius: 5, padding: "2px 8px" }}>{s.label}</span>;
-                        if (p.status === "submitted") return <span style={{ fontSize: 10, fontWeight: 700, color: s.color, background: s.bg, border: `1px solid ${s.color}33`, borderRadius: 5, padding: "2px 8px" }}>{s.label}</span>;
-                        return null; // don't show "Draft" badge to keep cards clean
+                        const st = PROGRAM_STATUS[p.status] || PROGRAM_STATUS.draft;
+                        return <span className={`badge ${st.cls}`}>{st.label}</span>;
                       })()}
                     </div>
-                    <div style={{ fontSize: 11, color: p.color || "#4a9e6b", fontWeight: 600, marginBottom: 4 }}>{p.category}</div>
-                    {p.description && <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }} dangerouslySetInnerHTML={{ __html: renderHtml(p.description) }} />}
-                    {p.requestedBudgetUSD > 0 && !hasBudget(p) && (
-                      <div style={{ fontSize: 12, color: "#d97706", background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 5, padding: "4px 10px", marginBottom: 4, display: "inline-block" }}>
-                        Requested budget (from import): {fmtUSD(p.requestedBudgetUSD)} ({fmt(p.requestedBudgetTZS)} TZS) total
-                        {p.requestedPerSessionTZS > 0 && ` — ${fmtUSD(p.requestedPerSessionUSD)} (${fmt(p.requestedPerSessionTZS)} TZS) per session`}
-                        . Add the budget line item below to confirm it.
-                      </div>
-                    )}
-                    {p.rejectionComment && (
-                      <div style={{ fontSize: 12, color: "#c0392b", background: "#fdf0ee", border: "1px solid #f5c6c0", borderRadius: 5, padding: "4px 10px", marginBottom: 4 }}>
-                        Returned: {p.rejectionComment}
-                      </div>
-                    )}
-                    {canEdit && isDraft(p) && !hasBudget(p) && !(p.requestedBudgetUSD > 0) && (
-                      <div style={{ fontSize: 12, color: "#888", background: "#f5f4f0", border: "1px solid #e8e8e4", borderRadius: 5, padding: "4px 10px", marginBottom: 4, display: "inline-block" }}>
-                        No budget yet — this program can't be submitted until you add at least one budget line item, either directly on the program or inside one of its sessions. Click <strong>Edit</strong> to add one.
-                      </div>
-                    )}
-                    {p.status === "approved" && (
-                      <div style={{ fontSize: 11, color: "#2d7a4f" }}>
-                        Approved by {p.approvedBy} · {p.approvedAt ? new Date(p.approvedAt).toLocaleDateString("en-GB") : ""}
-                        {!isAdmin && <span style={{ marginLeft: 8, color: "#888" }}>budget locked</span>}
-                      </div>
-                    )}
+                    <div className="program-meta">
+                      {p.category && <span style={{ color: p.color || "#4a9e6b", fontWeight: 600 }}>{p.category}</span>}
+                      {p.status === "approved" && (
+                        <span>Approved by {p.approvedBy}{p.approvedAt ? ` on ${new Date(p.approvedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}` : ""}{!isAdmin ? " · budget locked" : ""}</span>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 12, flexWrap: "wrap" }}>
+                  <div className="program-actions">
                     {(hasBudget(p) || activities.some(a => a.programId === p.id)) && (
                       <button className="btn btn-sm" onClick={() => setExpanded(isExp ? null : p.id)}>
                         {isExp ? "Hide budget" : "View budget"}
@@ -500,35 +492,68 @@ export default function Programs({ profile, grantId, currentGrant }) {
                       <button className="btn btn-sm btn-primary" onClick={() => submit(p)}>Submit for approval</button>
                     )}
                     {canEditProgram(p) && <button className="btn btn-sm" onClick={() => openEdit(p)}>Edit</button>}
-                    {canEditProgram(p) && (!p.status || p.status === "draft") && <button className="btn btn-sm btn-danger" onClick={() => del(p)}>✕</button>}
+                    {canEditProgram(p) && (!p.status || p.status === "draft") && <button className="btn btn-sm btn-danger" onClick={() => del(p)}>Delete</button>}
                   </div>
                 </div>
 
-                {/* Stats row */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, borderTop: "1px solid #f0f0ec", paddingTop: 10, marginTop: 6 }}>
+                {/* Description — long ones are shortened until "Show more" */}
+                {p.description && (() => {
+                  const long = plainLength(p.description) > 260;
+                  const open = openDesc.has(p.id);
+                  return (
+                    <div className="program-desc-wrap">
+                      <div className={`program-desc${long && !open ? " clamped" : ""}`} dangerouslySetInnerHTML={{ __html: renderHtml(p.description) }} />
+                      {long && (
+                        <button className="link-btn" onClick={() => setOpenDesc(prev => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n; })}>
+                          {open ? "Show less" : "Show more"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Notes */}
+                {p.requestedBudgetUSD > 0 && !hasBudget(p) && (
+                  <div className="alert alert-warn program-note">
+                    <strong>Requested budget (from import):</strong> {fmtUSD(p.requestedBudgetUSD)} ({fmt(p.requestedBudgetTZS)} TZS) total
+                    {p.requestedPerSessionTZS > 0 && ` · ${fmtUSD(p.requestedPerSessionUSD)} (${fmt(p.requestedPerSessionTZS)} TZS) per session`}.
+                    {" "}Add the budget line item to confirm it.
+                  </div>
+                )}
+                {p.rejectionComment && (
+                  <div className="alert alert-error program-note"><strong>Returned:</strong> {p.rejectionComment}</div>
+                )}
+                {canEdit && isDraft(p) && !hasBudget(p) && !(p.requestedBudgetUSD > 0) && (
+                  <div className="alert alert-info program-note">
+                    No budget yet. Add at least one budget line item (on the program or in one of its sessions) before submitting. Click <strong>Edit</strong> to add one.
+                  </div>
+                )}
+
+                {/* Figures */}
+                <div className="program-stats">
                   {[
-                    { label: "Sessions",       value: `${s.sessions} / ${plannedSess}` },
-                    { label: "Budget (TZS)",   value: total ? fmt(total) : "" },
-                    { label: "Participants",   value: s.participants },
-                    { label: "Women",          value: s.women },
-                    { label: "New editors",    value: s.newEditors },
-                  ].map(({ label, value }) => (
-                    <div key={label}>
-                      <div style={{ fontSize: 10, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: p.color || "#2d7a4f" }}>{value}</div>
+                    { label: "Sessions",     value: `${s.sessions} of ${plannedSess}` },
+                    { label: "Budget (TZS)", value: total ? fmt(total) : "Not set", muted: !total },
+                    { label: "Participants", value: s.participants },
+                    { label: "Women",        value: s.women },
+                    { label: "New editors",  value: s.newEditors },
+                  ].map(({ label, value, muted }) => (
+                    <div key={label} className="program-stat">
+                      <div className="program-stat-label">{label}</div>
+                      <div className="program-stat-value" style={{ color: muted ? "#aaa" : "#1c2b1e" }}>{value}</div>
                     </div>
                   ))}
                 </div>
 
-                {/* Session progress bar */}
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ background: "#e8e8e4", borderRadius: 4, height: 5 }}>
-                    <div style={{ width: `${Math.min(100, Math.round((s.sessions / plannedSess) * 100))}%`, height: 5, borderRadius: 4, background: p.color || "#4a9e6b" }} />
+                {/* Session progress */}
+                <div className="program-progress">
+                  <div className="program-progress-bar">
+                    <div style={{ width: `${Math.min(100, Math.round((s.sessions / plannedSess) * 100))}%`, background: p.color || "#4a9e6b" }} />
                   </div>
-                  <div style={{ fontSize: 10, color: "#aaa", marginTop: 3 }}>
-                    {Math.round((s.sessions / plannedSess) * 100)}% of planned sessions complete
-                    {(p.subPrograms || []).length > 0 && <span style={{ marginLeft: 4 }}>(based on the {p.subPrograms.length} sub-programs defined)</span>}
-                  </div>
+                  <span>
+                    {Math.round((s.sessions / plannedSess) * 100)}% of planned sessions done
+                    {(p.subPrograms || []).length > 0 && ` (${p.subPrograms.length} sub-program${p.subPrograms.length === 1 ? "" : "s"})`}
+                  </span>
                 </div>
 
                 {/* Budget breakdown table */}
